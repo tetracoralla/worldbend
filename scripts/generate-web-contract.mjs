@@ -5,6 +5,8 @@ import path from "node:path";
 
 import { compile } from "json-schema-to-typescript";
 
+import { normalizeLineEndings } from "./text-normalization.mjs";
+
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generatedPath = path.join(
   workspaceRoot,
@@ -38,12 +40,17 @@ if (schemaEnvelope?.ok !== true || !schema || typeof schema !== "object") {
 const generated = await compile(schema, "WebContract", {
   additionalProperties: false,
   bannerComment: "// @generated from Rust core JSON Schema. Do not edit by hand.\n",
-  style: { semi: true, singleQuote: false },
+  style: { endOfLine: "lf", semi: true, singleQuote: false },
 });
+const canonicalGenerated = normalizeLineEndings(generated);
 
 if (checkOnly) {
-  const current = await readFile(generatedPath, "utf8").catch(() => "");
-  if (current !== generated) {
+  // Git may materialize tracked text as CRLF on Windows. Compare canonical
+  // text so checkout policy cannot masquerade as a schema change.
+  const current = normalizeLineEndings(
+    await readFile(generatedPath, "utf8").catch(() => ""),
+  );
+  if (current !== canonicalGenerated) {
     process.stderr.write(
       "Generated Web contract is stale. Run `pnpm contract:generate` and commit the result.\n",
     );
@@ -52,6 +59,6 @@ if (checkOnly) {
   process.stdout.write("Generated Web contract matches the Rust core schema.\n");
 } else {
   await mkdir(path.dirname(generatedPath), { recursive: true });
-  await writeFile(generatedPath, generated);
+  await writeFile(generatedPath, canonicalGenerated);
   process.stdout.write(`${path.relative(workspaceRoot, generatedPath)} updated.\n`);
 }
