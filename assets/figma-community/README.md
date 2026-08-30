@@ -12,9 +12,11 @@ or grant a Worldbend product license.
   free Apply path created a `· Worldbend` result.
 
 The two runtime images were captured from the current plugin using
-`examples/worldbend-demo-source.png`, then mechanically cropped and scaled to
-the Figma Community 1920 x 1080 requirement. Their `*-source.jpeg` files retain
-the uncropped desktop captures.
+`examples/worldbend-demo-source.png`. The tracked source images remove the top
+64 pixels of Figma window chrome and use a centered 1248 x 702 crop, so app
+tabs and unrelated file names are absent. The upload-ready copies are
+mechanically scaled from that sanitized 16:9 crop to Figma Community's
+1920 x 1080 requirement.
 
 `worldbend-icon-source.png` is the project source for the upload icon. It was
 generated with the built-in image generator from a no-text brief: a deep-navy

@@ -64,6 +64,11 @@ and reverse engineering; it does not publish or license the private GitHub
 source. No selling, Stripe, tax, payout, price, trial, banking, backend,
 analytics, authentication, or network configuration was created.
 
+The first uploaded runtime images were found to retain Figma's app tab bar.
+They were removed before approval and replaced with verified 16:9 crops that
+exclude the top 64 pixels of window chrome and contain no unrelated project
+names. Figma received the corrected review submission on 2026-08-30.
+
 Worldbend's own Apache-2.0 declarations and product license files are absent
 from the release tree. Locked third-party dependency notices, license texts,
 and SPDX inventory remain because binary redistribution obligations are

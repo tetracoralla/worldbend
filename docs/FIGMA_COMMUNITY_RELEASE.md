@@ -57,6 +57,9 @@ arbitrary mesh deformation are not included in this release.
   thumbnail and shows the current plugin on a real Figma Desktop source.
 - `assets/figma-community/applied-result-runtime-1920x1080.jpg` shows a
   successful free Apply and the current `· Worldbend` result.
+- Both upload-ready images and their tracked source crops exclude the Figma app
+  tab bar and unrelated file names; no company project names appear in the
+  submitted media.
 - Later optional previews may add Transform, Warp, and source/result re-editing,
   but must continue to use the current runtime rather than mock controls.
 
@@ -95,7 +98,9 @@ Before submission:
 - **Review state:** Submitted on 2026-08-30; Figma reports that only the
   publisher can see the page while the plugin is in review
 - **Submitted source revision:** `3802586074897523d97127ad328db766e6aa669e`
-- **Media:** Icon, primary runtime thumbnail, and applied-result carousel image
+- **Media:** Icon plus one sanitized runtime thumbnail and one sanitized
+  applied-result carousel image; Figma received the replacement submission on
+  2026-08-30
 - **Data security:** No backend, network requests, or authentication; local
   plugin storage disclosed; solo-developer update management disclosed
 - **Financial configuration:** None; the submission created no selling,
