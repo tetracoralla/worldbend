@@ -52,8 +52,17 @@ Desktop Apply without a Payments API and created a new `· Worldbend` result.
 The current source passes the complete `pnpm check`: 139 Rust tests, 154 Web
 tests, 117 Figma tests, 10 repository script tests, formatting, lint, contract
 drift, types, real WASM/Figma builds, package inventory, built CLI/MCP smoke,
-and Capability conformance. Figma Community submission is still required
-before this state may be called released.
+and Capability conformance. Figma received the Community submission for source
+revision `3802586074897523d97127ad328db766e6aa669e`; its private review page is
+`https://www.figma.com/community/plugin/1675767923532475446/worldbend`. Only
+the publisher can see it until Figma approves the plugin.
+
+Figma confirmed the `worldbend` Community handle and displays the listing as a
+free plugin under its default Community Free Resource License. That platform
+distribution license permits use inside Figma while restricting redistribution
+and reverse engineering; it does not publish or license the private GitHub
+source. No selling, Stripe, tax, payout, price, trial, banking, backend,
+analytics, authentication, or network configuration was created.
 
 Worldbend's own Apache-2.0 declarations and product license files are absent
 from the release tree. Locked third-party dependency notices, license texts,
@@ -122,8 +131,7 @@ accurate even though Worldbend itself has no declared product license.
 
 ## Remaining action
 
-- Commit and push the verified free-release change, then require the Ubuntu
-  full and Windows portability jobs to pass.
-- Complete the Figma listing. Stop only at a real account boundary such as an
-  unavailable Community handle, unconfirmed support contact, or explicit legal
-  terms requiring the owner's own acceptance.
+- Wait for Figma's review decision. Approval time varies and Figma documents a
+  possible review window of up to two weeks.
+- After approval, verify the public page and install the approved build through
+  the Community listing before sharing the URL with company designers.
