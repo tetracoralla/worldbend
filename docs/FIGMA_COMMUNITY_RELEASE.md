@@ -53,15 +53,15 @@ arbitrary mesh deformation are not included in this release.
 
 - `assets/figma-community/worldbend-icon-128.png` is the 128 x 128 px plugin
   icon.
-- `assets/figma-community/free-distort-runtime-1920x1080.jpg` is the primary
-  thumbnail and shows the current plugin on a real Figma Desktop source.
-- `assets/figma-community/applied-result-runtime-1920x1080.jpg` shows a
-  successful free Apply and the current `· Worldbend` result.
-- Both upload-ready images and their tracked source crops exclude the Figma app
-  tab bar and unrelated file names; no company project names appear in the
-  submitted media.
-- Later optional previews may add Transform, Warp, and source/result re-editing,
-  but must continue to use the current runtime rather than mock controls.
+- `assets/figma-community/worldbend-perspective-demo.mov` is the owner's
+  first-priority live recording and shows Free and Perspective corner editing.
+- `assets/figma-community/worldbend-transform-demo.mov` shows scale, skew, and
+  rotation in Transform.
+- `assets/figma-community/worldbend-transform-ui.png` shows the completed
+  Transform interface state.
+- All three final media sources show only the current plugin surface. They do
+  not contain the Figma app tab bar, unrelated canvas content, company project
+  names, a Computer Use pointer, or an in-progress Apply state.
 
 ## Owner-account boundary
 
@@ -95,12 +95,14 @@ Before submission:
 - **Support contact:** Figma account's existing support contact
 - **Community handle:** `worldbend` (confirmed available by Figma)
 - **Listing URL:** `https://www.figma.com/community/plugin/1675767923532475446/worldbend`
-- **Review state:** Submitted on 2026-08-30; Figma reports that only the
-  publisher can see the page while the plugin is in review
+- **Review state:** Resubmitted after the owner accepted the final media on
+  2026-08-30; Figma reports that only the publisher can see the page while the
+  plugin is in review
 - **Submitted source revision:** `3802586074897523d97127ad328db766e6aa669e`
-- **Media:** Icon plus one sanitized runtime thumbnail and one sanitized
-  applied-result carousel image; Figma received the replacement submission on
-  2026-08-30
+- **Media:** Icon plus the three owner-reviewed items archived in
+  `assets/figma-community/`; the current listing shows three preview items
+- **Version:** The listing-only media update did not resubmit the plugin
+  package; Figma still reports Version 2 rather than creating Version 3
 - **Data security:** No backend, network requests, or authentication; local
   plugin storage disclosed; solo-developer update management disclosed
 - **Financial configuration:** None; the submission created no selling,

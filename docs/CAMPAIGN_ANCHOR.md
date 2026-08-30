@@ -46,8 +46,8 @@ distribution does not make the private GitHub source public and does not grant
 a Worldbend product license.
 
 Figma Desktop generated plugin ID `1675767923532475446`. The required 128 x
-128 icon plus two real-runtime 1920 x 1080 listing images are in
-`assets/figma-community/`. The exact free manifest completed a real Figma
+128 icon plus the owner's final two real-runtime recordings and one static
+plugin screenshot are in `assets/figma-community/`. The exact free manifest completed a real Figma
 Desktop Apply without a Payments API and created a new `· Worldbend` result.
 The current source passes the complete `pnpm check`: 139 Rust tests, 154 Web
 tests, 117 Figma tests, 10 repository script tests, formatting, lint, contract
@@ -65,9 +65,15 @@ source. No selling, Stripe, tax, payout, price, trial, banking, backend,
 analytics, authentication, or network configuration was created.
 
 The first uploaded runtime images were found to retain Figma's app tab bar.
-They were removed before approval and replaced with verified 16:9 crops that
-exclude the top 64 pixels of window chrome and contain no unrelated project
-names. Figma received the corrected review submission on 2026-08-30.
+They were removed before approval. The owner then rejected the replacement
+crops because they still showed the host canvas, a Computer Use pointer, and
+an unhelpful in-progress Apply moment. The final owner-captured media shows
+only the plugin surface: one Free/Perspective recording, one Transform
+recording, and one completed Transform screenshot. The owner removed the old
+media, accepted the final presentation, and submitted it on 2026-08-30. The
+current owner-only Community page shows three preview items, remains private
+while in review, and still reports Version 2 because the media-only update did
+not resubmit the plugin package.
 
 Worldbend's own Apache-2.0 declarations and product license files are absent
 from the release tree. Locked third-party dependency notices, license texts,
