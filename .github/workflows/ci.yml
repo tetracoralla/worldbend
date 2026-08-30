@@ -5,6 +5,17 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      operating_system:
+        description: Platform for the complete release check
+        required: true
+        default: windows-latest
+        type: choice
+        options:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
 
 permissions:
   contents: read
@@ -14,14 +25,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  full-check:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  linux-full-check:
+    if: github.event_name != 'workflow_dispatch'
+    name: ubuntu-latest full
+    runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
+        with:
+          version: 11.19.0
+          runtime: node@22
+          cache: true
+          install: false
+
+      - name: Install Rust 1.89 with lint and WASM targets
+        shell: bash
+        run: |
+          rustup toolchain install 1.89.0 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+          rustup default 1.89.0
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Install pinned WASM binding tool
+        shell: bash
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked --root .tools/wasm-bindgen
+
+      - name: Install locked JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the complete clean-checkout contract
+        run: pnpm check
+
+  windows-portability-check:
+    if: github.event_name != 'workflow_dispatch'
+    name: windows-latest portability
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
+        with:
+          version: 11.19.0
+          runtime: node@22
+          cache: true
+          install: false
+
+      - name: Install locked JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check generated text and cross-platform packaging
+        run: pnpm contract:check && pnpm test:scripts && pnpm typecheck && pnpm build:figma:entries && pnpm package:figma-designer:from-build
+
+  manual-full-check:
+    if: github.event_name == 'workflow_dispatch'
+    name: ${{ inputs.operating_system }} manual full
+    runs-on: ${{ inputs.operating_system }}
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { isWorkspacePluginVersion } from "./plugin-version.mjs";
+import { skillFrontmatter } from "./skill-frontmatter.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(root, "plugins", "worldbend");
@@ -61,12 +62,11 @@ const skillsRoot = resolveInside(pluginRoot, manifest.skills, "skills");
 await assertContainedDirectory(skillsRoot, "skills root");
 const skillPath = path.join(skillsRoot, "worldbend", "SKILL.md");
 await assertContainedRegularFile(skillPath, "Worldbend Skill");
-const skill = await readFile(skillPath, "utf8");
-const frontmatter = skill.match(/^---\n([\s\S]*?)\n---\n/);
+const frontmatter = skillFrontmatter(await readFile(skillPath, "utf8"));
 assert(frontmatter, "Worldbend Skill must have YAML frontmatter");
-assert(/^name:\s*worldbend\s*$/m.test(frontmatter[1]), "Skill name must be worldbend");
+assert(/^name:\s*worldbend\s*$/m.test(frontmatter), "Skill name must be worldbend");
 assert(
-  /^description:\s*\S.+$/m.test(frontmatter[1]),
+  /^description:\s*\S.+$/m.test(frontmatter),
   "Skill description must be non-empty",
 );
 
