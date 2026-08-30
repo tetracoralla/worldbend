@@ -1,0 +1,51 @@
+{
+  "name": "@openadam/worldbend-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "author": "openAdam",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "bootstrap:wasm": "cargo install wasm-bindgen-cli --version 0.2.127 --root .tools/wasm-bindgen && rustup target add wasm32-unknown-unknown",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:web:package": "pnpm --filter @worldbend/web build",
+    "build:web": "pnpm build:wasm && pnpm build:web:package",
+    "build:figma:entries": "pnpm --filter @worldbend/figma build:entries",
+    "build:figma": "pnpm --filter @worldbend/figma build",
+    "package:figma-designer": "pnpm build:figma && pnpm package:figma-designer:from-build",
+    "package:figma-designer:from-build": "node scripts/package-figma-designer.mjs",
+    "build": "pnpm build:figma",
+    "plugin:stage": "node scripts/stage-plugin.mjs",
+    "plugin:validate": "node scripts/validate-plugin.mjs",
+    "plugin:package:macos-arm64": "node scripts/package-plugin-macos-arm64.mjs",
+    "plugin:verify:macos-arm64": "node scripts/verify-plugin-macos-arm64-archive.mjs",
+    "plugin:install:local": "pnpm plugin:stage && pnpm plugin:validate && node scripts/installed-plugin-check.mjs --install --runtime-smoke",
+    "plugin:installed:check": "node scripts/installed-plugin-check.mjs --runtime-smoke",
+    "runtime:smoke": "node scripts/mcp-runtime-smoke.mjs",
+    "performance:probe": "pnpm build:wasm && node --expose-gc scripts/performance-load-probe.mjs",
+    "performance:smoke": "node --expose-gc scripts/performance-load-probe.mjs --iterations=20 --warmup=5 --json",
+    "capability:check": "node capabilities/check-provider.mjs",
+    "contract:generate": "node scripts/generate-web-contract.mjs",
+    "contract:check": "node scripts/generate-web-contract.mjs --check",
+    "typecheck": "pnpm --filter @worldbend/web typecheck && pnpm --filter @worldbend/figma typecheck",
+    "test:web": "pnpm build:wasm && pnpm --filter @worldbend/web test",
+    "test:figma": "pnpm build:web && pnpm --filter @worldbend/figma test",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "test:ui": "pnpm build:web && pnpm --filter @worldbend/web test && pnpm --filter @worldbend/figma test",
+    "test": "cargo test --workspace && pnpm test:scripts && pnpm test:ui",
+    "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm contract:check && pnpm test:scripts && pnpm test:ui && pnpm performance:smoke && pnpm typecheck && pnpm build:figma:entries && pnpm package:figma-designer:from-build && pnpm plugin:stage && pnpm plugin:validate && pnpm runtime:smoke && pnpm capability:check && node scripts/check-built-artifacts.mjs"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "1.134.0",
+    "@types/node": "26.2.0",
+    "json-schema-to-typescript": "15.0.4",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vite": "7.3.6",
+    "vite-plugin-singlefile": "2.3.0",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

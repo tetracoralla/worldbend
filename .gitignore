@@ -1,0 +1,15 @@
+target/
+node_modules/
+.pnpm-store/
+dist/
+packages/*/dist/
+packages/*/demo-dist/
+packages/wasm/pkg/
+plugins/worldbend/bin/
+.tools/
+.playwright-cli/
+output/playwright/
+artifacts/
+.DS_Store
+*.log
+/bin/

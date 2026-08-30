@@ -1,0 +1,30 @@
+[package]
+name = "worldbend-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "MCP adapter for Worldbend"
+
+[[bin]]
+name = "worldbend-mcp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+futures = "0.3"
+libc.workspace = true
+worldbend-agent-fs = { path = "../worldbend-agent-fs" }
+worldbend-core = { path = "../worldbend-core" }
+worldbend-render = { path = "../worldbend-render" }
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tokio-util = "0.7"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

@@ -1,0 +1,34 @@
+{
+  "name": "worldbend",
+  "version": "0.1.0+codex.20260830115212",
+  "description": "Compose, solve, inspect, render, and emit CSS for explicit projective planes.",
+  "author": {
+    "name": "openAdam"
+  },
+  "keywords": [
+    "perspective",
+    "homography",
+    "corner-pin",
+    "transform",
+    "css",
+    "rendering"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Worldbend",
+    "shortDescription": "Compose and map explicit planes without recalculating perspective.",
+    "longDescription": "Compose typed scale, rotation, skew, translation, and pivot over a saved plane, solve and reuse deterministic perspective geometry, render local raster assets, or emit CSS matrix3d values for live web content.",
+    "developerName": "openAdam",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Compose a 90-degree rotation and 120% scale over this saved ProjectiveSpec.",
+      "Render this new source through the saved ProjectiveSpec.",
+      "Emit CSS matrix3d for this live element and plane."
+    ]
+  }
+}

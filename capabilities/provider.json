@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "openadam.provider-manifest.v0.3",
+  "provider": {
+    "id": "io.github.tetracoralla.worldbend",
+    "name": "Worldbend",
+    "version": "0.1.0"
+  },
+  "implementations": [
+    {
+      "capabilityId": "org.openadam.projective.transform",
+      "capabilityVersion": "0.2.0",
+      "profileDigest": "sha256:89b236fb79dd1fc7807ab6c4c82af97a6c3efbdc276fb4baf2b845b601f086dc",
+      "adapter": {
+        "protocol": "openadam.capability-jsonl.v0.1",
+        "command": "../bin/worldbend-capability",
+        "args": [],
+        "cwd": "capabilities"
+      },
+      "adapterBindings": [
+        {
+          "operationId": "inspect",
+          "target": "binary:worldbend-capability#inspect"
+        },
+        {
+          "operationId": "render",
+          "target": "binary:worldbend-capability#render"
+        }
+      ],
+      "transportSchemaProbe": {
+        "protocol": "openadam.transport-schema-jsonl.v0.1",
+        "command": "../bin/worldbend-transport-schema-probe",
+        "args": [],
+        "cwd": "capabilities"
+      },
+      "bindings": [
+        {
+          "operationId": "inspect",
+          "transport": "mcp-tool",
+          "target": "worldbend.inspect",
+          "contractSchemaDigests": {
+            "input": "sha256:635e2eb1e07f80001db0320148360e36265c49a3bd7a479b20e93b0dc3e296e7",
+            "output": "sha256:a067a00c50bb0a0e711b1319ce4c3f4aff4ee3d811295a8bc2384206a1143a69"
+          },
+          "transportSchemaDigests": {
+            "input": "sha256:2906abe41fe851296279e98d8994fc487585504a8621ee8327aa34ee82cd48f5"
+          },
+          "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        },
+        {
+          "operationId": "render",
+          "transport": "mcp-tool",
+          "target": "worldbend.render",
+          "contractSchemaDigests": {
+            "input": "sha256:ccc31dd3a786a976c17e9f132cf02957f6cf0c1adbc3b8b259ae3bf2bb043096",
+            "output": "sha256:4a4b9fa4c1c08ebc3c9350fb79c304039b62377d2d0123410944480dde0772ef"
+          },
+          "transportSchemaDigests": {
+            "input": "sha256:88e3ee873112f7dbaaee7a2062d46103760a9f18100650ef79c9c9479f642624"
+          },
+          "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false }
+        }
+      ]
+    }
+  ]
+}

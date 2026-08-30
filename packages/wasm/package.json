@@ -1,0 +1,13 @@
+{
+  "name": "@worldbend/wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./pkg/worldbend_wasm.d.ts",
+      "import": "./pkg/worldbend_wasm.js"
+    }
+  },
+  "files": ["pkg"]
+}

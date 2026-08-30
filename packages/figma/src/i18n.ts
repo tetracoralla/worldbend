@@ -1,0 +1,392 @@
+export const SUPPORTED_LOCALES = ["en", "zh-CN"] as const;
+
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+export type LocalePreference = "system" | SupportedLocale;
+
+export const LOCALE_STORAGE_KEY = "perspective.preferences.v1";
+
+const english = {
+  moreOptions: "More options",
+  language: "Language",
+  languageSystem: "Automatic",
+  languageSystemDetail: "Uses your system language",
+  languageEnglish: "English",
+  languageChinese: "Simplified Chinese",
+  modeTransform: "Transform",
+  modeDistort: "Distort",
+  modeWarp: "Warp",
+  modeGroupLabel: "Editing mode",
+  distortGroupLabel: "Distort behavior",
+  distortFree: "Free",
+  distortPerspective: "Perspective",
+  scaleX: "Width",
+  scaleY: "Height",
+  rotation: "Angle",
+  skewX: "Skew X",
+  skewY: "Skew Y",
+  warpPreset: "Preset",
+  warpAmount: "Bend",
+  warpNone: "None",
+  warpArc: "Arc",
+  warpArch: "Arch",
+  warpFlag: "Flag",
+  warpWave: "Wave",
+  warpFish: "Fish",
+  warpRise: "Rise",
+  warpFisheye: "Fisheye",
+  warpInflate: "Inflate",
+  warpSqueeze: "Squeeze",
+  warpTwist: "Twist",
+  linkScale: "Link width and height",
+  unlinkScale: "Unlink width and height",
+  closePlacement: "Close placement",
+  selectOneSource: "Select one source layer",
+  loadingSelection: "Loading selection…",
+  refreshingSelection: "Refreshing selection…",
+  reset: "Reset",
+  resetting: "Resetting…",
+  perspectiveReset: "Perspective reset.",
+  apply: "Apply as image",
+  applying: "Applying…",
+  perspectiveApplied: "Perspective applied.",
+  replace: "Replace image",
+  replacing: "Replacing…",
+  perspectiveReplaced: "Perspective replaced.",
+  invalidApplyRequest: "The plugin received an invalid request. Reopen it and try again.",
+  applyAlreadyInProgress: "A perspective result is already being applied.",
+  purchaseRequired:
+    "Your 7-day trial has ended. Complete the one-time purchase to apply this result.",
+  purchaseStatusUnavailable:
+    "Figma could not verify your purchase status. Your edit is still here; try Apply again.",
+  invalidReusablePlane: "This perspective result can no longer be edited safely.",
+  selectResultWithSource:
+    "To continue editing, select the original source together with this perspective result.",
+  selectOneSourceAndResult: "Select one source and one existing perspective result.",
+  resultNotReplaceable: "This perspective result cannot be replaced.",
+  selectOneOrPair: "Select one source, or a source together with its perspective result.",
+  sourceNeedsVisibleBounds: "The source must have visible bounds.",
+  resultNeedsVisibleBounds: "The perspective result must have visible bounds.",
+  sourceUnsupportedSize: "The source cannot be exported at a supported size.",
+  sourceExportTimedOut: "Figma did not finish exporting the source. Reopen the plugin and try again.",
+  selectionChanged: "The selection changed before the result was applied. Try again.",
+  resultUnavailable: "The perspective result is no longer available.",
+  resultChanged: "The perspective result changed. Select it again and retry.",
+  mixedFills: "The perspective result has mixed fills and cannot be replaced safely.",
+  rollbackIncomplete: "The previous perspective result could not be fully restored.",
+  outputInvalidDimensions: "The output image has invalid dimensions.",
+  outputLimitExceeded:
+    "Figma limits one raster image to {limit} px per axis. Resize the output, or use the CLI for a larger file; the plugin will not silently reduce quality.",
+  previewFailed: "The selected layer could not be previewed.",
+  unreadableImage: "The selected layer did not produce a readable image.",
+  languageSaveFailed: "The language changed for this session, but the preference could not be saved.",
+  invalidTransform: "Enter valid scale, rotation, and skew values.",
+  invalidWarp: "Choose a Warp preset and enter a Bend value from -100% to 100%.",
+  transformPreviewTimedOut: "The transform preview stopped responding. Reopen the plugin and try again.",
+  invalidPlacement: "Enter a valid X or Y position.",
+  transformOutputLimit:
+    "The transformed image would exceed Figma's {limit} px per-axis raster limit. Resize the output, or use the CLI for a larger file.",
+  transformPlacementInvalid: "The transformed image cannot be placed safely.",
+  unexpectedError: "The operation could not be completed. Try again.",
+  cornerTopLeft: "Top-left",
+  cornerTopRight: "Top-right",
+  cornerBottomRight: "Bottom-right",
+  cornerBottomLeft: "Bottom-left",
+  cornerLabel: "{corner} corner, x {x}, y {y}. Use arrow keys to move.",
+  cornerLabelFree:
+    "{corner} corner, x {x}, y {y}. Free Distort. Hold Shift for Perspective Distort. Use arrow keys to move.",
+  cornerLabelPerspective:
+    "{corner} corner, x {x}, y {y}. Perspective Distort; horizontal dragging mirrors only the same-row corner, and vertical dragging mirrors only the same-column corner. The first direction stays locked until release. Hold Shift for Free Distort. Use arrow keys to move.",
+  zoomGroup: "Preview zoom",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  zoomFit: "Fit",
+  zoomFitFull: "Fit the preview to the window",
+  zoomReset: "Reset zoom to 100%",
+  transformSurfaceLabel: "Transform preview. Use arrow keys to move the plane. Hold Space to pan.",
+  transformPivotLabel: "Transform reference point. Drag or use arrow keys to move.",
+  editUndone: "Edit undone.",
+  editRedone: "Edit redone.",
+  transformActions: "Transform actions",
+  flipHorizontal: "Flip Horizontal",
+  flipVertical: "Flip Vertical",
+  rotateQuarterCw: "Rotate 90° Clockwise",
+  transformAgain: "Transform Again",
+  selectSourceAndResult: "Select source + result",
+  applyAsCopy: "Apply as New Image",
+  placement: "Placement",
+  referencePoint: "Reference Point",
+  pivotTop: "Top",
+  pivotLeft: "Left",
+  pivotRight: "Right",
+  pivotBottom: "Bottom",
+  pivotCenter: "Center",
+  positionX: "X",
+  positionY: "Y",
+  handleCornerTopLeft: "Scale from the top-left corner. Use arrow keys to resize.",
+  handleCornerTopRight: "Scale from the top-right corner. Use arrow keys to resize.",
+  handleCornerBottomRight: "Scale from the bottom-right corner. Use arrow keys to resize.",
+  handleCornerBottomLeft: "Scale from the bottom-left corner. Use arrow keys to resize.",
+  handleEdgeTop: "Scale height from the top edge. Use arrow keys to resize.",
+  handleEdgeRight: "Scale width from the right edge. Use arrow keys to resize.",
+  handleEdgeBottom: "Scale height from the bottom edge. Use arrow keys to resize.",
+  handleEdgeLeft: "Scale width from the left edge. Use arrow keys to resize.",
+  graphicsContextLost: "The perspective preview stopped responding. Reopen the plugin and try again.",
+  normalizedSpecRequired: "This saved perspective cannot be edited interactively.",
+  sourceDecodeFailed: "The source image could not be decoded.",
+  sourceNoPixels: "The source image has no readable pixels.",
+  noSourceLoaded: "No source is loaded.",
+  editorPixelLimit: "The output exceeds this editor's {limit} pixel limit.",
+  encodeFailed: "Unable to encode the perspective result.",
+  editorUnavailable: "The perspective editor is no longer available.",
+  previewUnavailable: "Unable to prepare the perspective preview.",
+  webglRequired: "This device cannot open the interactive perspective preview.",
+  imageInvalidDimensions: "The image has invalid dimensions.",
+  imageTextureLimit: "The image exceeds this device's {limit} px graphics limit.",
+  invalidSchema: "The saved perspective data is invalid or unsupported.",
+  nonFiniteCoordinate: "One or more corner coordinates are invalid.",
+  quadSelfIntersect: "The perspective edges cannot cross each other.",
+  quadConcave: "Keep all four corners in one convex shape.",
+  quadOrientation: "Keep the corners in top-left, top-right, bottom-right, bottom-left order.",
+  quadDegenerate: "Move the corners farther apart to form a visible plane.",
+  edgeTooShort: "Two adjacent corners are too close together.",
+  homographySingular: "This perspective plane cannot be solved. Adjust the corners.",
+  horizonCrossing: "This perspective crosses its projective horizon. Adjust the corners.",
+  reprojectionFailed: "This perspective is numerically unstable. Adjust the corners.",
+} as const;
+
+export type MessageKey = keyof typeof english;
+
+const simplifiedChinese: Record<MessageKey, string> = {
+  moreOptions: "更多选项",
+  language: "语言",
+  languageSystem: "跟随系统",
+  languageSystemDetail: "使用系统语言",
+  languageEnglish: "English",
+  languageChinese: "简体中文",
+  modeTransform: "变换",
+  modeDistort: "扭曲",
+  modeWarp: "变形",
+  modeGroupLabel: "编辑模式",
+  distortGroupLabel: "扭曲方式",
+  distortFree: "自由",
+  distortPerspective: "透视",
+  scaleX: "宽度",
+  scaleY: "高度",
+  rotation: "角度",
+  skewX: "斜切 X",
+  skewY: "斜切 Y",
+  warpPreset: "预设",
+  warpAmount: "弯曲",
+  warpNone: "无",
+  warpArc: "弧形",
+  warpArch: "拱形",
+  warpFlag: "旗形",
+  warpWave: "波浪",
+  warpFish: "鱼形",
+  warpRise: "上升",
+  warpFisheye: "鱼眼",
+  warpInflate: "膨胀",
+  warpSqueeze: "挤压",
+  warpTwist: "扭转",
+  linkScale: "关联宽度和高度",
+  unlinkScale: "取消关联宽度和高度",
+  closePlacement: "关闭定位",
+  selectOneSource: "请选择一个源图层",
+  loadingSelection: "正在读取所选图层…",
+  refreshingSelection: "正在刷新所选图层…",
+  reset: "重置",
+  resetting: "正在重置…",
+  perspectiveReset: "已重置透视。",
+  apply: "应用为图像",
+  applying: "正在应用…",
+  perspectiveApplied: "已应用透视。",
+  replace: "替换图像",
+  replacing: "正在替换…",
+  perspectiveReplaced: "已替换透视结果。",
+  invalidApplyRequest: "插件收到了无效请求。请重新打开插件后再试。",
+  applyAlreadyInProgress: "正在应用另一个透视结果。",
+  purchaseRequired: "7 天试用期已结束。请一次性购买后应用这个结果。",
+  purchaseStatusUnavailable: "Figma 暂时无法验证购买状态。当前编辑仍保留，请再次应用。",
+  invalidReusablePlane: "这个透视结果已无法安全继续编辑。",
+  selectResultWithSource: "如需继续调整，请同时选中原图和这个透视结果。",
+  selectOneSourceAndResult: "请选择一个源图层和一个已有透视结果。",
+  resultNotReplaceable: "这个透视结果无法替换。",
+  selectOneOrPair: "请选择一个源图层，或同时选择源图层和它的透视结果。",
+  sourceNeedsVisibleBounds: "源图层必须具有可见边界。",
+  resultNeedsVisibleBounds: "透视结果必须具有可见边界。",
+  sourceUnsupportedSize: "无法以受支持的尺寸导出源图层。",
+  sourceExportTimedOut: "Figma 未能完成源图层导出。请重新打开插件后再试。",
+  selectionChanged: "应用结果前所选图层已发生变化。请重试。",
+  resultUnavailable: "透视结果已不存在。",
+  resultChanged: "透视结果已发生变化。请重新选择后再试。",
+  mixedFills: "透视结果包含混合填充，无法安全替换。",
+  rollbackIncomplete: "无法完整恢复之前的透视结果。",
+  outputInvalidDimensions: "输出图像尺寸无效。",
+  outputLimitExceeded:
+    "Figma 单张栅格图像每边最多 {limit} 像素。请缩小输出，或使用命令行生成更大的文件；插件不会静默降低清晰度。",
+  previewFailed: "无法预览所选图层。",
+  unreadableImage: "所选图层未生成可读取的图像。",
+  languageSaveFailed: "本次已切换语言，但未能保存该偏好。",
+  invalidTransform: "请输入有效的缩放、旋转和斜切数值。",
+  invalidWarp: "请选择变形预设，并输入 -100% 到 100% 的弯曲值。",
+  transformPreviewTimedOut: "变换预览已停止响应。请重新打开插件后再试。",
+  invalidPlacement: "请输入有效的 X 或 Y 位置。",
+  transformOutputLimit:
+    "变换后的图像将超过 Figma 单张栅格图像每边 {limit} 像素的限制。请缩小输出，或使用命令行生成更大的文件。",
+  transformPlacementInvalid: "无法安全放置变换后的图像。",
+  unexpectedError: "无法完成操作。请重试。",
+  cornerTopLeft: "左上",
+  cornerTopRight: "右上",
+  cornerBottomRight: "右下",
+  cornerBottomLeft: "左下",
+  cornerLabel: "{corner}角，x {x}，y {y}。使用方向键移动。",
+  cornerLabelFree:
+    "{corner}角，x {x}，y {y}。自由扭曲；按住 Shift 临时切换为透视扭曲。使用方向键移动。",
+  cornerLabelPerspective:
+    "{corner}角，x {x}，y {y}。透视扭曲；横向拖动只对称联动同一横边端点，纵向拖动只对称联动同一竖边端点，识别方向后会保持到松手。按住 Shift 临时切换为自由扭曲。使用方向键移动。",
+  zoomGroup: "预览缩放",
+  zoomIn: "放大",
+  zoomOut: "缩小",
+  zoomFit: "适应",
+  zoomFitFull: "让预览适应窗口",
+  zoomReset: "恢复 100% 缩放",
+  transformSurfaceLabel: "变换预览。使用方向键移动平面，按住空格键平移预览。",
+  transformPivotLabel: "变换参考点。拖动或使用方向键移动。",
+  editUndone: "已撤销编辑。",
+  editRedone: "已重做编辑。",
+  transformActions: "变换操作",
+  flipHorizontal: "水平翻转",
+  flipVertical: "垂直翻转",
+  rotateQuarterCw: "顺时针旋转 90°",
+  transformAgain: "再次变换",
+  selectSourceAndResult: "选择源图和结果",
+  applyAsCopy: "应用为新图像",
+  placement: "定位",
+  referencePoint: "参考点",
+  pivotTop: "上",
+  pivotLeft: "左",
+  pivotRight: "右",
+  pivotBottom: "下",
+  pivotCenter: "中心",
+  positionX: "X",
+  positionY: "Y",
+  handleCornerTopLeft: "从左上角缩放。使用方向键调整大小。",
+  handleCornerTopRight: "从右上角缩放。使用方向键调整大小。",
+  handleCornerBottomRight: "从右下角缩放。使用方向键调整大小。",
+  handleCornerBottomLeft: "从左下角缩放。使用方向键调整大小。",
+  handleEdgeTop: "从上边缩放高度。使用方向键调整大小。",
+  handleEdgeRight: "从右边缩放宽度。使用方向键调整大小。",
+  handleEdgeBottom: "从下边缩放高度。使用方向键调整大小。",
+  handleEdgeLeft: "从左边缩放宽度。使用方向键调整大小。",
+  graphicsContextLost: "透视预览已停止响应。请重新打开插件后再试。",
+  normalizedSpecRequired: "这个已保存的透视无法交互编辑。",
+  sourceDecodeFailed: "无法解码源图像。",
+  sourceNoPixels: "源图像没有可读取的像素。",
+  noSourceLoaded: "尚未载入源图像。",
+  editorPixelLimit: "输出超过编辑器的 {limit} 像素限制。",
+  encodeFailed: "无法编码透视结果。",
+  editorUnavailable: "透视编辑器已不可用。",
+  previewUnavailable: "无法准备透视预览。",
+  webglRequired: "当前设备无法打开交互式透视预览。",
+  imageInvalidDimensions: "图像尺寸无效。",
+  imageTextureLimit: "图像超过当前设备的 {limit} 像素图形限制。",
+  invalidSchema: "已保存的透视数据无效或不受支持。",
+  nonFiniteCoordinate: "一个或多个角点坐标无效。",
+  quadSelfIntersect: "透视边线不能互相交叉。",
+  quadConcave: "请让四个角点保持为一个凸四边形。",
+  quadOrientation: "请按左上、右上、右下、左下的顺序保持角点。",
+  quadDegenerate: "请将角点拉开，形成可见平面。",
+  edgeTooShort: "两个相邻角点距离太近。",
+  homographySingular: "无法求解这个透视平面。请调整角点。",
+  horizonCrossing: "这个透视跨越了投影地平线。请调整角点。",
+  reprojectionFailed: "这个透视在数值上不稳定。请调整角点。",
+};
+
+const dictionaries: Record<SupportedLocale, Record<MessageKey, string>> = {
+  en: english,
+  "zh-CN": simplifiedChinese,
+};
+
+export interface UserMessage {
+  key: MessageKey;
+  values?: Readonly<Record<string, string | number>>;
+}
+
+export interface StoredPreferencesV1 {
+  version: 1;
+  locale: LocalePreference;
+}
+
+export function userMessage(
+  key: MessageKey,
+  values?: Readonly<Record<string, string | number>>,
+): UserMessage {
+  return values ? { key, values } : { key };
+}
+
+export function translate(locale: SupportedLocale, value: UserMessage | MessageKey): string {
+  const message = typeof value === "string" ? userMessage(value) : value;
+  const template = dictionaries[locale][message.key];
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (placeholder, key: string) => {
+    const replacement = message.values?.[key];
+    return replacement === undefined ? placeholder : String(replacement);
+  });
+}
+
+export function resolveLocale(
+  preference: LocalePreference,
+  systemLocales: readonly string[],
+): SupportedLocale {
+  if (preference !== "system") return preference;
+  for (const candidate of systemLocales) {
+    const normalized = candidate.trim().toLowerCase().replaceAll("_", "-");
+    if (
+      normalized === "zh" ||
+      normalized === "zh-cn" ||
+      normalized === "zh-sg" ||
+      normalized.startsWith("zh-hans")
+    ) {
+      return "zh-CN";
+    }
+    if (normalized === "en" || normalized.startsWith("en-")) return "en";
+  }
+  return "en";
+}
+
+export function parseStoredLocalePreference(value: unknown): LocalePreference {
+  if (!isRecord(value) || value["version"] !== 1) return "system";
+  return isLocalePreference(value["locale"]) ? value["locale"] : "system";
+}
+
+export function isLocalePreference(value: unknown): value is LocalePreference {
+  return value === "system" || SUPPORTED_LOCALES.includes(value as SupportedLocale);
+}
+
+export function isSupportedLocale(value: unknown): value is SupportedLocale {
+  return SUPPORTED_LOCALES.includes(value as SupportedLocale);
+}
+
+export function isUserMessage(value: unknown): value is UserMessage {
+  if (!isRecord(value) || typeof value["key"] !== "string" || !(value["key"] in english)) {
+    return false;
+  }
+  if (value["values"] === undefined) return true;
+  return (
+    isRecord(value["values"]) &&
+    Object.values(value["values"]).every(
+      (item) => typeof item === "string" || typeof item === "number",
+    )
+  );
+}
+
+export function formatPercent(locale: SupportedLocale, value: number): string {
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

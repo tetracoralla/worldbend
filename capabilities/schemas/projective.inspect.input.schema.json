@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openadam:capability:projective.inspect:v0.1:input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec"],
+  "properties": {
+    "spec": { "$ref": "#/$defs/spec" },
+    "target_size": { "$ref": "#/$defs/size" }
+  },
+  "$defs": {
+    "point": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+    "quad": { "type": "object", "additionalProperties": false, "required": ["tl", "tr", "br", "bl"], "properties": { "tl": { "$ref": "#/$defs/point" }, "tr": { "$ref": "#/$defs/point" }, "br": { "$ref": "#/$defs/point" }, "bl": { "$ref": "#/$defs/point" } } },
+    "size": { "type": "object", "additionalProperties": false, "required": ["width", "height"], "properties": { "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 } } },
+    "destination": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["space", "reference", "quad"], "properties": { "space": { "const": "pixel" }, "reference": { "$ref": "#/$defs/size" }, "quad": { "$ref": "#/$defs/quad" } } },
+        { "type": "object", "additionalProperties": false, "required": ["space", "quad"], "properties": { "space": { "const": "normalized" }, "quad": { "$ref": "#/$defs/quad" } } }
+      ]
+    },
+    "spec": { "type": "object", "additionalProperties": false, "required": ["schema", "version", "destination", "content"], "properties": { "schema": { "const": "projective.transform" }, "version": { "const": "0.1" }, "destination": { "$ref": "#/$defs/destination" }, "content": { "type": "object", "additionalProperties": false, "required": ["fit"], "properties": { "fit": { "const": "stretch" } } } } }
+  }
+}

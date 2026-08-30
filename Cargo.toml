@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/worldbend-agent-fs",
+  "crates/worldbend-core",
+  "crates/worldbend-render",
+  "crates/worldbend-cli",
+  "crates/worldbend-mcp",
+  "crates/worldbend-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+authors = ["openAdam"]
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+cap-fs-ext = { version = "4.0.3", default-features = false }
+cap-primitives = "4.0.3"
+clap = { version = "4.5.60", features = ["derive"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+libc = "0.2.189"
+nalgebra = { version = "0.35.0", features = ["serde-serialize"] }
+proptest = "1.11.0"
+rayon = "1.11.0"
+rmcp = { version = "3.1.4", features = ["server", "transport-io"] }
+schemars = "1.2.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+tempfile = "3.26.0"
+thiserror = "2.0.18"
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "io-std", "io-util", "process", "signal", "time"] }
+wasm-bindgen = "0.2.127"
+
+[workspace.dependencies.windows-sys]
+version = "0.61.2"
+features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

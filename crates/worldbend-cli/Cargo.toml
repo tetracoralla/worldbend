@@ -1,0 +1,33 @@
+[package]
+name = "worldbend-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Structured CLI adapter for Worldbend"
+
+[[bin]]
+name = "worldbend"
+path = "src/main.rs"
+
+[[bin]]
+name = "worldbend-capability"
+path = "src/capability.rs"
+
+[[bin]]
+name = "worldbend-transport-schema-probe"
+path = "src/transport_schema_probe.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+libc.workspace = true
+worldbend-agent-fs = { path = "../worldbend-agent-fs" }
+worldbend-core = { path = "../worldbend-core" }
+worldbend-render = { path = "../worldbend-render" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]

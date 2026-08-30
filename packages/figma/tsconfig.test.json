@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["@figma/plugin-typings", "vite/client"],
+    "paths": {
+      "@worldbend/web": ["../web/src/index.ts"],
+      "@worldbend/web/types": ["../web/src/types.ts"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,17 @@
+[package]
+name = "worldbend-agent-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Descriptor-scoped workspace filesystem authority for Worldbend Agent carriers"
+
+[dependencies]
+cap-fs-ext.workspace = true
+cap-primitives.workspace = true
+worldbend-core = { path = "../worldbend-core" }
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

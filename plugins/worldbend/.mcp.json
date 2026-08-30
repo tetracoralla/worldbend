@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "worldbend": {
+      "command": "./bin/worldbend-mcp",
+      "args": [],
+      "cwd": ".",
+      "env_vars": ["WORLDBEND_WORKSPACE_ROOT"]
+    }
+  }
+}

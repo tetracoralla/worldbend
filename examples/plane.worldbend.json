@@ -1,0 +1,20 @@
+{
+  "schema": "worldbend.transform",
+  "version": "0.1",
+  "destination": {
+    "space": "pixel",
+    "reference": {
+      "width": 1440,
+      "height": 900
+    },
+    "quad": {
+      "tl": { "x": 221.5, "y": 103 },
+      "tr": { "x": 1066, "y": 171.5 },
+      "br": { "x": 991, "y": 704 },
+      "bl": { "x": 287, "y": 659.5 }
+    }
+  },
+  "content": {
+    "fit": "stretch"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@worldbend/figma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ui": "FIGMA_BUILD_TARGET=ui vite build --config vite.config.ts",
+    "build:main": "FIGMA_BUILD_TARGET=main vite build --config vite.config.ts",
+    "build:entries": "pnpm build:ui && pnpm build:main",
+    "build": "pnpm --workspace-root build:wasm && pnpm --filter @worldbend/web build && pnpm build:entries",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.ui.json --noEmit && tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@worldbend/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "1.134.0",
+    "typescript": "7.0.2",
+    "vite": "7.3.6",
+    "vite-plugin-singlefile": "2.3.0"
+  }
+}

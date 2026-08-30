@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Worldbend</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Worldbend</h1>
+        <button id="open" type="button">Open image</button>
+        <input id="source" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+      </header>
+      <p id="error" role="alert" hidden></p>
+      <section id="workspace" hidden>
+        <div id="editor"></div>
+        <footer>
+          <button id="reset" type="button">Reset</button>
+          <button id="copy-css" type="button">Copy CSS</button>
+          <button id="download" class="primary" type="button">Download PNG</button>
+        </footer>
+      </section>
+      <p id="status" class="sr-only" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

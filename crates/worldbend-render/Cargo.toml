@@ -1,0 +1,17 @@
+[package]
+name = "worldbend-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Native reference raster renderer for Worldbend"
+
+[dependencies]
+image.workspace = true
+worldbend-core = { path = "../worldbend-core" }
+rayon.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true

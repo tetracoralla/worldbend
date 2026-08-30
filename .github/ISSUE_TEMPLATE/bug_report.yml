@@ -1,0 +1,58 @@
+name: Bug report
+description: Report reproducible incorrect Worldbend behavior
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Do not include credentials, private assets, or undisclosed security
+        details. Use GitHub private vulnerability reporting for security bugs.
+  - type: input
+    id: version
+    attributes:
+      label: Version or revision
+      placeholder: v0.1.0 or a commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Rust core or renderer
+        - CLI
+        - MCP or Codex plugin
+        - Web or WASM
+        - Figma
+        - Capability provider
+        - Build or packaging
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include exact inputs and commands without private data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Include stable error codes and sanitized output when available.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Rust/Node versions, and host application.
+    validations:
+      required: true
