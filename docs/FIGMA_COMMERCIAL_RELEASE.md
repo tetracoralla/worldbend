@@ -113,4 +113,4 @@ Before clicking Publish:
 - **Listing URL:** Pending submission
 - **Review state:** Not submitted
 - **Source revision:** Pending final commercial release commit
-- **Runtime media:** Current Figma Desktop free-distort and applied-result captures prepared at 1920 x 1080
+- **Draft media:** Icon, primary runtime thumbnail, and applied-result carousel image uploaded to the unpublished Figma form

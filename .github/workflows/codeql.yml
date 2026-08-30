@@ -1,4 +1,4 @@
-name: codeql
+name: codeql-public-only
 
 on:
   pull_request:
@@ -15,7 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  private-repository-boundary:
+    if: ${{ github.event.repository.private }}
+    name: private repository — CodeQL not run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record the private-repository boundary
+        run: |
+          echo "GitHub CodeQL code scanning is not run for this private repository."
+          echo "The clean-checkout workflow remains the hosted regression check."
+          echo "CodeQL analysis will run automatically if this repository becomes public."
+
   analyze:
+    if: ${{ github.event.repository.private == false }}
     name: ${{ matrix.language }}
     runs-on: ubuntu-latest
     timeout-minutes: 30

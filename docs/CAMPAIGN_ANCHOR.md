@@ -61,11 +61,18 @@ warnings-denied lint, schemas, typechecks, real WASM builds, Figma packaging,
 plugin validation, built CLI/MCP runtime behavior, Capability conformance, and
 built-artifact inspection.
 
-The local checkout currently has no Git remote. GitHub authentication is not
-valid on this machine, so the private `tetracoralla/worldbend` repository has
-not yet been created or pushed. Before the first push, the complete prior
-history must be preserved in a verified local Git bundle and `main` rewritten
-to a clean root that contains no earlier public-license declaration.
+The source is hosted at the private `tetracoralla/worldbend` GitHub repository.
+Its first remote baseline is one clean root commit and the repository reports
+no detected Worldbend product license. The complete earlier development
+history remains recoverable only from the verified ignored local Git bundle;
+it was not pushed to GitHub.
+
+GitHub's hosted CodeQL code-scanning upload is not available for this personal
+private repository without GitHub Code Security. The workflow therefore names
+and records that private-repository boundary instead of reporting a failed or
+misleading security scan. It automatically runs the JavaScript/TypeScript and
+Rust analyses if the repository becomes public. The independent three-platform
+`clean-checkout` workflow remains the hosted regression check while private.
 
 ## Required current checks
 
@@ -77,9 +84,9 @@ to a clean root that contains no earlier public-license declaration.
    the paid/in-trial routes still create and replace results correctly.
 5. Audit current source, Git history, dependency licenses, generated artifacts,
    and unwanted/private material.
-6. Preserve the earlier history in a verified local bundle, create one clean
-   private baseline root, and verify the remote repository visibility after
-   push.
+6. Preserve the earlier history in a verified local bundle, keep the hosted
+   baseline private, and verify the remote revision and visibility after each
+   release push.
 7. In Figma Desktop, generate or confirm the development plugin ID, test the
    exact submitted build, prepare real listing media, and submit only after the
    owner confirms the required publisher/payee and support-contact facts.
@@ -115,9 +122,8 @@ accurate even though Worldbend itself has no declared product license.
 
 ## Remaining action
 
-- Preserve the existing history bundle, create the clean private baseline,
-  restore GitHub authentication, create the private repository, push, and
-  verify visibility.
+- Keep the private GitHub baseline aligned with the verified current source and
+  require the three-platform clean-checkout workflow to finish successfully.
 - Complete the Figma listing form. Stop only at the real owner-account boundary
   for the public Community handle and support contact, publisher/payee choice,
   tax, Stripe, two-factor authentication, or submission terms.
