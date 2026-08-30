@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const workspace = path.resolve(directory, "../..");
-const target = process.env["FIGMA_BUILD_TARGET"] ?? "ui";
 
 export function figmaBuildConfig(buildTarget: string): UserConfig {
   return buildTarget === "main"
@@ -44,4 +43,4 @@ export function figmaBuildConfig(buildTarget: string): UserConfig {
       };
 }
 
-export default defineConfig(figmaBuildConfig(target));
+export default defineConfig(({ mode }) => figmaBuildConfig(mode === "main" ? "main" : "ui"));
