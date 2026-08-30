@@ -1009,15 +1009,13 @@ mod tests {
 
     #[test]
     fn nested_missing_source_is_not_misreported_as_forbidden() {
-        let root = env::temp_dir().join(format!(
-            "worldbend-capability-missing-source-{}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&root).unwrap();
-        let workspace = WorkspaceRoot::open(&root).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
         let error =
             map_source_workspace_error(workspace.open_source("missing/source.png").unwrap_err());
-        fs::remove_dir(&root).unwrap();
+        // WorkspaceRoot owns a directory handle. Let it close before TempDir
+        // removes the directory, which Windows requires.
+        drop(workspace);
         assert_eq!(error.code, "SOURCE_NOT_FOUND");
     }
 
