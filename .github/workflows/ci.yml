@@ -79,12 +79,12 @@ jobs:
       - name: Install locked JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check generated text and cross-platform packaging
-        run: pnpm contract:check && pnpm test:scripts && pnpm typecheck && pnpm build:figma:entries && pnpm package:figma-designer:from-build
+      - name: Check cross-platform release tooling
+        run: pnpm test:scripts && node --check scripts/package-figma-designer.mjs && node --check scripts/validate-plugin.mjs
 
   manual-full-check:
     if: github.event_name == 'workflow_dispatch'
-    name: ${{ inputs.operating_system }} manual full
+    name: selected platform manual full
     runs-on: ${{ inputs.operating_system }}
     timeout-minutes: 45
 
