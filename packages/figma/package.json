@@ -15,7 +15,7 @@
     "@worldbend/web": "workspace:*"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.134.0",
+    "@figma/plugin-typings": "1.135.0",
     "typescript": "7.0.2",
     "vite": "7.3.6",
     "vite-plugin-singlefile": "2.3.0"

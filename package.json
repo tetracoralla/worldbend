@@ -36,7 +36,7 @@
     "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm contract:check && pnpm test:scripts && pnpm test:ui && pnpm performance:smoke && pnpm typecheck && pnpm build:figma:entries && pnpm package:figma-designer:from-build && pnpm plugin:stage && pnpm plugin:validate && pnpm runtime:smoke && pnpm capability:check && node scripts/check-built-artifacts.mjs"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.134.0",
+    "@figma/plugin-typings": "1.135.0",
     "@types/node": "26.2.0",
     "fflate": "0.8.3",
     "json-schema-to-typescript": "15.0.4",
