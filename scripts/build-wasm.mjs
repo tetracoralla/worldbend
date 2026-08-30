@@ -3,8 +3,16 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { platformExecutableName } from "./platform-tooling.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const bindgen = path.join(root, ".tools", "wasm-bindgen", "bin", "wasm-bindgen");
+const bindgen = path.join(
+  root,
+  ".tools",
+  "wasm-bindgen",
+  "bin",
+  platformExecutableName("wasm-bindgen"),
+);
 const input = path.join(
   root,
   "target",
