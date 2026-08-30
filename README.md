@@ -121,9 +121,8 @@ repository-owned artwork at
 
 For internal Figma validation, build the self-contained development archive,
 extract it, then import its root `manifest.json` in Figma Desktop via
-**Plugins → Development → Import plugin from manifest…**. The commercial
-release is delivered through Figma Community and uses no runtime network
-access beyond Figma's own purchase status. See
+**Plugins → Development → Import plugin from manifest…**. The free release is
+delivered through Figma Community and uses no runtime network access. See
 [`docs/FIGMA_DESIGNER_DISTRIBUTION.md`](docs/FIGMA_DESIGNER_DISTRIBUTION.md).
 
 Figma accepts images up to 4096 pixels on each axis through `createImage`, so

@@ -1,7 +1,6 @@
 import type { MainToUiMessage, SourcePayload, UiToMainMessage } from "./messages";
 import { isUiToMainMessage } from "./messages";
 import { withTimeout } from "./async-timeout";
-import { requestCommercialAccess } from "./commercial-access";
 import type { TransformSpec } from "@worldbend/web/types";
 import { createLocalePreferenceSettings } from "./locale-preference";
 import {
@@ -350,9 +349,6 @@ async function applyResult(
   applying = true;
   try {
     const prepared = requirePreparedSelection(payload);
-    const access = await requestCommercialAccess(figma.payments);
-    if (access === "purchase-required") throw userError("purchaseRequired");
-    if (access === "status-unavailable") throw userError("purchaseStatusUnavailable");
     const source = await figma.getNodeByIdAsync(payload.sourceNodeId);
     if (
       requestGeneration !== selectionGeneration ||

@@ -46,22 +46,6 @@ function identitySpec() {
   };
 }
 
-function paidPayments() {
-  return {
-    status: { type: "PAID" as const },
-    getUserFirstRanSecondsAgo: vi.fn(() => 0),
-    initiateCheckoutAsync: vi.fn(async () => undefined),
-  };
-}
-
-function expiredUnpaidPayments() {
-  return {
-    status: { type: "UNPAID" as const },
-    getUserFirstRanSecondsAgo: vi.fn(() => 7 * 24 * 60 * 60),
-    initiateCheckoutAsync: vi.fn(async () => undefined),
-  };
-}
-
 async function flushMicrotasks(): Promise<void> {
   for (let index = 0; index < 6; index += 1) await Promise.resolve();
 }
@@ -415,74 +399,7 @@ describe("Figma selection generations", () => {
     );
   });
 
-  it("does not mutate the document when an expired trial checkout is dismissed", async () => {
-    const pending = deferred<Uint8Array>();
-    const posts: unknown[] = [];
-    const page = {
-      type: "PAGE",
-      selection: [] as unknown[],
-      on: vi.fn(),
-      off: vi.fn(),
-    };
-    const source = sourceNode("source", pending, page);
-    page.selection = [source];
-    const payments = expiredUnpaidPayments();
-    const figmaMock = {
-      currentPage: page,
-      payments,
-      clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
-      showUI: vi.fn(),
-      on: vi.fn(),
-      getNodeByIdAsync: vi.fn(),
-      createImage: vi.fn(),
-      createRectangle: vi.fn(),
-      commitUndo: vi.fn(),
-      viewport: { scrollAndZoomIntoView: vi.fn() },
-      notify: vi.fn(),
-      ui: {
-        onmessage: undefined as ((message: unknown) => void) | undefined,
-        postMessage: vi.fn((message: unknown) => posts.push(message)),
-      },
-    };
-    vi.stubGlobal("figma", figmaMock);
-    vi.stubGlobal("__html__", "");
-
-    await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
-    pending.resolve(new Uint8Array([1]));
-    await vi.waitFor(() => {
-      expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
-    });
-    figmaMock.ui.onmessage?.({
-      type: "apply",
-      payload: {
-        generation: 1,
-        bytes: new Uint8Array([1]),
-        spec: identitySpec(),
-        sourceNodeId: source.id,
-        renderWidth: 100,
-        renderHeight: 80,
-        placement: { x: 0, y: 0, width: 100, height: 80 },
-      },
-    });
-
-    await vi.waitFor(() => {
-      expect(posts).toContainEqual({
-        type: "apply-error",
-        generation: 1,
-        message: { key: "purchaseRequired" },
-      });
-    });
-    expect(payments.initiateCheckoutAsync).toHaveBeenCalledWith({
-      interstitial: "TRIAL_ENDED",
-    });
-    expect(figmaMock.getNodeByIdAsync).not.toHaveBeenCalled();
-    expect(figmaMock.createImage).not.toHaveBeenCalled();
-    expect(figmaMock.commitUndo).not.toHaveBeenCalled();
-    expect(page.selection).toEqual([source]);
-  });
-
-  it("commits before and after publishing while preserving source selection", async () => {
+  it("applies for free without a Payments API while preserving source selection", async () => {
     const operations: string[] = [];
     const pageHandlers = new Map<string, (event: unknown) => void>();
     const pending = deferred<Uint8Array>();
@@ -519,7 +436,6 @@ describe("Figma selection generations", () => {
     const figmaMock = {
       currentPage: page,
       mixed: Symbol("mixed"),
-      payments: paidPayments(),
       showUI: vi.fn(),
       on: vi.fn(),
       getNodeByIdAsync: vi.fn(async (id: string) => (id === source.id ? source : null)),
@@ -629,7 +545,6 @@ describe("Figma selection generations", () => {
     const figmaMock = {
       currentPage: page,
       mixed: Symbol("mixed"),
-      payments: paidPayments(),
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -727,7 +642,6 @@ describe("Figma selection generations", () => {
     const figmaMock = {
       currentPage: page,
       mixed: Symbol("mixed"),
-      payments: paidPayments(),
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -826,7 +740,6 @@ describe("Figma selection generations", () => {
     const figmaMock = {
       currentPage: page,
       mixed: Symbol("mixed"),
-      payments: paidPayments(),
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),

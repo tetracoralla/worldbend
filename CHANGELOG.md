@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to Worldbend are documented here. Versioning begins with
-the first commercial Figma release.
+the first Figma Community release.
 
 ## 0.1.0 - Unreleased
 
@@ -39,8 +39,8 @@ the first commercial Figma release.
   document write after reporting failure.
 - Added a reproducible Figma ZIP with its exact WASM Cargo closure, copied
   dependency licenses, third-party notices, SPDX inventory, and full checksums.
-- Added a seven-day complete-product trial followed by a one-time Figma
-  Community purchase check before Apply.
+- Removed the trial, checkout, and Payments API permission so the full Figma
+  Community plugin remains free to use.
 
 ### Known limits
 

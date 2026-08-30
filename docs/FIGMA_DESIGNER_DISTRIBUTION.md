@@ -72,10 +72,11 @@ before reporting its path, byte size, and SHA-256.
 If a workflow requires perspective-deformed text, components, constraints, or
 Frame children to remain editable, it is outside this raster product contract.
 
-## Commercial Community distribution
+## Free Community distribution
 
-Customers receive the approved plugin through Figma Community, not through the
-private GitHub repository or the internal ZIP. The commercial listing uses a
-seven-day complete-product trial followed by a USD 12 one-time purchase. See
-[`FIGMA_COMMERCIAL_RELEASE.md`](FIGMA_COMMERCIAL_RELEASE.md) for listing copy,
+Designers receive the approved plugin through Figma Community, not through the
+private GitHub repository or the internal ZIP. The Community listing is free:
+the plugin does not request Figma's Payments API, open checkout, require a
+trial, or collect payment details. See
+[`FIGMA_COMMUNITY_RELEASE.md`](FIGMA_COMMUNITY_RELEASE.md) for listing copy,
 privacy disclosure, required media, and the account-owned submission boundary.

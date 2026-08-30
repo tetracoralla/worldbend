@@ -59,8 +59,8 @@ if (typeof manifest.id !== "string" || manifest.id.length === 0) {
 if (manifest.networkAccess?.allowedDomains?.join(",") !== "none") {
   throw new Error("Figma plugin must remain networkAccess: none");
 }
-if (manifest.permissions?.join(",") !== "payments") {
-  throw new Error("Commercial Figma plugin must request only the payments permission");
+if (!Array.isArray(manifest.permissions) || manifest.permissions.length !== 0) {
+  throw new Error("Free Figma plugin must not request payment or other extra permissions");
 }
 const ui = await readFile(path.join(root, "packages/figma/dist/ui.html"), "utf8");
 if (!ui.includes("worldbend_wasm_bg.wasm") && !ui.includes("application/wasm")) {

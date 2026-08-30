@@ -61,7 +61,7 @@ and freshly verifies:
 10. rerunnable development, built-runtime Agent, browser, and Figma-package
     checks with honest lane reporting;
 11. a recoverable private GitHub source repository plus a self-contained,
-    separately verified commercial Figma distribution with complete bundled
+    separately verified free Figma distribution with complete bundled
     dependency notices.
 
 This productized slice includes semantic affine composition — scale X/Y,
@@ -71,8 +71,8 @@ four-corner Distort as the existing direct editor. See
 `docs/TRANSFORM_ROADMAP.md` for the larger Photoshop-parity order.
 
 Business/experience acceptance remains an owner decision. A passing build,
-private GitHub push, or accepted payment-state check does not imply that Figma
-has approved the Community listing.
+private GitHub push, or valid free manifest does not imply that Figma has
+approved the Community listing.
 
 ## Canonical abstraction
 

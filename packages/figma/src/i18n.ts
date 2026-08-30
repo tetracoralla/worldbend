@@ -54,10 +54,6 @@ const english = {
   perspectiveReplaced: "Perspective replaced.",
   invalidApplyRequest: "The plugin received an invalid request. Reopen it and try again.",
   applyAlreadyInProgress: "A perspective result is already being applied.",
-  purchaseRequired:
-    "Your 7-day trial has ended. Complete the one-time purchase to apply this result.",
-  purchaseStatusUnavailable:
-    "Figma could not verify your purchase status. Your edit is still here; try Apply again.",
   invalidReusablePlane: "This perspective result can no longer be edited safely.",
   selectResultWithSource:
     "To continue editing, select the original source together with this perspective result.",
@@ -205,8 +201,6 @@ const simplifiedChinese: Record<MessageKey, string> = {
   perspectiveReplaced: "已替换透视结果。",
   invalidApplyRequest: "插件收到了无效请求。请重新打开插件后再试。",
   applyAlreadyInProgress: "正在应用另一个透视结果。",
-  purchaseRequired: "7 天试用期已结束。请一次性购买后应用这个结果。",
-  purchaseStatusUnavailable: "Figma 暂时无法验证购买状态。当前编辑仍保留，请再次应用。",
   invalidReusablePlane: "这个透视结果已无法安全继续编辑。",
   selectResultWithSource: "如需继续调整，请同时选中原图和这个透视结果。",
   selectOneSourceAndResult: "请选择一个源图层和一个已有透视结果。",
