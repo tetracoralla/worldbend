@@ -9,10 +9,10 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { writeDeterministicZip } from "./deterministic-zip.mjs";
 import { writeFigmaLegalMaterial } from "./generate-plugin-legal.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -48,22 +48,6 @@ async function listFiles(root, directory = root) {
     }
   }
   return files.sort();
-}
-
-function run(command, arguments_, options = {}) {
-  const result = spawnSync(command, arguments_, {
-    encoding: "utf8",
-    ...options,
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      `${command} failed with status ${result.status}: ${result.stderr || result.stdout}`,
-    );
-  }
-  return result.stdout;
 }
 
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -136,16 +120,16 @@ const archiveTimestamp = new Date("1980-01-01T00:00:00.000Z");
 for (const entry of unpackedFiles) {
   await utimes(path.join(packageRoot, entry), archiveTimestamp, archiveTimestamp);
 }
-run("zip", ["-X", "-q", "-D", "-r", archivePath, packageName], {
-  cwd: artifactsRoot,
-  env: { ...process.env, TZ: "UTC" },
+const archivedEntries = await writeDeterministicZip({
+  archivePath,
+  sourceRoot: packageRoot,
+  rootName: packageName,
+  entries: unpackedFiles,
+  timestamp: archiveTimestamp,
 });
 await assertRegularNonemptyFile(archivePath);
 
-const zipInventory = run("unzip", ["-Z1", archivePath])
-  .split("\n")
-  .filter(Boolean)
-  .filter((entry) => !entry.endsWith("/"))
+const zipInventory = archivedEntries
   .map((entry) => entry.slice(`${packageName}/`.length))
   .sort();
 if (JSON.stringify(zipInventory) !== JSON.stringify(expectedFiles)) {
