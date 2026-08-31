@@ -10,6 +10,12 @@ import type {
   SourceOrientation,
   TransformRecipe as GeneratedTransformRecipe,
   WarpSpec,
+  MeshWarpPlan,
+  MeshWarpSpec,
+  MockupPlan,
+  MockupSpec,
+  RemapPlan,
+  RemapSpec,
 } from "./generated/core-contract";
 
 export type {
@@ -41,7 +47,34 @@ export type {
   WarpPreset,
   WarpSpec,
   WarpVertex,
+  LensCoefficients,
+  LensScale,
+  MeshWarpPlan,
+  MeshWarpSpec,
+  MockupEdge,
+  MockupGrid,
+  MockupGridLine,
+  MockupGridPlan,
+  MockupMeasurement,
+  MockupPhysicalSize,
+  MockupPlan,
+  MockupPlane,
+  MockupPlanePlan,
+  MockupSeam,
+  MockupSeamPlan,
+  MockupSpec,
+  RemapChannel,
+  RemapOperation,
+  RemapPlan,
+  RemapSpec,
 } from "./generated/core-contract";
+
+export type MeshWarpSpecInput = MeshWarpSpec;
+export type MeshWarpPlanOutput = MeshWarpPlan;
+export type MockupSpecInput = MockupSpec;
+export type MockupPlanOutput = MockupPlan;
+export type RemapSpecInput = RemapSpec;
+export type RemapPlanOutput = RemapPlan;
 
 /** Exact Rust deserialization surface, including serde defaults and nulls. */
 export type TransformSpecInput = GeneratedTransformSpec;

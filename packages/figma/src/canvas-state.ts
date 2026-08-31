@@ -2,7 +2,7 @@ export const MAX_FIGMA_CANVAS_VARIANTS = 8;
 export const MAX_FIGMA_CANVAS_AXIS = 4096;
 export const MAX_FIGMA_CANVAS_PIXELS = 32 * 1024 * 1024;
 
-export type CanvasFit = "contain" | "cover";
+export type CanvasOperationKind = "crop" | "trim" | "pad" | "contain" | "cover" | "stretch";
 export type CanvasAnchor = 0 | 0.5 | 1;
 export type CanvasRgba = [number, number, number, number];
 export type CanvasBackground =
@@ -11,29 +11,39 @@ export type CanvasBackground =
 
 export interface CanvasVariantDraft {
   id: string;
+  kind: CanvasOperationKind;
   width: number;
   height: number;
-  fit: CanvasFit;
+  crop: { x: number; y: number; width: number; height: number };
+  trimThreshold: number;
+  insets: { top: number; right: number; bottom: number; left: number };
   anchor: { x: CanvasAnchor; y: CanvasAnchor };
   background: CanvasBackground;
 }
 
 export interface CanvasDraft {
+  source: { width: number; height: number };
   variants: CanvasVariantDraft[];
   activeId: string;
 }
 
 export type CanvasDraftIssue =
+  | "source"
   | "variant-count"
   | "variant-id"
   | "duplicate-id"
+  | "operation"
   | "axis-limit"
   | "pixel-limit"
+  | "crop-bounds"
+  | "trim-threshold"
+  | "insets"
   | "background";
 
 export function createCanvasDraft(width: number, height: number): CanvasDraft {
-  const variant = createCanvasVariant("output-1", width, height);
-  return { variants: [variant], activeId: variant.id };
+  const source = { width: clampAxis(width), height: clampAxis(height) };
+  const variant = createCanvasVariant("output-1", source.width, source.height);
+  return { source, variants: [variant], activeId: variant.id };
 }
 
 export function createCanvasVariant(
@@ -41,11 +51,16 @@ export function createCanvasVariant(
   width: number,
   height: number,
 ): CanvasVariantDraft {
+  const safeWidth = clampAxis(width);
+  const safeHeight = clampAxis(height);
   return {
     id,
-    width: clampAxis(width),
-    height: clampAxis(height),
-    fit: "contain",
+    kind: "contain",
+    width: safeWidth,
+    height: safeHeight,
+    crop: { x: 0, y: 0, width: safeWidth, height: safeHeight },
+    trimThreshold: 0,
+    insets: { top: 0, right: 0, bottom: 0, left: 0 },
     anchor: { x: 0.5, y: 0.5 },
     background: { kind: "transparent" },
   };
@@ -53,14 +68,14 @@ export function createCanvasVariant(
 
 export function cloneCanvasDraft(draft: CanvasDraft): CanvasDraft {
   return {
+    source: { ...draft.source },
     activeId: draft.activeId,
     variants: draft.variants.map((variant) => ({
       ...variant,
+      crop: { ...variant.crop },
+      insets: { ...variant.insets },
       anchor: { ...variant.anchor },
-      background:
-        variant.background.kind === "transparent"
-          ? { kind: "transparent" }
-          : { ...variant.background, rgba: [...variant.background.rgba] as CanvasRgba },
+      background: cloneBackground(variant.background),
     })),
   };
 }
@@ -71,7 +86,14 @@ export function addCanvasVariant(draft: CanvasDraft): CanvasDraft {
   if (!source) return draft;
   const id = nextVariantId(draft.variants);
   const next = cloneCanvasDraft(draft);
-  next.variants.push({ ...source, id, anchor: { ...source.anchor }, background: cloneBackground(source.background) });
+  next.variants.push({
+    ...source,
+    id,
+    crop: { ...source.crop },
+    insets: { ...source.insets },
+    anchor: { ...source.anchor },
+    background: cloneBackground(source.background),
+  });
   next.activeId = id;
   return next;
 }
@@ -89,6 +111,22 @@ export function removeCanvasVariant(draft: CanvasDraft, id: string): CanvasDraft
   return next;
 }
 
+export function renameCanvasVariant(draft: CanvasDraft, id: string, nextId: string): CanvasDraft {
+  if (
+    id === nextId ||
+    !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(nextId) ||
+    draft.variants.some((variant) => variant.id === nextId)
+  ) {
+    return draft;
+  }
+  const next = cloneCanvasDraft(draft);
+  const variant = next.variants.find((candidate) => candidate.id === id);
+  if (!variant) return draft;
+  variant.id = nextId;
+  if (next.activeId === id) next.activeId = nextId;
+  return next;
+}
+
 export function updateCanvasVariant(
   draft: CanvasDraft,
   id: string,
@@ -101,6 +139,8 @@ export function updateCanvasVariant(
       ? {
           ...variant,
           ...patch,
+          ...(patch.crop ? { crop: { ...patch.crop } } : {}),
+          ...(patch.insets ? { insets: { ...patch.insets } } : {}),
           ...(patch.anchor ? { anchor: { ...patch.anchor } } : {}),
           ...(patch.background ? { background: cloneBackground(patch.background) } : {}),
         }
@@ -118,7 +158,23 @@ export function activeCanvasVariant(draft: CanvasDraft): CanvasVariantDraft | un
   return draft.variants.find((variant) => variant.id === draft.activeId);
 }
 
+export function canvasVariantOutputSize(
+  draft: Pick<CanvasDraft, "source">,
+  variant: CanvasVariantDraft,
+): { width: number; height: number } {
+  if (variant.kind === "crop") return { width: variant.crop.width, height: variant.crop.height };
+  if (variant.kind === "trim") return { ...draft.source };
+  if (variant.kind === "pad") {
+    return {
+      width: draft.source.width + variant.insets.left + variant.insets.right,
+      height: draft.source.height + variant.insets.top + variant.insets.bottom,
+    };
+  }
+  return { width: variant.width, height: variant.height };
+}
+
 export function validateCanvasDraft(draft: CanvasDraft): CanvasDraftIssue | undefined {
+  if (!isAxis(draft.source.width) || !isAxis(draft.source.height)) return "source";
   if (draft.variants.length < 1 || draft.variants.length > MAX_FIGMA_CANVAS_VARIANTS) {
     return "variant-count";
   }
@@ -128,10 +184,46 @@ export function validateCanvasDraft(draft: CanvasDraft): CanvasDraftIssue | unde
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(variant.id)) return "variant-id";
     if (ids.has(variant.id)) return "duplicate-id";
     ids.add(variant.id);
-    if (!isAxis(variant.width) || !isAxis(variant.height)) return "axis-limit";
-    pixels += variant.width * variant.height;
+    if (!isOperation(variant.kind)) return "operation";
+    if (variant.kind === "crop") {
+      const { x, y, width, height } = variant.crop;
+      if (
+        ![x, y, width, height].every(Number.isSafeInteger) ||
+        x < 0 ||
+        y < 0 ||
+        width < 1 ||
+        height < 1 ||
+        x + width > draft.source.width ||
+        y + height > draft.source.height
+      ) {
+        return "crop-bounds";
+      }
+    }
+    if (
+      variant.kind === "trim" &&
+      (!Number.isInteger(variant.trimThreshold) ||
+        variant.trimThreshold < 0 ||
+        variant.trimThreshold > 254)
+    ) {
+      return "trim-threshold";
+    }
+    if (variant.kind === "pad" && !Object.values(variant.insets).every(isInset)) return "insets";
+    if (
+      ["contain", "cover", "stretch"].includes(variant.kind) &&
+      (!isAxis(variant.width) || !isAxis(variant.height))
+    ) {
+      return "axis-limit";
+    }
+    if (
+      ["pad", "contain", "cover"].includes(variant.kind) &&
+      !isBackground(variant.background)
+    ) {
+      return "background";
+    }
+    const output = canvasVariantOutputSize(draft, variant);
+    if (!isAxis(output.width) || !isAxis(output.height)) return "axis-limit";
+    pixels += output.width * output.height;
     if (!Number.isSafeInteger(pixels) || pixels > MAX_FIGMA_CANVAS_PIXELS) return "pixel-limit";
-    if (!isBackground(variant.background)) return "background";
   }
   return ids.has(draft.activeId) ? undefined : "variant-id";
 }
@@ -151,8 +243,16 @@ function isBackground(background: CanvasBackground): boolean {
   );
 }
 
+function isOperation(value: string): value is CanvasOperationKind {
+  return ["crop", "trim", "pad", "contain", "cover", "stretch"].includes(value);
+}
+
+function isInset(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0 && value <= MAX_FIGMA_CANVAS_AXIS;
+}
+
 function isAxis(value: number): boolean {
-  return Number.isInteger(value) && value >= 1 && value <= MAX_FIGMA_CANVAS_AXIS;
+  return Number.isSafeInteger(value) && value >= 1 && value <= MAX_FIGMA_CANVAS_AXIS;
 }
 
 function clampAxis(value: number): number {

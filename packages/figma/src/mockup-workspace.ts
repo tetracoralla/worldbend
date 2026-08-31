@@ -1,0 +1,259 @@
+import {
+  TransformWebGLRenderer,
+  normalizedSpec,
+  type MockupPlane,
+  type MockupSpecInput,
+} from "@worldbend/web";
+import { planMockup } from "./designer-plan";
+import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
+import {
+  canvasPng,
+  createDesignerWorkspaceShell,
+  fitPreviewCanvas,
+  numericInput,
+  postDesignerResult,
+  type DesignerTaskWorkspace,
+  type DesignerWorkspaceCopy,
+  type DesignerWorkspaceSource,
+  type LoadedDesignerSource,
+} from "./designer-workspace-common";
+import type { MainToUiMessage, UiToMainMessage } from "./messages";
+
+export interface MockupWorkspaceCopy extends DesignerWorkspaceCopy {
+  width: string;
+  height: string;
+  opacity: string;
+  grid: string;
+  columns: string;
+  rows: string;
+  corner: string;
+}
+
+export function createMockupWorkspace(input: {
+  root: HTMLElement;
+  copy(): MockupWorkspaceCopy;
+  onBack(): void;
+  post(message: UiToMainMessage): void;
+  formatError(error: unknown): string;
+}): DesignerTaskWorkspace {
+  const shell = createDesignerWorkspaceShell(input.root);
+  shell.inspector.innerHTML = `<div class="designer-tabs" data-role="planes" role="tablist"></div>
+    <div class="designer-row"><label class="designer-field"><span data-role="width-label"></span><input data-role="width" type="number" min="1" max="4096" step="1"></label><label class="designer-field"><span data-role="height-label"></span><input data-role="height" type="number" min="1" max="4096" step="1"></label></div>
+    <label class="designer-field"><span data-role="opacity-label"></span><input data-role="opacity" type="range" min="0" max="100" step="1"></label>
+    <label class="designer-field"><span><input data-role="grid" type="checkbox"> <span data-role="grid-label"></span></span></label>
+    <div class="designer-row" data-role="grid-size"><label class="designer-field"><span data-role="columns-label"></span><input data-role="columns" type="number" min="1" max="64" step="1"></label><label class="designer-field"><span data-role="rows-label"></span><input data-role="rows" type="number" min="1" max="64" step="1"></label></div>`;
+  const planes = role<HTMLDivElement>(shell.inspector, "planes");
+  const width = role<HTMLInputElement>(shell.inspector, "width");
+  const height = role<HTMLInputElement>(shell.inspector, "height");
+  const opacity = role<HTMLInputElement>(shell.inspector, "opacity");
+  const grid = role<HTMLInputElement>(shell.inspector, "grid");
+  const gridSize = role<HTMLElement>(shell.inspector, "grid-size");
+  const columns = role<HTMLInputElement>(shell.inspector, "columns");
+  const rows = role<HTMLInputElement>(shell.inspector, "rows");
+  const canvas = document.createElement("canvas");
+  shell.preview.append(canvas);
+  const maybeContext = canvas.getContext("2d");
+  if (!maybeContext) throw new Error("Canvas 2D is required for Mockup preview");
+  const context: CanvasRenderingContext2D = maybeContext;
+  let source: DesignerWorkspaceSource | undefined;
+  let spec: MockupSpecInput | undefined;
+  let baseline: MockupSpecInput | undefined;
+  let activePlaneId = "plane-1";
+  let overlay: DirectPointOverlay | undefined;
+  const renderer = new TransformWebGLRenderer(document.createElement("canvas"), { preserveDrawingBuffer: true });
+  let generation = 0;
+  let busy = false;
+  let active = false;
+
+  shell.back.addEventListener("click", input.onBack);
+  shell.reset.addEventListener("click", () => {
+    if (!baseline) return;
+    spec = structuredClone(baseline);
+    activePlaneId = spec.planes[0]?.id ?? "plane-1";
+    renderControls();
+    void render();
+  });
+  for (const control of [width, height]) control.addEventListener("change", commitCanvasSize);
+  opacity.addEventListener("input", () => updateActivePlane({ opacity: Number(opacity.value) / 100 }));
+  grid.addEventListener("change", () => {
+    updateActivePlane({ grid: grid.checked ? { columns: 4, rows: 4 } : null });
+    renderControls();
+  });
+  for (const control of [columns, rows]) control.addEventListener("change", () => {
+    const active = activePlane();
+    if (!active?.grid) return;
+    updateActivePlane({ grid: { columns: Number(columns.value), rows: Number(rows.value) } });
+  });
+  shell.apply.addEventListener("click", () => void apply(false));
+  shell.applyNew.addEventListener("click", () => void apply(true));
+
+  function commitCanvasSize(): void {
+    if (!spec || !width.validity.valid || !height.validity.valid) return;
+    spec = { ...spec, canvas: { width: Number(width.value), height: Number(height.value) } };
+    void render();
+  }
+  function activePlane(): MockupPlane | undefined { return spec?.planes.find((plane) => plane.id === activePlaneId); }
+  function updateActivePlane(patch: Partial<MockupPlane>): void {
+    if (!spec) return;
+    spec = { ...spec, planes: spec.planes.map((plane) => plane.id === activePlaneId ? { ...plane, ...patch } : plane) };
+    void render();
+  }
+
+  async function render(quality: "preview" | "high" = "preview", refreshOverlay = true): Promise<boolean> {
+    if (!source || !spec) return false;
+    const currentGeneration = ++generation;
+    try {
+      const plan = await planMockup(spec);
+      if (currentGeneration !== generation) return false;
+      if (canvas.width !== plan.canvas.width) canvas.width = plan.canvas.width;
+      if (canvas.height !== plan.canvas.height) canvas.height = plan.canvas.height;
+      fitPreviewCanvas(canvas, shell.preview);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      if (plan.background.kind === "color") {
+        const [r, g, b, a] = plan.background.rgba;
+        context.fillStyle = `rgba(${r} ${g} ${b} / ${a / 255})`;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      for (let index = 0; index < plan.planes.length; index += 1) {
+        const plane = plan.planes[index]!;
+        const image = sourceForPlane(source.sources, plane.sourceId);
+        if (!image) throw new Error(`Missing ${plane.sourceId}`);
+        renderer.render(image.image, plane.solve, undefined, quality);
+        context.save();
+        context.globalAlpha = plane.opacity;
+        context.drawImage(renderer.canvas, 0, 0);
+        context.restore();
+        if (plane.grid) drawGrid(context, plane.grid);
+      }
+      shell.showError();
+      shell.apply.disabled = false;
+      if (refreshOverlay) renderOverlay();
+      return true;
+    } catch (error) {
+      if (currentGeneration !== generation) return false;
+      shell.showError(input.formatError(error));
+      shell.apply.disabled = true;
+      return false;
+    }
+  }
+
+  function renderControls(): void {
+    if (!spec) return;
+    width.value = String(spec.canvas.width);
+    height.value = String(spec.canvas.height);
+    planes.replaceChildren();
+    for (const plane of spec.planes) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.role = "tab";
+      button.textContent = plane.id;
+      button.setAttribute("aria-selected", String(plane.id === activePlaneId));
+      button.addEventListener("click", () => { activePlaneId = plane.id; renderControls(); renderOverlay(); });
+      planes.append(button);
+    }
+    const active = activePlane();
+    opacity.value = String(Math.round((active?.opacity ?? 1) * 100));
+    grid.checked = Boolean(active?.grid);
+    gridSize.hidden = !active?.grid;
+    columns.value = String(active?.grid?.columns ?? 4);
+    rows.value = String(active?.grid?.rows ?? 4);
+    shell.applyNew.hidden = !source?.targetNodeId;
+  }
+
+  function renderOverlay(): void {
+    overlay?.dispose();
+    const plane = activePlane();
+    if (!plane) return;
+    overlay = createDirectPointOverlay({
+      host: shell.preview,
+      canvas,
+      onMove(id, point, final) {
+        const current = activePlane();
+        if (!current) return;
+        const quad = { ...current.transform.destination.quad, [id]: point };
+        if (!spec) return;
+        spec = { ...spec, planes: spec.planes.map((candidate) => candidate.id === activePlaneId
+          ? { ...candidate, transform: { ...candidate.transform, destination: { space: "normalized", quad } } }
+          : candidate) };
+        void render("preview", final);
+      },
+    });
+    const copy = input.copy();
+    overlay.set((["tl", "tr", "br", "bl"] as const).map((id) => ({ id, ...plane.transform.destination.quad[id], label: copy.corner.replace("{corner}", id.toUpperCase()) })));
+  }
+
+  async function apply(duplicate: boolean): Promise<void> {
+    if (!source || !spec || busy) return;
+    busy = true;
+    shell.setBusy(true);
+    shell.status.textContent = input.copy().applying;
+    try {
+      if (!(await render("high"))) throw new Error("Mockup output is invalid");
+      postDesignerResult({ post: input.post, source, task: { kind: "mockup", spec }, bytes: await canvasPng(canvas), width: spec.canvas.width, height: spec.canvas.height, duplicate });
+    } catch (error) {
+      busy = false;
+      shell.setBusy(false);
+      shell.showError(input.formatError(error));
+    }
+  }
+
+  return {
+    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
+    leave() { active = false; shell.root.hidden = true; generation += 1; },
+    setSource(next) {
+      busy = false;
+      shell.setBusy(false);
+      source = next;
+      spec = next.task?.kind === "mockup" ? structuredClone(next.task.spec) : defaultMockup(next.sources);
+      baseline = structuredClone(spec);
+      activePlaneId = spec.planes[0]?.id ?? "plane-1";
+      renderControls();
+      if (active) void render();
+    },
+    clearSource(error) { busy = false; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; },
+    updateLocale() {
+      const copy = input.copy();
+      shell.setCopy(copy);
+      for (const [name, text] of [["width-label", copy.width], ["height-label", copy.height], ["opacity-label", copy.opacity], ["grid-label", copy.grid], ["columns-label", copy.columns], ["rows-label", copy.rows]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
+      renderOverlay();
+    },
+    handleMainMessage(message: MainToUiMessage) {
+      if (!busy || (message.type !== "apply-designer-complete" && message.type !== "apply-designer-error")) return false;
+      if (!source || message.generation !== source.selectionGeneration) return true;
+      busy = false; shell.setBusy(false);
+      if (message.type === "apply-designer-error") shell.showError(input.formatError(message.message)); else shell.status.textContent = input.copy().applied;
+      return true;
+    },
+    handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; },
+    dispose() { overlay?.dispose(); renderer.dispose(); },
+  };
+}
+
+export function defaultMockup(sources: readonly LoadedDesignerSource[]): MockupSpecInput {
+  const left = Math.min(...sources.map((source) => source.placement.x));
+  const top = Math.min(...sources.map((source) => source.placement.y));
+  const right = Math.max(...sources.map((source) => source.placement.x + source.placement.width));
+  const bottom = Math.max(...sources.map((source) => source.placement.y + source.placement.height));
+  const scale = Math.min(1, 4096 / Math.max(1, right - left), 4096 / Math.max(1, bottom - top));
+  const canvas = { width: Math.max(1, Math.round((right - left) * scale)), height: Math.max(1, Math.round((bottom - top) * scale)) };
+  return {
+    schema: "worldbend.mockup", version: "0.1", canvas, background: { kind: "transparent" }, seams: [],
+    planes: sources.map((source, index) => {
+      const x0 = ((source.placement.x - left) * scale) / canvas.width;
+      const y0 = ((source.placement.y - top) * scale) / canvas.height;
+      const x1 = ((source.placement.x + source.placement.width - left) * scale) / canvas.width;
+      const y1 = ((source.placement.y + source.placement.height - top) * scale) / canvas.height;
+      return { id: `plane-${index + 1}`, sourceId: `source-${index + 1}`, opacity: 1, transform: normalizedSpec({ tl: { x: x0, y: y0 }, tr: { x: x1, y: y0 }, br: { x: x1, y: y1 }, bl: { x: x0, y: y1 } }) };
+    }),
+  };
+}
+
+function sourceForPlane(sources: readonly LoadedDesignerSource[], id: string): LoadedDesignerSource | undefined {
+  const match = /^source-(\d+)$/.exec(id); return match ? sources[Number(match[1]) - 1] : undefined;
+}
+function drawGrid(context: CanvasRenderingContext2D, grid: { vertical: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>; horizontal: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> }): void {
+  context.save(); context.strokeStyle = "rgba(13,153,255,.55)"; context.lineWidth = 1;
+  for (const line of [...grid.vertical, ...grid.horizontal]) { context.beginPath(); context.moveTo(line.start.x, line.start.y); context.lineTo(line.end.x, line.end.y); context.stroke(); }
+  context.restore();
+}
+function role<T extends HTMLElement>(root: HTMLElement, name: string): T { const value = root.querySelector<HTMLElement>(`[data-role="${name}"]`); if (!value) throw new Error(`Missing mockup workspace role ${name}`); return value as T; }

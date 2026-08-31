@@ -7,11 +7,11 @@ current cross-carrier seams, adversarial sequences, performance/load evidence,
 and conditional Capability review; it is not a completion certificate.
 
 - This product is growing into a deterministic Photoshop-familiar transform
-  utility for humans and Agents, not a general image editor. The current
-  productized slice composes affine scale/rotation/skew/translation with one
-  explicit convex-quadrilateral mapping. Mesh warp, arbitrary deformation,
-  perception, and camera estimation require later explicit contracts; adapters
-  must not simulate them locally.
+  utility for humans and Agents, not a general image editor. The productized
+  source superset includes explicit affine/projective mapping, Canvas,
+  Place/Mockup, bounded custom Mesh, Lens/Displacement Remap, and ordered
+  Timeline contracts. Arbitrary deformation, perception, camera/motion
+  estimation, and adapter-local simulation remain outside those contracts.
 - `worldbend-core` owns `TransformSpec`, semantic affine composition, corner
   semantics, validation, homography solving, diagnostics, inversion, bounds,
   and CSS geometry. CLI, MCP, Web/WASM, and Figma are adapters; they must not

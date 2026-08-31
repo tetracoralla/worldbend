@@ -1,20 +1,13 @@
+import type { CanvasOperation } from "@worldbend/web";
 import {
   MAX_FIGMA_CANVAS_AXIS,
-  MAX_FIGMA_CANVAS_PIXELS,
   MAX_FIGMA_CANVAS_VARIANTS,
-  type CanvasAnchor,
   type CanvasBackground,
-  type CanvasFit,
 } from "./canvas-state";
 
 export const SHARED_CANVAS_KEY = "canvas";
 
-export interface OwnedCanvasOperation {
-  kind: CanvasFit;
-  output: { width: number; height: number };
-  anchor: { x: CanvasAnchor; y: CanvasAnchor };
-  background: CanvasBackground;
-}
+export type OwnedCanvasOperation = CanvasOperation;
 
 export interface OwnedCanvasSpec {
   schema: "worldbend.canvas";
@@ -61,7 +54,6 @@ export function isOwnedCanvasSetSpec(value: unknown): value is OwnedCanvasSetSpe
     return false;
   }
   const ids = new Set<string>();
-  let pixels = 0;
   for (const variant of value["variants"]) {
     if (
       !isRecord(variant) ||
@@ -74,8 +66,6 @@ export function isOwnedCanvasSetSpec(value: unknown): value is OwnedCanvasSetSpe
       return false;
     }
     ids.add(variant["id"]);
-    pixels += variant["operation"].output.width * variant["operation"].output.height;
-    if (!Number.isSafeInteger(pixels) || pixels > MAX_FIGMA_CANVAS_PIXELS) return false;
   }
   return true;
 }
@@ -84,26 +74,94 @@ export function singleCanvasSpec(operation: OwnedCanvasOperation): OwnedCanvasSp
   return { schema: "worldbend.canvas", version: "0.1", operation };
 }
 
-function isOwnedCanvasOperation(value: unknown): value is OwnedCanvasOperation {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ["kind", "output", "anchor", "background"]) ||
-    (value["kind"] !== "contain" && value["kind"] !== "cover")
-  ) {
-    return false;
+export function ownedCanvasOperationOutput(
+  operation: OwnedCanvasOperation,
+  source?: { width: number; height: number },
+): { width: number; height: number } | undefined {
+  if (operation.kind === "crop") return { width: operation.rect.width, height: operation.rect.height };
+  if (operation.kind === "trim") return undefined;
+  if (operation.kind === "pad") {
+    return source
+      ? {
+          width: source.width + operation.insets.left + operation.insets.right,
+          height: source.height + operation.insets.top + operation.insets.bottom,
+        }
+      : undefined;
   }
-  const output = value["output"];
-  const anchor = value["anchor"];
+  return operation.output;
+}
+
+function isOwnedCanvasOperation(value: unknown): value is OwnedCanvasOperation {
+  if (!isRecord(value) || typeof value["kind"] !== "string") return false;
+  if (value["kind"] === "crop") {
+    return hasExactKeys(value, ["kind", "rect"]) && isPixelRect(value["rect"]);
+  }
+  if (value["kind"] === "trim") {
+    return (
+      hasExactKeys(value, ["kind", "alphaThreshold"]) &&
+      Number.isInteger(value["alphaThreshold"]) &&
+      Number(value["alphaThreshold"]) >= 0 &&
+      Number(value["alphaThreshold"]) <= 254
+    );
+  }
+  if (value["kind"] === "pad") {
+    return (
+      hasExactKeys(value, ["kind", "insets", "background"]) &&
+      isInsets(value["insets"]) &&
+      isBackground(value["background"])
+    );
+  }
+  if (value["kind"] === "contain" || value["kind"] === "cover") {
+    return (
+      hasExactKeys(value, ["kind", "output", "anchor", "background"]) &&
+      isPixelSize(value["output"]) &&
+      isAnchor(value["anchor"]) &&
+      isBackground(value["background"])
+    );
+  }
   return (
-    isRecord(output) &&
-    hasExactKeys(output, ["width", "height"]) &&
-    isAxis(output["width"]) &&
-    isAxis(output["height"]) &&
-    isRecord(anchor) &&
-    hasExactKeys(anchor, ["x", "y"]) &&
-    isAnchor(anchor["x"]) &&
-    isAnchor(anchor["y"]) &&
-    isBackground(value["background"])
+    value["kind"] === "stretch" &&
+    hasExactKeys(value, ["kind", "output"]) &&
+    isPixelSize(value["output"])
+  );
+}
+
+function isPixelRect(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["x", "y", "width", "height"]) &&
+    isNonNegativeInteger(value["x"]) &&
+    isNonNegativeInteger(value["y"]) &&
+    isAxis(value["width"]) &&
+    isAxis(value["height"]) &&
+    Number(value["x"]) + Number(value["width"]) <= MAX_FIGMA_CANVAS_AXIS &&
+    Number(value["y"]) + Number(value["height"]) <= MAX_FIGMA_CANVAS_AXIS
+  );
+}
+
+function isInsets(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["top", "right", "bottom", "left"]) &&
+    ["top", "right", "bottom", "left"].every((key) => isNonNegativeInteger(value[key]))
+  );
+}
+
+function isPixelSize(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["width", "height"]) &&
+    isAxis(value["width"]) &&
+    isAxis(value["height"])
+  );
+}
+
+function isAnchor(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["x", "y"]) &&
+    [0, 0.5, 1].includes(Number(value["x"])) &&
+    [0, 0.5, 1].includes(Number(value["y"]))
   );
 }
 
@@ -122,12 +180,12 @@ function isBackground(value: unknown): value is CanvasBackground {
   );
 }
 
-function isAnchor(value: unknown): value is CanvasAnchor {
-  return value === 0 || value === 0.5 || value === 1;
+function isNonNegativeInteger(value: unknown): boolean {
+  return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= MAX_FIGMA_CANVAS_AXIS;
 }
 
-function isAxis(value: unknown): value is number {
-  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= MAX_FIGMA_CANVAS_AXIS;
+function isAxis(value: unknown): boolean {
+  return Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= MAX_FIGMA_CANVAS_AXIS;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

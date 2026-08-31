@@ -35,6 +35,8 @@ pub enum ErrorCode {
     RasterShapeMismatch,
     #[serde(rename = "E_OUTPUT_COLLISION")]
     OutputCollision,
+    #[serde(rename = "E_SHARED_EDGE_MISMATCH")]
+    SharedEdgeMismatch,
     #[serde(rename = "E_UNSUPPORTED_MEDIA")]
     UnsupportedMedia,
     #[serde(rename = "E_OUTPUT_LIMIT")]
@@ -76,6 +78,7 @@ impl ErrorCode {
             Self::TrimEmpty => "E_TRIM_EMPTY",
             Self::RasterShapeMismatch => "E_RASTER_SHAPE_MISMATCH",
             Self::OutputCollision => "E_OUTPUT_COLLISION",
+            Self::SharedEdgeMismatch => "E_SHARED_EDGE_MISMATCH",
             Self::UnsupportedMedia => "E_UNSUPPORTED_MEDIA",
             Self::OutputLimit => "E_OUTPUT_LIMIT",
             Self::PathOutsideRoot => "E_PATH_OUTSIDE_ROOT",
@@ -147,6 +150,7 @@ mod tests {
             (ErrorCode::TrimEmpty, "E_TRIM_EMPTY"),
             (ErrorCode::RasterShapeMismatch, "E_RASTER_SHAPE_MISMATCH"),
             (ErrorCode::OutputCollision, "E_OUTPUT_COLLISION"),
+            (ErrorCode::SharedEdgeMismatch, "E_SHARED_EDGE_MISMATCH"),
         ] {
             assert_eq!(code.as_str(), wire);
             assert_eq!(serde_json::to_string(&code).unwrap(), format!("\"{wire}\""));

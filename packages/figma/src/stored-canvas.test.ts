@@ -14,7 +14,7 @@ const operation = {
 };
 
 describe("stored Canvas data", () => {
-  it("accepts the narrow human Contain/Cover projection", () => {
+  it("accepts all six task-native Canvas operations", () => {
     const spec = singleCanvasSpec(operation);
     expect(isOwnedCanvasSpec(spec)).toBe(true);
     expect(parseOwnedCanvasSpec(JSON.stringify(spec))).toEqual(spec);
@@ -28,6 +28,14 @@ describe("stored Canvas data", () => {
         ],
       }),
     ).toBe(true);
+    for (const candidate of [
+      { kind: "crop", rect: { x: 1, y: 2, width: 10, height: 12 } },
+      { kind: "trim", alphaThreshold: 7 },
+      { kind: "pad", insets: { top: 1, right: 2, bottom: 3, left: 4 }, background: { kind: "transparent" } },
+      operation,
+      { ...operation, kind: "cover" },
+      { kind: "stretch", output: { width: 40, height: 30 } },
+    ]) expect(isOwnedCanvasSpec(singleCanvasSpec(candidate as never))).toBe(true);
   });
 
   it("rejects open fields, duplicate IDs, non-grid anchors, and carrier overflow", () => {

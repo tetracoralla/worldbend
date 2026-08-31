@@ -9,6 +9,7 @@ export * from "./editor-gestures";
 export * from "./image-decode";
 export * from "./preview-viewport";
 export * from "./quad-edits";
+export * from "./remap-renderer";
 export * from "./source-raster-plan";
 export * from "./types";
 export * from "./webgl-renderer";

@@ -48,28 +48,31 @@ surface, Product Skill, installed provider manifest, and live transport.
 | Compose semantics | Fixed scale -> simultaneous skew -> clockwise rotation -> translation order, current-bounds-relative pivot, re-anchoring compensation, tight placement, and flip XOR agree across docs and executable paths. Flip changes only source orientation; destination geometry remains identical. | A different operation order, global-pivot interpretation, silent corner relabeling, mirrored destination winding, double solve, or carrier-specific placement. |
 | Bounded Warp semantics | Exactly ten preset names and finite amount `[-1,1]` expand into the core-owned fixed 16x16 positive-area mesh. Native render and Web/Figma consume that mesh, composition preserves, replaces, or explicitly clears it, zero is identity, and CSS rejects it. | Adapter-local formulas, custom vertices/resolution, folded triangles, a second rasterization, clipped carrier-only output, or a false matrix3d approximation. |
 | Canvas and Canvas Set semantics | The six closed operations, integer source rectangles, alpha-threshold Trim, normalized anchors, explicit backgrounds, placement/scale plans, unique ordered variant IDs, cumulative budgets, and same-size plan replay follow `docs/CANVAS_CONTRACT.md`. Every variant reads the original source. | A carrier recomputes Contain/Cover, reruns Trim on a control map, chains variants, accepts an arbitrary plan, silently changes sampling/fill, or calls heterogeneous outputs a tensor batch. |
+| Place / Mockup semantics | Ordered planes, exact source identities, explicit seams/grids/measurements, source-over composition, reverse extraction, cumulative limits, and atomic directory publication follow `docs/MOCKUP_CONTRACT.md`. | A carrier detects a plane, repairs a seam, accepts extra/missing sources, changes z-order, chains extraction outputs, or publishes a partial set. |
+| Mesh and Remap semantics | Custom grids and explicit lens/displacement programs follow `docs/DEFORMATION_CONTRACT.md`; mesh topology, map presence, channel/neutral/boundary behavior, shared native sampling, and feature projection remain exact. | Adapter-local deformation, folded mesh acceptance, automatic lens/depth/flow estimation, implicit map choice, or carrier-only math. |
+| Timeline semantics | Explicit frames or linear corner keyframes expand and render under `docs/TIMELINE_CONTRACT.md`, including stable order/IDs, exact sources, intermediate validation, cumulative budgets, cancellation, and all-or-none directory publication. | Tracking, invented frames, easing drift, frame chaining, partial publication, generic batch semantics, or a Python per-frame loop presented as Timeline. |
 | Stable errors | Every `docs/CONTRACT.md` product error remains reachable or explicitly reserved; CLI/MCP mappings agree; Capability narrowing is closed and intentional; messages/details and echoed input stay bounded. | Unknown product error falls through as a misleading known error, long input is reflected, or Capability accepts a shape its Profile rejects. |
 | Geometry diagnostics | Inspect, solve, compose, CSS, and render use core solving; reprojection, horizon, determinant, bounds, and inversion keep their declared meaning. Orientation-reversing homographies caused by explicit flips remain legal. | Render bypasses `solve_spec`, determinant sign is “repaired,” horizon checks differ, or diagnostics describe geometry not executed. |
 | Raster and side effects | Inverse mapping, pixel centers, premultiplied-alpha filtering, transparent outside samples, output limits, return feasibility, staging, and atomic publication follow `docs/CONTRACT.md`; dry-run executes the same preflight without publication. | Mutation precedes final preflight, overwrite occurs without authority, cancellation leaves staging/output, or dry-run and write disagree. |
 | Agent resource authority | MCP and Capability render paths stay under one explicit descriptor grant and reject absolute, parent, URI-like, symlink, and non-regular-source escapes. Held handles remain authoritative under pathname replacement. The complete call, including queueing, worker, diagnostics, and response, stays bounded on macOS, Linux, and Windows and recovers after breach. | Ambient cwd becomes authority, a check/use race redirects access, a path escapes, waiters/workers grow without an enforceable lifetime, or timeout/memory failure poisons later requests. |
-| Direct routing and catalog economy | Exactly the current eight task tools remain directly callable, annotations including `openWorldHint=false` are accurate, ordinary requests need no list/describe pre-call, and live catalog/result/error bytes stay within declared budgets. | A primitive-per-tool family leaks implementation structure, descriptions misroute, catalog growth removes useful schema, or success uses a generic fallback. |
-| Carrier projection and package isolation | Figma compiles without CSS and contains no Agent/Comfy interface; Agent contains no human/Comfy UI; Comfy compiles only its six native commands and contains no Agent/Figma interface. The Perspective operation order, Canvas sibling declaration, and declared Figma byte ceilings are checked from built artifacts. | A carrier gains another carrier's UI or adapter, an unused heavy feature is linked by default, a full CLI enters Comfy, Correct disappears from the frozen Perspective order, Canvas enters `EditorMode`, or a package exceeds a declared ceiling. |
+| Direct routing and catalog economy | The direct compatibility projection retains exactly the current eight task tools. The default installed projection has exactly `search`, `describe`, and `run`; a known operation needs one run call, describe returns its exact schema on demand, and run reuses the direct operation's closed parser and handler. Annotations including `openWorldHint=false` are accurate, and both live catalogs plus result/error bytes stay within their independent budgets. | A new operation grows the default catalog by another full tool schema, compact run bypasses exact operation validation, direct compatibility drifts, known requests require discovery, descriptions misroute, or success uses a generic fallback. |
+| Carrier projection and package isolation | Figma compiles without CSS and contains no Agent/Comfy interface; Agent contains no human/Comfy UI; Comfy compiles only its declared native commands and contains no Agent/Figma interface. The Perspective operation order, four sibling task declarations, and declared Figma byte ceilings are checked from built artifacts. | A carrier gains another carrier's UI or adapter, an unused heavy feature is linked by default, a full CLI enters Comfy, Correct disappears from the frozen Perspective order, a task enters `EditorMode`, or a package exceeds a declared ceiling. |
 | WASM/JSON boundary | Real WASM tests cover full round trips, camelCase names, stable panic normalization, and large finite `f64` values without an accidental `f32` path. | Mock-only parity, panic leakage, numeric truncation, or accepted fields disappear at JSON/TypeScript boundaries. |
 | Product Skill | The installed Skill describes currently supported routes and boundaries and does not duplicate schemas or deny a supported operation. | Stale examples/boundaries, algorithm prose, version mismatch, or Skill visible while tools are absent. |
 | Comfy single-image route | V3 node IDs/types stay stable, strict TransformSpec validation crosses the real native CLI, IMAGE/MASK alpha round-trips under the declared 8-bit and premultiplied-alpha rules, omitted normalized targets bind to source IMAGE dimensions, and `B != 1` fails before a render. | Python transform math, silent tensor clamp, mask polarity reversal, hidden batch iteration, PATH-selected binary, leaked child/temp state, or local package inventory presented as installed-host proof. |
 | Comfy Canvas route | Strict Canvas Set validation crosses the native CLI once, Apply returns ordered heterogeneous IMAGE/MASK lists plus the resolved plan, replay requires matching dimensions and never resolves Trim again, and the 16 Mi-pixel cumulative limit includes every output. | Different sizes are stacked into one tensor batch, Python plans geometry, one child is launched per variant, list order drifts, Trim is recomputed, high-precision maps are advertised through the 8-bit boundary, or installed-host behavior is inferred from adapter tests. |
+| Comfy Remap route | Strict Remap validation and execution cross the reduced native CLI, lens rejects a map, displacement requires one, optional map MASK supplies alpha, and one retained Remap can synchronize compatible IMAGE/MASK/control inputs. | Python lens/displacement math, hidden map defaults, wrong mask polarity, unrequested map acceptance, high-precision claims through the 8-bit PNG boundary, or installed-host behavior inferred from adapter tests. |
 | Figma human route | The installed development plugin operates only on the selected authorized document, retains transform/replacement state, preserves undo/recovery and localization, applies the 4096 px per-axis limit, and keeps both live manifest entrypoints present throughout either partial build. Its 600 x 720 panel uses one full-width top operation bar for identity/mode/active parameters, one full-width bottom session bar for Reset/Apply, and one uninterrupted rectangular editor exactly between them. Active Transform/Warp parameters stay visible; operation labels use transparent low-emphasis chrome and one pale-blue selected surface. More is the final peer after Warp and contains only secondary session/language actions. Transform keeps Width -> Height -> Link, Skew X -> Skew Y, and Angle -> Placement as three continuous visual groups over one shared pair of parameter columns plus a dedicated 32 CSS-pixel action column, so all five sliders have equal screen-space widths of at least 110 CSS px and a narrower frequent-use domain than their precise numeric fields. Frequent transform commands are authority-rendered icon buttons with localized hover/focus tooltips; one repeatable clockwise 90-degree command covers the 180-degree and counter-clockwise equivalents by repeated presses, while its icon still depicts one object receiving one directional action rather than a continuous cycle. Placement replaces rather than overlays the parameter region and uses a right-facing enter arrow; down arrows remain reserved for dropdown/disclosure semantics. More, Close, Link, Check, surface-entry, Flip, Rotate, and Repeat product icons retain assets from the configured icon authority rather than font glyphs or locally drawn SVG paths. A bar-height change may refit or recenter the preview, but it leaves the canonical spec, recipe, pivot, and Warp value unchanged and keeps every finite handle center inside the editor safe inset. Zoom remains available by direct input and standard shortcuts without persistent zoom chrome. | Stale selection applies, state silently resets, failed work replaces a node, technical metadata or a generic operation heading enters the task UI, nested selected chrome competes with the canvas, More interrupts the operation order or hides active-operation commands, semantic parameter siblings are split by an unrelated control, parameter rows use different column tracks or slider widths, duplicate rotation buttons expose outcomes already reachable by repetition, an icon exposes the repetition/cycle mechanism instead of the single action or lacks a localized hover/focus tooltip, the bars float over or leave gaps beside the editor, a slider is too short for deliberate adjustment or silently clamps precise typed values, a down arrow falsely implies a dropdown for a replacing surface, a product icon is a font glyph or locally invented path, layout reflow changes canonical geometry, a control covers a handle, Escape dismisses a transient surface and also cancels the edit, or a UI/main build transiently removes its sibling entrypoint. |
-| Figma Canvas workspace | Canvas is a replacing sibling workspace entered from and returned to Perspective without entering `EditorMode` or changing the frozen operation order. It owns a separate draft/history/message/storage surface, 1..8 explicit Contain/Cover variants, one core-planned active preview, 4096-axis/32-MiP limits, and all-or-none create or single-target replace. Hidden workspaces are inert; Perspective mode/spec/controls/history/viewport/focus survive the round trip. | Canvas appends buttons to Perspective, recomputes fit in TypeScript, keeps multiple renderers/listeners alive, accepts mixed replace-and-create, leaves partial nodes after failure, loses source generation, or returning changes Perspective semantics. |
+| Figma task workspaces | Sizes, Mockup, Mesh, and Remap are replacing sibling workspaces entered through one compact source-level launcher and returned to Perspective without entering `EditorMode` or changing the frozen operation order. Sizes owns six canonical Canvas operations and 1..8 named outputs; Mockup owns 1..8 explicit selected planes; Mesh owns a fixed-boundary 2..16 grid; Remap owns explicit Lens or source-plus-map Displacement. Every preview consumes a canonical plan, every result retains its canonical spec, and all routes enforce the 4096-axis boundary and recoverable create/replace publication. Hidden workspaces are inert and Perspective state survives the round trip. | A task appends controls to Perspective, recomputes semantic math in TypeScript, silently chooses a map/plane/lens, interrupts direct manipulation by rebuilding an active handle, renders while hidden, accepts stale selection, leaves partial nodes after failure, loses source generation, or returning changes Perspective semantics. |
 | Perspective gesture semantics | After a 4 CSS-pixel intent threshold, the dominant physical drag axis locks until release. Horizontal drag changes only the dragged corner's x and gives its same-row corner the opposite x delta; vertical drag changes only the dragged corner's y and gives its same-column corner the opposite y delta. The other two corners and every unrelated coordinate remain fixed. Keyboard chooses the arrow axis directly; explicit Perspective mode and the Shift temporary inverse use the same gesture-start quad. | One gesture moves three corners, the pair switches under diagonal jitter, perpendicular coordinates drift, modifiers make an already-distorted quad jump, or an adapter invents a different mapping. |
 | Direct manipulation | Image geometry may zoom, but handles and pivot retain their declared screen-space visual and hit sizes at Fit, manual zoom, and post-release camera recovery. Distort keeps zoom fixed; away from the edge its camera pan stays fixed apart from core-derived scene/workspace offset. An outward pointer in the bounded edge zone causes capped compositor assistance only on active axes, while the editor compensates the frozen gesture mapping so the grabbed control remains coupled. Free may sustain edge pan; Perspective consumes one pair-normalized assist step per fresh active-axis pointer sample and settles while the pointer is still. Return, release, cancellation, capture loss, blur, and page hide stop it promptly. Exact release commits its final sample; interruption or a re-entry move with no pressed buttons closes at the last pressed sample. Post-release recovery and Fit may cross the ordinary 10% zoom floor, must keep every finite corner center inside the 16 px safe inset, and may not change geometry. | A parent compositor scale shrinks hit targets, edge motion starts without outward intent, a still Perspective pointer keeps expanding its pair, motion continues after return/release, a locked perpendicular axis pans, the grabbed control detaches, an older sample commits, Fit strands a corner at the ordinary zoom floor, a positive recovery is labeled 0%, or recovery changes canonical geometry. |
 
 ## Error-contract review
 
-For the Canvas phase, the Perspective More popover may contain the one entry
-into the sibling Canvas workspace in addition to secondary session and
-language actions. The invariant remains that More never hides an active
-Perspective operation and Canvas never enters `EditorMode` or changes the
-checked Perspective peer order.
+For the Canvas phase, the quiet `Sizes…` entry sits beside the selected source
+identity. It is outside the Perspective mode choices and More popover; More
+contains only secondary session and language actions. Canvas never enters
+`EditorMode` or changes the checked Perspective peer order.
 
 Compare three current surfaces:
 
@@ -134,8 +137,9 @@ must disclose the substitution or any uncovered seam.
   directory; exercise duplicate IDs, existing/symlink destinations, dry-run,
   cancellation before commit, strict result order, cumulative limits, and
   resolved-plan replay against both matching and mismatched source shapes;
-- introspect live `tools/list`, exact names, annotations, schema constraints,
-  complete byte size, and one-call ordinary routing in a fresh installed host;
+- introspect both live `tools/list` projections, exact names, annotations,
+  schema constraints, independent complete byte sizes, exact describe output,
+  direct-versus-run parity, and one-call known routing in a fresh installed host;
 - compile the Figma WASM and Comfy CLI profiles without default features,
   inspect the staged Comfy help surface, compare each built package against its
   forbidden paths/suffixes, and apply the current Figma runtime/archive/unpacked
@@ -169,7 +173,8 @@ must disclose the substitution or any uncovered seam.
   screen-space box is at least 110 CSS px wide, its frequent-use range is
   distinct from the paired precise field domain; inspect Width -> Height ->
   Link, Skew X -> Skew Y, and Angle -> Placement as three uninterrupted groups;
-  confirm More follows Warp, its menu omits active Transform commands, and every
+  confirm More follows Warp, its menu omits active Transform commands, the
+  source-level `Sizes…` entry remains outside both More and the mode bar, and every
   transform icon exposes the same localized name by hover and keyboard focus.
   Press clockwise rotation once, twice, and three times and compare the result
   with +90, 180, and -90 degrees respectively. Placement replaces the
@@ -183,9 +188,13 @@ must disclose the substitution or any uncovered seam.
   undo, dismiss a recoverable error, and traverse Canvas variant tabs with
   Left/Right/Home/End in both supported locales;
 - load the built Web demo from an empty browser session and require its
-  non-identity example, visible TransformSpec and CSS, working Fit/manual zoom,
-  synchronized Reset, and zero browser-console errors; a successful build with
-  a hidden output or a rejected first-frame example is a runtime failure;
+  non-identity example, one-time direct-manipulation hint, primary full-width
+  canvas, working Fit/manual zoom, synchronized Reset, zero browser-console
+  errors, and current TransformSpec/CSS behind one icon-only, low-emphasis
+  developer-mode button. Enter and Space toggle it; Escape closes it and
+  restores focus to the trigger. A
+  successful build with stale disclosed output or a rejected first-frame
+  example is a runtime failure;
 - exercise all four Perspective corners with pure horizontal, pure vertical,
   and combined deltas on identity and already-distorted quads; assert the
   axis-selective two-point truth table above, a stable axis after the intent
@@ -229,10 +238,12 @@ reproducible workload and threshold. It fails only on correctness or benchmark
 integrity. A faster core number cannot compensate for unbounded queue/resource
 growth, unsafe effects, worse tail latency, or higher Agent context cost.
 
-Worldbend currently exposes no public batch operation. Before adding one,
-define item/envelope bounds, correlation and order, failure and atomicity
-semantics, one cumulative resource budget, fairness, cancellation, and
-publication behavior. A transport batch of independent calls does not
+Worldbend exposes no generic public batch operation. Timeline is a specialized
+ordered atomic sequence with its own item, order, source, cumulative budget,
+failure, cancellation, and publication contract. Before adding any other
+batch, define item/envelope bounds, correlation and order, failure and
+atomicity semantics, one cumulative resource budget, fairness, cancellation,
+and publication behavior. A transport batch of independent calls does not
 automatically change the Capability Profile or become a Procedure.
 
 Measure ComfyUI separately from MCP. Its current path adds tensor-to-8-bit PNG
@@ -341,16 +352,17 @@ environment and method rather than quoting a prior anchor number.
 ### Runtime Agent flow — Agent/Reviewer reports PASS, FAIL, or BLOCKED
 
 Use the staged/installed plugin in a fresh supported host. Verify loaded Skill,
-plugin version, executable, live eight-tool registry, schemas, direct ordinary
-prompt selection, tool-call count, retries/fallback, happy/invalid/large-result
+plugin version, executable, live three-tool compact registry, the separate
+eight-tool direct compatibility registry, exact describe schemas, one-call
+known-operation selection, tool-call count, retries/fallback, happy/invalid/large-result
 paths, render workspace authority, cancellation/recovery, and complete response
 budgets. A repo-root stdio probe alone does not establish installed routing.
 
 ### Runtime ComfyUI flow — Agent/Reviewer reports PASS, FAIL, or BLOCKED
 
 Install the self-contained package in a fresh supported ComfyUI host. Reacquire
-the live node registry and verify all seven V3 node IDs, inputs, outputs, and the
-two custom types. Execute both packaged examples with IMAGE plus MASK; test omitted
+the live node registry and verify all nine V3 node IDs, inputs, outputs, and the
+five custom types. Execute all four packaged examples with IMAGE plus MASK; test omitted
 and explicit target dimensions, tight/reference canvas, all three quality
 values, invalid geometry, `B > 1`, cancellation, deadline cleanup, repeated
 reuse of one transform with a changed source, and immediate subsequent work.

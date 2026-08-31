@@ -18,7 +18,7 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
-use worldbend_core::{ErrorCode, MAX_CANVAS_VARIANTS, TransformError, TransformResult};
+use worldbend_core::{ErrorCode, TransformError, TransformResult};
 
 static NEXT_STAGING_FILE: AtomicU64 = AtomicU64::new(1);
 static NEXT_STAGING_DIRECTORY: AtomicU64 = AtomicU64::new(1);
@@ -337,11 +337,16 @@ impl OutputTarget {
 }
 
 impl DirectoryOutputTarget {
-    /// Copy a complete controller-private, flat Canvas output set into a
-    /// hidden directory beside the final destination. This may be performed in
-    /// a blocking task. The returned handle owns cleanup until `commit`.
-    pub fn stage_from(self, source_directory: &Path) -> TransformResult<StagedDirectoryCommit> {
-        self.stage_from_with_cancel(source_directory, &|| false)
+    /// Copy a complete controller-private, flat PNG output set into a hidden
+    /// directory beside the final destination. The caller supplies the
+    /// operation-specific file ceiling; this filesystem layer must not impose
+    /// Canvas limits on Timeline or other directory-producing operations.
+    pub fn stage_from(
+        self,
+        source_directory: &Path,
+        max_files: usize,
+    ) -> TransformResult<StagedDirectoryCommit> {
+        self.stage_from_with_cancel(source_directory, max_files, &|| false)
     }
 
     /// Cancellable form of [`Self::stage_from`]. The predicate is polled
@@ -351,15 +356,21 @@ impl DirectoryOutputTarget {
     pub fn stage_from_with_cancel(
         self,
         source_directory: &Path,
+        max_files: usize,
         is_cancelled: &(dyn Fn() -> bool + Sync),
     ) -> TransformResult<StagedDirectoryCommit> {
-        let metadata = fs::symlink_metadata(source_directory).map_err(render_io(
-            "Canvas private staging directory is not accessible",
-        ))?;
+        if max_files == 0 {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "directory staging file limit must be positive",
+            ));
+        }
+        let metadata = fs::symlink_metadata(source_directory)
+            .map_err(render_io("private output directory is not accessible"))?;
         if metadata.file_type().is_symlink() || !metadata.is_dir() {
             return Err(TransformError::new(
                 ErrorCode::Render,
-                "Canvas private staging must be a real directory",
+                "private output must be a real directory",
             ));
         }
         let staged_name = create_staging_directory(&self.parent)?;
@@ -368,31 +379,32 @@ impl DirectoryOutputTarget {
             Err(error) => {
                 let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
                 return Err(render_io(
-                    "failed to open same-parent Canvas staging directory",
+                    "failed to open same-parent output staging directory",
                 )(error));
             }
         };
         let staged = (|| -> TransformResult<()> {
             let mut file_count = 0_usize;
             for entry in fs::read_dir(source_directory)
-                .map_err(render_io("failed to inspect Canvas private staging"))?
+                .map_err(render_io("failed to inspect private output directory"))?
             {
                 check_cancelled(is_cancelled)?;
                 file_count += 1;
-                if file_count > MAX_CANVAS_VARIANTS {
+                if file_count > max_files {
                     return Err(TransformError::new(
                         ErrorCode::Render,
-                        "Canvas staged output contains too many files",
-                    ));
+                        "staged output contains too many files",
+                    )
+                    .with_details(json!({ "maximum": max_files })));
                 }
-                let entry = entry.map_err(render_io("failed to inspect Canvas staged entry"))?;
+                let entry = entry.map_err(render_io("failed to inspect staged output entry"))?;
                 let file_type = entry
                     .file_type()
-                    .map_err(render_io("failed to inspect Canvas staged entry type"))?;
+                    .map_err(render_io("failed to inspect staged output entry type"))?;
                 if file_type.is_symlink() || !file_type.is_file() {
                     return Err(TransformError::new(
                         ErrorCode::Render,
-                        "Canvas staged output must contain only regular files",
+                        "staged output must contain only regular files",
                     ));
                 }
                 let name = entry.file_name();
@@ -403,38 +415,37 @@ impl DirectoryOutputTarget {
                 {
                     return Err(TransformError::new(
                         ErrorCode::Render,
-                        "Canvas staged output files must use .png",
+                        "staged output files must use .png",
                     ));
                 }
-                let mut source = File::open(entry.path())
-                    .map_err(render_io("failed to open Canvas staged output"))?;
+                let mut source =
+                    File::open(entry.path()).map_err(render_io("failed to open staged output"))?;
                 let mut options = OpenOptions::new();
                 options
                     .write(true)
                     .create_new(true)
                     .follow(FollowSymlinks::No);
-                let mut destination = open(&staged_directory, Path::new(&name), &options).map_err(
-                    render_io("failed to create same-parent Canvas staged output"),
-                )?;
+                let mut destination = open(&staged_directory, Path::new(&name), &options)
+                    .map_err(render_io("failed to create same-parent staged output"))?;
                 copy_with_cancel(&mut source, &mut destination, is_cancelled)?;
                 check_cancelled(is_cancelled)?;
                 destination
                     .flush()
-                    .map_err(render_io("failed to flush Canvas staged output"))?;
+                    .map_err(render_io("failed to flush staged output"))?;
                 destination
                     .sync_all()
-                    .map_err(render_io("failed to sync Canvas staged output"))?;
+                    .map_err(render_io("failed to sync staged output"))?;
             }
             if file_count == 0 {
                 return Err(TransformError::new(
                     ErrorCode::Render,
-                    "Canvas staged output must contain at least one PNG",
+                    "staged output must contain at least one PNG",
                 ));
             }
             check_cancelled(is_cancelled)?;
             staged_directory
                 .sync_all()
-                .map_err(render_io("failed to sync Canvas staging directory"))?;
+                .map_err(render_io("failed to sync output staging directory"))?;
             Ok(())
         })();
         if let Err(error) = staged {
@@ -460,13 +471,13 @@ fn copy_with_cancel(
         check_cancelled(is_cancelled)?;
         let count = source
             .read(&mut buffer)
-            .map_err(render_io("failed to read Canvas staged output"))?;
+            .map_err(render_io("failed to read staged output"))?;
         if count == 0 {
             return Ok(());
         }
         destination
             .write_all(&buffer[..count])
-            .map_err(render_io("failed to copy Canvas staged output"))?;
+            .map_err(render_io("failed to copy staged output"))?;
     }
 }
 
@@ -696,7 +707,7 @@ fn create_staging_directory(parent: &File) -> TransformResult<OsString> {
     for _ in 0..32 {
         let sequence = NEXT_STAGING_DIRECTORY.fetch_add(1, Ordering::Relaxed);
         let name = OsString::from(format!(
-            ".worldbend-canvas-{}-{sequence}.tmp",
+            ".worldbend-directory-{}-{sequence}.tmp",
             std::process::id()
         ));
         match create_dir(parent, Path::new(&name), &DirOptions::new()) {
@@ -841,7 +852,7 @@ mod tests {
         workspace
             .prepare_output_directory("outputs/complete")
             .unwrap()
-            .stage_from(private.path())
+            .stage_from(private.path(), 16)
             .unwrap()
             .commit()
             .unwrap();
@@ -853,7 +864,7 @@ mod tests {
         let private = tempfile::tempdir().unwrap();
         fs::write(private.path().join("new.png"), b"new").unwrap();
         let target = workspace.prepare_output_directory("outputs/raced").unwrap();
-        let commit = target.stage_from(private.path()).unwrap();
+        let commit = target.stage_from(private.path(), 16).unwrap();
         fs::create_dir(root.path().join("outputs/raced")).unwrap();
         fs::write(root.path().join("outputs/raced/owner.txt"), b"owner").unwrap();
         assert_eq!(
@@ -868,6 +879,37 @@ mod tests {
     }
 
     #[test]
+    fn directory_staging_uses_the_callers_operation_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        for index in 0..17 {
+            fs::write(private.path().join(format!("frame-{index:06}.png")), b"png").unwrap();
+        }
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        let error = workspace
+            .prepare_output_directory("too-small")
+            .unwrap()
+            .stage_from(private.path(), 16)
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Render);
+        assert_eq!(error.details.unwrap()["maximum"], json!(16));
+        assert!(!root.path().join("too-small").exists());
+
+        workspace
+            .prepare_output_directory("timeline")
+            .unwrap()
+            .stage_from(private.path(), 240)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert_eq!(
+            fs::read_dir(root.path().join("timeline")).unwrap().count(),
+            17
+        );
+    }
+
+    #[test]
     fn dropping_canvas_commit_cleans_same_parent_staging() {
         let root = tempfile::tempdir().unwrap();
         fs::create_dir(root.path().join("outputs")).unwrap();
@@ -877,7 +919,7 @@ mod tests {
         let commit = workspace
             .prepare_output_directory("outputs/final")
             .unwrap()
-            .stage_from(private.path())
+            .stage_from(private.path(), 16)
             .unwrap();
         assert!(
             fs::read_dir(root.path().join("outputs"))
@@ -968,7 +1010,11 @@ mod tests {
 
         let private = tempfile::tempdir().unwrap();
         fs::write(private.path().join("one.png"), b"one").unwrap();
-        target.stage_from(private.path()).unwrap().commit().unwrap();
+        target
+            .stage_from(private.path(), 16)
+            .unwrap()
+            .commit()
+            .unwrap();
         assert_eq!(
             fs::read(root.path().join("held-outputs/final/one.png")).unwrap(),
             b"one"
@@ -1015,7 +1061,7 @@ mod tests {
         let error = workspace
             .prepare_output_directory("outputs/final")
             .unwrap()
-            .stage_from_with_cancel(private.path(), &|| {
+            .stage_from_with_cancel(private.path(), 16, &|| {
                 calls.fetch_add(1, Ordering::SeqCst) >= 3
             })
             .unwrap_err();

@@ -5,7 +5,15 @@
 //! file publication.
 
 mod canvas;
+#[cfg(feature = "deform")]
+mod deform;
 mod file_io;
+#[cfg(feature = "place")]
+mod mockup;
+#[cfg(feature = "remap")]
+mod remap;
+#[cfg(feature = "timeline")]
+mod timeline;
 
 pub use canvas::{
     CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult, CanvasSetProgram,
@@ -16,6 +24,34 @@ pub use canvas::{
 pub use file_io::{
     preflight_destination, publish_staged_file, rectify_file, rectify_file_with_source_sha256,
     render_file, render_file_with_source_sha256,
+};
+
+#[cfg(feature = "deform")]
+pub use deform::{
+    MeshWarpFileRenderResult, MeshWarpRenderOptions, RenderedMeshWarp, render_mesh_warp,
+    render_mesh_warp_file_with_cancel, render_mesh_warp_with_cancel,
+};
+
+#[cfg(feature = "place")]
+pub use mockup::{
+    MAX_MOCKUP_SOURCE_PIXELS, MockupExtractFileRenderResult, MockupExtractRenderOptions,
+    MockupExtractRenderStatus, MockupExtractRenderedItem, MockupFileRenderResult, MockupFileSource,
+    MockupRenderDiagnostics, MockupRenderEvidence, MockupRenderOptions, MockupSourceEvidence,
+    RenderedMockup, render_mockup, render_mockup_extract_files,
+    render_mockup_extract_files_with_cancel, render_mockup_extract_to_directory,
+    render_mockup_files, render_mockup_files_with_cancel, render_mockup_with_cancel,
+};
+
+#[cfg(feature = "remap")]
+pub use remap::{
+    RemapEvidence, RemapFileMap, RemapFileRenderResult, RemapRenderOptions, RenderedRemap,
+    render_remap, render_remap_file_with_cancel, render_remap_with_cancel,
+};
+#[cfg(feature = "timeline")]
+pub use timeline::{
+    TimelineFileRenderResult, TimelineFileSource, TimelineRenderOptions, TimelineRenderStatus,
+    TimelineRenderedItem, TimelineSourceEvidence, render_timeline_files,
+    render_timeline_files_with_cancel,
 };
 
 use image::{
@@ -255,10 +291,10 @@ pub struct RenderEvidence {
     pub warnings: Vec<String>,
 }
 
-struct RenderExecution {
-    rendered: RenderedImage,
-    solve_ms: f64,
-    render_ms: f64,
+pub(crate) struct RenderExecution {
+    pub(crate) rendered: RenderedImage,
+    pub(crate) solve_ms: f64,
+    pub(crate) render_ms: f64,
 }
 
 struct RectifyRenderExecution {
@@ -492,6 +528,27 @@ fn render_rgba_image(
     options: RenderOptions,
     is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<RenderExecution> {
+    render_rgba_image_with_mesh(source, spec, options, None, is_cancelled)
+}
+
+#[cfg(feature = "deform")]
+pub(crate) fn render_rgba_image_with_custom_mesh(
+    source: RgbaImage,
+    spec: &TransformSpec,
+    options: RenderOptions,
+    mesh: WarpMesh,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<RenderExecution> {
+    render_rgba_image_with_mesh(source, spec, options, Some(mesh), is_cancelled)
+}
+
+fn render_rgba_image_with_mesh(
+    source: RgbaImage,
+    spec: &TransformSpec,
+    options: RenderOptions,
+    mesh: Option<WarpMesh>,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<RenderExecution> {
     validate_limits(options.limits)?;
     validate_render_target(spec, options.target_size)?;
     validate_source_dimensions(source.width(), source.height(), options.limits)?;
@@ -508,13 +565,15 @@ fn render_rgba_image(
 
     let source_width = source.width();
     let source_height = source.height();
-    let warp = WarpSampler::new(
-        spec.content
+    let warp = WarpSampler::new(match mesh {
+        Some(mesh) => Some(mesh),
+        None => spec
+            .content
             .warp
             .filter(|warp| warp.amount != 0.0)
             .map(|warp| build_warp_mesh(Some(warp)))
             .transpose()?,
-    )?;
+    })?;
     let (output, render_ms) = render_pixels(
         source,
         &solved.homography,

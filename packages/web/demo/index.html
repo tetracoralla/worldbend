@@ -18,9 +18,18 @@
       </header>
       <p id="error" role="alert" hidden></p>
       <section id="workspace" aria-label="Worldbend playground" hidden>
-        <div class="workspace-body">
-          <div id="editor" aria-label="Interactive transform preview"></div>
-          <aside class="outputs" aria-label="Current deterministic outputs">
+        <div id="editor" aria-label="Interactive transform preview">
+          <p id="editor-hint">Drag the four corners</p>
+        </div>
+        <button id="developer-toggle" class="developer-toggle" type="button" aria-label="Developer mode" aria-expanded="false" aria-controls="developer-output" data-tooltip="Developer mode">
+          <svg class="developer-icon" data-icon-id="icon-park:code" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <path d="M16 13L4 25.4322L16 37" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M32 13L44 25.4322L32 37" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M28 4L21 44" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+          </svg>
+        </button>
+        <aside id="developer-output" class="developer-output" aria-label="Developer output" hidden>
+          <div class="outputs">
             <section class="output-panel">
               <header><h2>TransformSpec</h2><button id="copy-spec" type="button">Copy JSON</button></header>
               <pre id="spec-output" tabindex="0"></pre>
@@ -29,8 +38,8 @@
               <header><h2>CSS</h2><button id="copy-css" type="button">Copy CSS</button></header>
               <pre id="css-output" tabindex="0"></pre>
             </section>
-          </aside>
-        </div>
+          </div>
+        </aside>
         <footer>
           <button id="reset" type="button">Reset</button>
           <div class="zoom-controls" role="group" aria-label="Preview zoom">

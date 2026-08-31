@@ -10,13 +10,16 @@ from ._adapter import (
     WorldbendCanvasPlan,
     WorldbendCanvasSet,
     WorldbendRectification,
+    WorldbendRemap,
     WorldbendTransform,
     apply_canvas_plan,
     apply_canvas_set,
     apply_rectification,
+    apply_remap,
     apply_transform,
     create_canvas_set,
     create_rectification,
+    create_remap,
     create_transform,
 )
 
@@ -25,6 +28,7 @@ WorldbendTransformType = io.Custom("WORLDBEND_TRANSFORM")
 WorldbendRectificationType = io.Custom("WORLDBEND_RECTIFICATION")
 WorldbendCanvasSetType = io.Custom("WORLDBEND_CANVAS_SET")
 WorldbendCanvasPlanType = io.Custom("WORLDBEND_CANVAS_PLAN")
+WorldbendRemapType = io.Custom("WORLDBEND_REMAP")
 
 _IDENTITY_SPEC = """{
   "schema": "worldbend.transform",
@@ -84,6 +88,18 @@ _DEFAULT_CANVAS_SET = """{
 _DEFAULT_CONTROL_OUTSIDE_FILL = (
     '{ "kind": "color", "space": "srgb8", "rgba": [0, 0, 0, 255] }'
 )
+
+_IDENTITY_REMAP = """{
+  "schema": "worldbend.remap",
+  "version": "0.1",
+  "output": { "width": 1024, "height": 1024 },
+  "operation": {
+    "kind": "lens",
+    "coefficients": { "k1": 0, "k2": 0, "k3": 0, "p1": 0, "p2": 0 },
+    "center": { "x": 0.5, "y": 0.5 },
+    "scale": { "x": 0.5, "y": 0.5 }
+  }
+}"""
 
 
 class WorldbendTransformSpecNode(io.ComfyNode):
@@ -427,6 +443,99 @@ class WorldbendApplyCanvasPlanNode(io.ComfyNode):
         return io.NodeOutput(images, masks, retained)
 
 
+class WorldbendRemapSpecNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="Worldbend_RemapSpec",
+            display_name="Worldbend Remap Spec",
+            category="image/transform/Worldbend",
+            description=(
+                "Validates one explicit lens model or channel-driven displacement map. "
+                "It does not estimate a lens, depth, flow, or subject geometry."
+            ),
+            search_aliases=["lens distortion", "displacement map", "barrel", "pincushion"],
+            is_experimental=True,
+            inputs=[
+                io.String.Input(
+                    "spec_json",
+                    display_name="RemapSpec JSON",
+                    default=_IDENTITY_REMAP,
+                    multiline=True,
+                    dynamic_prompts=False,
+                ),
+            ],
+            outputs=[WorldbendRemapType.Output("remap", display_name="REMAP")],
+        )
+
+    @classmethod
+    def execute(cls, spec_json: str) -> io.NodeOutput:
+        return io.NodeOutput(create_remap(spec_json))
+
+
+class WorldbendApplyRemapNode(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="Worldbend_ApplyRemap",
+            display_name="Apply Worldbend Remap",
+            category="image/transform/Worldbend",
+            description=(
+                "Applies an explicit lens remap or displacement IMAGE to one IMAGE and MASK. "
+                "Map presence is exact and the same REMAP can synchronize other control images."
+            ),
+            search_aliases=["lens distortion", "displacement map", "depth warp", "control map"],
+            is_experimental=True,
+            inputs=[
+                io.Image.Input("image"),
+                WorldbendRemapType.Input("remap"),
+                io.Combo.Input(
+                    "quality",
+                    options=["preview", "standard", "high"],
+                    default="standard",
+                    advanced=True,
+                ),
+                io.Mask.Input("mask", optional=True),
+                io.Image.Input(
+                    "displacement_map",
+                    display_name="Displacement map IMAGE",
+                    optional=True,
+                ),
+                io.Mask.Input(
+                    "displacement_map_mask",
+                    display_name="Displacement map alpha MASK",
+                    optional=True,
+                    advanced=True,
+                ),
+            ],
+            outputs=[
+                io.Image.Output("image", display_name="IMAGE"),
+                io.Mask.Output("mask", display_name="MASK"),
+                WorldbendRemapType.Output("remap", display_name="REMAP"),
+            ],
+        )
+
+    @classmethod
+    def execute(
+        cls,
+        image,
+        remap: WorldbendRemap,
+        quality: str,
+        mask=None,
+        displacement_map=None,
+        displacement_map_mask=None,
+    ) -> io.NodeOutput:
+        output_image, output_mask, retained = apply_remap(
+            image,
+            remap,
+            quality=quality,
+            mask=mask,
+            displacement_map=displacement_map,
+            displacement_map_mask=displacement_map_mask,
+        )
+        return io.NodeOutput(output_image, output_mask, retained)
+
+
 class WorldbendExtension(ComfyExtension):
     @override
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
@@ -438,6 +547,8 @@ class WorldbendExtension(ComfyExtension):
             WorldbendCanvasSetSpecNode,
             WorldbendApplyCanvasSetNode,
             WorldbendApplyCanvasPlanNode,
+            WorldbendRemapSpecNode,
+            WorldbendApplyRemapNode,
         ]
 
 

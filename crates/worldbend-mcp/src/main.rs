@@ -1,6 +1,6 @@
 mod worker_limits;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, tool::IntoCallToolResult, wrapper::Parameters},
@@ -36,16 +36,25 @@ use worldbend_agent_fs::{
 };
 use worldbend_core::{
     AffineComposition, CanvasBackground, CanvasSetPlan, CanvasSetSpec, Content, Destination,
-    ErrorCode, InspectOutput, RectifyPlan, RectifySpec, Size, SolveOutput, TransformError,
-    TransformRecipe, TransformResult, TransformSpec, bounded_text, compose_affine,
-    emit_css_transform, inspect_spec, rectify_plane, solve_spec,
+    ErrorCode, InspectOutput, MeshWarpPlan, MeshWarpSpec, MockupExtractPlan, MockupExtractSpec,
+    MockupPlan, MockupSpec, RectifyPlan, RectifySpec, RemapPlan, RemapSpec, Size, SolveOutput,
+    TimelinePlan, TimelineSpec, TransformError, TransformRecipe, TransformResult, TransformSpec,
+    bounded_text, compose_affine, emit_css_transform, inspect_spec, plan_mesh_warp, plan_mockup,
+    plan_mockup_extract, plan_remap, plan_timeline, rectify_plane, solve_spec,
 };
 use worldbend_render::{
     CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult,
     CanvasSetProgram, CanvasSetRenderOptions, CanvasSetRenderStatus, DEFAULT_MAX_AXIS,
-    DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus, RectifyFileRenderResult,
-    RectifyRenderOptions, RenderLimits, RenderOptions, SamplingQuality,
+    DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus, MeshWarpFileRenderResult,
+    MeshWarpRenderOptions, MockupExtractFileRenderResult, MockupExtractRenderOptions,
+    MockupExtractRenderStatus, MockupFileRenderResult, MockupFileSource, MockupRenderOptions,
+    RectifyFileRenderResult, RectifyRenderOptions, RemapFileMap, RemapFileRenderResult,
+    RemapRenderOptions, RenderLimits, RenderOptions, SamplingQuality, TimelineFileRenderResult,
+    TimelineFileSource, TimelineRenderOptions, TimelineRenderStatus,
     rectify_file_with_source_sha256, render_canvas_set_file, render_file_with_source_sha256,
+    render_mesh_warp_file_with_cancel, render_mockup_extract_files_with_cancel,
+    render_mockup_files_with_cancel, render_remap_file_with_cancel,
+    render_timeline_files_with_cancel,
 };
 
 const MAX_WORKER_REQUEST_BYTES: usize = 1024 * 1024;
@@ -53,6 +62,8 @@ const MAX_WORKER_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_TOOL_RESPONSE_BYTES: usize = 256 * 1024;
 #[cfg(test)]
 const MAX_TOOL_CATALOG_BYTES: usize = 81_920;
+#[cfg(test)]
+const MAX_PROGRESSIVE_TOOL_CATALOG_BYTES: usize = 16_384;
 const MAX_TOOL_ARGUMENT_BYTES: usize = 1024 * 1024;
 const MAX_SCHEMA_ERROR_CHARS: usize = 1024;
 const MAX_CONCURRENT_RENDERS: usize = 2;
@@ -72,6 +83,10 @@ const MCP_MAX_CANVAS_SET_PIXELS: u64 = 32 * 1024 * 1024;
 // before same-parent staging or commit. This is intentionally separate from
 // the pixel and 256 KiB response ceilings.
 const MCP_MAX_CANVAS_ENCODED_BYTES: u64 = 128 * 1024 * 1024;
+const MCP_MAX_MOCKUP_EXTRACT_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES: u64 = 128 * 1024 * 1024;
+const MCP_MAX_TIMELINE_PIXELS: u64 = 64 * 1024 * 1024;
+const MCP_MAX_TIMELINE_ENCODED_BYTES: u64 = 256 * 1024 * 1024;
 const MCP_MAX_SOURCE_BYTES: u64 = DEFAULT_MAX_SOURCE_BYTES;
 
 #[derive(Debug, Parser)]
@@ -80,10 +95,33 @@ struct Args {
     /// Explicit workspace root granted to Agent-authored render paths.
     #[arg(long)]
     root: Option<PathBuf>,
+    /// MCP tool projection. `direct` preserves the stable one-tool-per-task API;
+    /// `catalog` keeps tools/list compact and resolves exact schemas on demand.
+    #[arg(long, value_enum, default_value_t = ToolSurface::Direct)]
+    surface: ToolSurface,
     /// Internal bounded render worker mode.
     #[arg(long, hide = true)]
     worker_render: bool,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ToolSurface {
+    Direct,
+    Catalog,
+}
+
+const DIRECT_TOOL_NAMES: [&str; 8] = [
+    "worldbend.compose",
+    "worldbend.solve",
+    "worldbend.inspect",
+    "worldbend.render",
+    "worldbend.rectify",
+    "worldbend.rectify_render",
+    "worldbend.canvas_render",
+    "worldbend.css",
+];
+
+const CATALOG_TOOL_NAMES: [&str; 3] = ["worldbend.search", "worldbend.describe", "worldbend.run"];
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields, untagged)]
@@ -122,6 +160,24 @@ where
 
     fn is_error(&self) -> bool {
         matches!(self, Self::Failure { .. })
+    }
+}
+
+impl<T> ToolEnvelope<T>
+where
+    T: Serialize + JsonSchema,
+{
+    fn into_value(self) -> ToolEnvelope<Value> {
+        match self {
+            Self::Success { result, .. } => match serde_json::to_value(result) {
+                Ok(result) => ToolEnvelope::Success { ok: true, result },
+                Err(error) => ToolEnvelope::from_result(Err(TransformError::new(
+                    ErrorCode::Internal,
+                    format!("failed to serialize catalog operation result: {error}"),
+                ))),
+            },
+            Self::Failure { error, .. } => ToolEnvelope::Failure { ok: false, error },
+        }
     }
 }
 
@@ -421,6 +477,591 @@ struct CssInput {
     destination_size: Option<Size>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum OperationId {
+    Compose,
+    Solve,
+    Inspect,
+    Render,
+    Rectify,
+    RectifyRender,
+    CanvasRender,
+    MockupPlan,
+    MockupRender,
+    MockupExtractPlan,
+    MockupExtractRender,
+    MeshPlan,
+    MeshRender,
+    RemapPlan,
+    RemapRender,
+    TimelinePlan,
+    TimelineRender,
+    Css,
+}
+
+impl OperationId {
+    const ALL: [Self; 18] = [
+        Self::Compose,
+        Self::Solve,
+        Self::Inspect,
+        Self::Render,
+        Self::Rectify,
+        Self::RectifyRender,
+        Self::CanvasRender,
+        Self::MockupPlan,
+        Self::MockupRender,
+        Self::MockupExtractPlan,
+        Self::MockupExtractRender,
+        Self::MeshPlan,
+        Self::MeshRender,
+        Self::RemapPlan,
+        Self::RemapRender,
+        Self::TimelinePlan,
+        Self::TimelineRender,
+        Self::Css,
+    ];
+
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Compose => "compose",
+            Self::Solve => "solve",
+            Self::Inspect => "inspect",
+            Self::Render => "render",
+            Self::Rectify => "rectify",
+            Self::RectifyRender => "rectify_render",
+            Self::CanvasRender => "canvas_render",
+            Self::MockupPlan => "mockup_plan",
+            Self::MockupRender => "mockup_render",
+            Self::MockupExtractPlan => "mockup_extract_plan",
+            Self::MockupExtractRender => "mockup_extract_render",
+            Self::MeshPlan => "mesh_plan",
+            Self::MeshRender => "mesh_render",
+            Self::RemapPlan => "remap_plan",
+            Self::RemapRender => "remap_render",
+            Self::TimelinePlan => "timeline_plan",
+            Self::TimelineRender => "timeline_render",
+            Self::Css => "css",
+        }
+    }
+
+    const fn title(self) -> &'static str {
+        match self {
+            Self::Compose => "Compose transform",
+            Self::Solve => "Solve projective plane",
+            Self::Inspect => "Inspect projective plane",
+            Self::Render => "Render projective raster",
+            Self::Rectify => "Plan plane rectification",
+            Self::RectifyRender => "Render plane rectification",
+            Self::CanvasRender => "Render Canvas Set",
+            Self::MockupPlan => "Plan multi-plane mockup",
+            Self::MockupRender => "Render multi-plane mockup",
+            Self::MockupExtractPlan => "Plan multi-plane extraction",
+            Self::MockupExtractRender => "Render multi-plane extraction",
+            Self::MeshPlan => "Plan custom mesh warp",
+            Self::MeshRender => "Render custom mesh warp",
+            Self::RemapPlan => "Plan lens or displacement remap",
+            Self::RemapRender => "Render lens or displacement remap",
+            Self::TimelinePlan => "Plan ordered transform timeline",
+            Self::TimelineRender => "Render ordered transform timeline",
+            Self::Css => "Emit projective CSS",
+        }
+    }
+
+    const fn summary(self) -> &'static str {
+        match self {
+            Self::Compose => {
+                "Compose explicit affine, flip, and bounded Warp values over a saved plane without rasterizing."
+            }
+            Self::Solve => {
+                "Validate an explicit destination quadrilateral and solve its reusable projective mapping."
+            }
+            Self::Inspect => {
+                "Validate a saved TransformSpec and return bounds and numerical diagnostics."
+            }
+            Self::Render => {
+                "Render a local raster through a saved plane under the granted workspace root."
+            }
+            Self::Rectify => {
+                "Plan flattening of one explicit source quadrilateral into a declared output rectangle."
+            }
+            Self::RectifyRender => {
+                "Render an explicit planar rectification to a local PNG under the granted root."
+            }
+            Self::CanvasRender => {
+                "Render one ordered explicit Canvas Set atomically, or replay its resolved plan."
+            }
+            Self::MockupPlan => {
+                "Validate and plan explicit ordered planes, connected edges, grids, and measurements."
+            }
+            Self::MockupRender => {
+                "Composite explicit local source rasters onto an ordered multi-plane mockup canvas."
+            }
+            Self::MockupExtractPlan => {
+                "Validate and plan ordered explicit source-plane extractions from one raster."
+            }
+            Self::MockupExtractRender => {
+                "Extract ordered explicit source planes into one atomically published PNG directory."
+            }
+            Self::MeshPlan => {
+                "Validate and solve a caller-authored bounded custom deformation mesh."
+            }
+            Self::MeshRender => {
+                "Render one caller-authored bounded custom mesh through the native rasterizer."
+            }
+            Self::RemapPlan => {
+                "Validate and plan explicit Brown-Conrady lens or channel displacement remapping."
+            }
+            Self::RemapRender => {
+                "Render an explicit lens remap or displacement-map program through the native rasterizer."
+            }
+            Self::TimelinePlan => {
+                "Validate and expand explicit frames or linearly interpolated corner keyframes."
+            }
+            Self::TimelineRender => {
+                "Render an ordered frame set into one atomically published PNG directory."
+            }
+            Self::Css => "Emit CSS matrix3d values for a non-Warp live element mapping.",
+        }
+    }
+
+    const fn search_terms(self) -> &'static str {
+        match self {
+            Self::Compose => {
+                "compose transform scale rotate rotation skew translate pivot flip warp affine"
+            }
+            Self::Solve => "solve perspective homography corner pin quadrilateral plane",
+            Self::Inspect => {
+                "inspect validate diagnostics bounds reprojection horizon transform spec"
+            }
+            Self::Render => "render raster png jpeg webp apply replace image",
+            Self::Rectify => "rectify flatten extract source plane quadrilateral plan",
+            Self::RectifyRender => "rectify render flatten extract source plane png image",
+            Self::CanvasRender => {
+                "canvas crop trim pad contain cover stretch multi output resize variants"
+            }
+            Self::MockupPlan => {
+                "mockup place plane connected shared edge seam grid measurement packaging screen billboard"
+            }
+            Self::MockupRender => {
+                "mockup place composite render packaging faces screen replacement billboard sources"
+            }
+            Self::MockupExtractPlan => {
+                "mockup extract reverse rectify flatten planes packaging faces screen billboard plan"
+            }
+            Self::MockupExtractRender => {
+                "mockup extract reverse rectify flatten planes packaging faces screen billboard render"
+            }
+            Self::MeshPlan => "mesh warp envelope grid control points deform plan",
+            Self::MeshRender => "mesh warp envelope grid control points deform render raster",
+            Self::RemapPlan => {
+                "remap lens correction barrel pincushion distortion displacement map channels plan"
+            }
+            Self::RemapRender => {
+                "remap lens correction barrel pincushion distortion displacement map channels render"
+            }
+            Self::TimelinePlan => {
+                "timeline animation frames keyframes linear interpolation corner pin plan"
+            }
+            Self::TimelineRender => {
+                "timeline animation frames keyframes sequence png atomic directory render"
+            }
+            Self::Css => "css matrix3d live element iframe video canvas dom",
+        }
+    }
+
+    const fn mutates_files(self) -> bool {
+        matches!(
+            self,
+            Self::Render
+                | Self::RectifyRender
+                | Self::CanvasRender
+                | Self::MockupRender
+                | Self::MockupExtractRender
+                | Self::MeshRender
+                | Self::RemapRender
+                | Self::TimelineRender
+        )
+    }
+
+    const fn requires_workspace(self) -> bool {
+        self.mutates_files()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SearchInput {
+    #[serde(default)]
+    #[schemars(
+        description = "Case-insensitive operation terms; empty returns the compact catalog"
+    )]
+    query: String,
+    #[serde(default = "default_search_limit")]
+    #[schemars(range(min = 1, max = 20))]
+    limit: u8,
+}
+
+const fn default_search_limit() -> u8 {
+    8
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct OperationSummary {
+    operation: OperationId,
+    title: &'static str,
+    summary: &'static str,
+    mutates_files: bool,
+    requires_workspace: bool,
+}
+
+impl From<OperationId> for OperationSummary {
+    fn from(operation: OperationId) -> Self {
+        Self {
+            operation,
+            title: operation.title(),
+            summary: operation.summary(),
+            mutates_files: operation.mutates_files(),
+            requires_workspace: operation.requires_workspace(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SearchResult {
+    operations: Vec<OperationSummary>,
+    total_matches: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DescribeInput {
+    operation: OperationId,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct OperationDescriptor {
+    operation: OperationId,
+    title: &'static str,
+    summary: &'static str,
+    mutates_files: bool,
+    requires_workspace: bool,
+    input_schema: Value,
+    output_schema: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RunInput {
+    operation: OperationId,
+    #[schemars(
+        description = "Closed operation arguments; call worldbend.describe only when the exact schema is not already known"
+    )]
+    arguments: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupPlanInput {
+    spec: MockupSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupSourceInput {
+    #[schemars(description = "Exact sourceId referenced by one or more mockup planes")]
+    id: String,
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for MockupRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<MockupRenderOptionsInput> for MockupRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MockupRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupRenderInput {
+    #[schemars(description = "One unique entry for every distinct sourceId in the mockup spec")]
+    sources: Vec<MockupSourceInput>,
+    spec: MockupSpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: MockupRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(description = "Render and encode the complete mockup without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupExtractPlanInput {
+    spec: MockupExtractSpec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupExtractRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_mockup_extract_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_MOCKUP_EXTRACT_PIXELS))]
+    max_cumulative_pixels: u64,
+}
+
+impl Default for MockupExtractRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_cumulative_pixels: MCP_MAX_MOCKUP_EXTRACT_PIXELS,
+        }
+    }
+}
+
+impl TryFrom<MockupExtractRenderOptionsInput> for MockupExtractRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MockupExtractRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_cumulative_pixels == 0
+            || value.max_cumulative_pixels > MCP_MAX_MOCKUP_EXTRACT_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "mockup extraction cumulative pixel limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_cumulative_pixels: value.max_cumulative_pixels,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupExtractRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    spec: MockupExtractSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    options: MockupExtractRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Render, encode, hash, and same-parent stage without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MeshPlanInput {
+    spec: MeshWarpSpec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MeshRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for MeshRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<MeshRenderOptionsInput> for MeshWarpRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MeshRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MeshRenderInput {
+    source: String,
+    spec: MeshWarpSpec,
+    output: String,
+    #[serde(default)]
+    options: MeshRenderOptionsInput,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RemapPlanInput {
+    spec: RemapSpec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RemapRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for RemapRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<RemapRenderOptionsInput> for RemapRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: RemapRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RemapRenderInput {
+    source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    map: Option<String>,
+    spec: RemapSpec,
+    output: String,
+    #[serde(default)]
+    options: RemapRenderOptionsInput,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelinePlanInput {
+    spec: TimelineSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelineSourceInput {
+    #[schemars(description = "Exact sourceId referenced by one or more planned frames")]
+    id: String,
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelineRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_timeline_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_TIMELINE_PIXELS))]
+    max_cumulative_pixels: u64,
+}
+
+const fn default_mcp_timeline_pixels() -> u64 {
+    MCP_MAX_TIMELINE_PIXELS
+}
+
+impl Default for TimelineRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_cumulative_pixels: MCP_MAX_TIMELINE_PIXELS,
+        }
+    }
+}
+
+impl TryFrom<TimelineRenderOptionsInput> for TimelineRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: TimelineRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_cumulative_pixels == 0 || value.max_cumulative_pixels > MCP_MAX_TIMELINE_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "timeline cumulative pixel limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_cumulative_pixels: value.max_cumulative_pixels,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelineRenderInput {
+    sources: Vec<TimelineSourceInput>,
+    spec: TimelineSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    options: TimelineRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Render, encode, hash, and same-parent stage without publishing")]
+    dry_run: bool,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RenderLimitsInput {
@@ -448,6 +1089,10 @@ const fn default_mcp_max_pixels() -> u64 {
 
 const fn default_mcp_max_source_bytes() -> u64 {
     MCP_MAX_SOURCE_BYTES
+}
+
+const fn default_mcp_mockup_extract_pixels() -> u64 {
+    MCP_MAX_MOCKUP_EXTRACT_PIXELS
 }
 
 impl Default for RenderLimitsInput {
@@ -589,6 +1234,55 @@ struct RectifyRenderRequest {
     dry_run: bool,
 }
 
+#[derive(Debug)]
+struct MockupRenderRequest {
+    sources: Vec<MockupSourceInput>,
+    spec: MockupSpec,
+    output: String,
+    options: MockupRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MockupExtractRenderRequest {
+    source: String,
+    spec: MockupExtractSpec,
+    output_directory: String,
+    options: MockupExtractRenderOptions,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MeshRenderRequest {
+    source: String,
+    spec: MeshWarpSpec,
+    output: String,
+    options: MeshWarpRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct RemapRenderRequest {
+    source: String,
+    map: Option<String>,
+    spec: RemapSpec,
+    output: String,
+    options: RemapRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct TimelineRenderRequest {
+    sources: Vec<TimelineSourceInput>,
+    spec: TimelineSpec,
+    output_directory: String,
+    options: TimelineRenderOptions,
+    dry_run: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum CanvasWorkerProgram {
@@ -632,6 +1326,42 @@ struct PreparedRectifyRenderRequest {
 }
 
 #[derive(Debug)]
+struct PreparedMockupRenderRequest {
+    sources: Vec<(String, std::fs::File)>,
+    output: OutputTarget,
+    request: MockupRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMockupExtractRenderRequest {
+    source: std::fs::File,
+    output: DirectoryOutputTarget,
+    request: MockupExtractRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMeshRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: MeshRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedRemapRenderRequest {
+    source: std::fs::File,
+    map: Option<std::fs::File>,
+    output: OutputTarget,
+    request: RemapRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedTimelineRenderRequest {
+    sources: Vec<(String, std::fs::File)>,
+    output: DirectoryOutputTarget,
+    request: TimelineRenderRequest,
+}
+
+#[derive(Debug)]
 struct PreparedCanvasRenderRequest {
     source: std::fs::File,
     output: DirectoryOutputTarget,
@@ -663,6 +1393,115 @@ impl TryFrom<RectifyRenderInput> for RectifyRenderRequest {
             output: value.output,
             options: value.options.try_into()?,
             overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MockupRenderInput> for MockupRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MockupRenderInput) -> Result<Self, Self::Error> {
+        if value.sources.is_empty() || value.sources.len() > worldbend_core::MAX_MOCKUP_PLANES {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                format!(
+                    "mockup sources must contain 1 through {} entries",
+                    worldbend_core::MAX_MOCKUP_PLANES
+                ),
+            ));
+        }
+        let mut ids = std::collections::HashSet::with_capacity(value.sources.len());
+        for source in &value.sources {
+            if !ids.insert(source.id.as_str()) {
+                return Err(TransformError::new(
+                    ErrorCode::OutputCollision,
+                    "mockup source ids must be unique",
+                )
+                .with_details(json!({ "sourceId": source.id })));
+            }
+        }
+        Ok(Self {
+            sources: value.sources,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MockupExtractRenderInput> for MockupExtractRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MockupExtractRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MeshRenderInput> for MeshRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MeshRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<RemapRenderInput> for RemapRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: RemapRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            map: value.map,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<TimelineRenderInput> for TimelineRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: TimelineRenderInput) -> Result<Self, Self::Error> {
+        if value.sources.is_empty() || value.sources.len() > worldbend_core::MAX_TIMELINE_FRAMES {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "timeline sources must contain between 1 and 240 entries",
+            ));
+        }
+        let mut ids = std::collections::HashSet::with_capacity(value.sources.len());
+        for source in &value.sources {
+            if !ids.insert(source.id.as_str()) {
+                return Err(TransformError::new(
+                    ErrorCode::OutputCollision,
+                    "timeline source ids must be unique",
+                )
+                .with_details(json!({ "sourceId": source.id })));
+            }
+        }
+        Ok(Self {
+            sources: value.sources,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
             dry_run: value.dry_run,
         })
     }
@@ -726,12 +1565,18 @@ struct WorldbendServer {
     root: Arc<Option<WorkspaceRoot>>,
     render_admissions: Arc<Semaphore>,
     render_slots: Arc<Semaphore>,
+    surface: ToolSurface,
     tool_router: ToolRouter<Self>,
 }
 
 #[tool_router(router = tool_router)]
 impl WorldbendServer {
+    #[cfg(test)]
     fn new(root: Option<WorkspaceRoot>) -> Self {
+        Self::new_with_surface(root, ToolSurface::Direct)
+    }
+
+    fn new_with_surface(root: Option<WorkspaceRoot>, surface: ToolSurface) -> Self {
         let mut tool_router = Self::tool_router();
         set_input_schema::<ComposeInput>(&mut tool_router, "worldbend.compose");
         set_input_schema::<SolveInput>(&mut tool_router, "worldbend.solve");
@@ -758,12 +1603,399 @@ impl WorldbendServer {
             &mut tool_router,
             "worldbend.css",
         );
+        set_input_schema::<SearchInput>(&mut tool_router, "worldbend.search");
+        set_input_schema::<DescribeInput>(&mut tool_router, "worldbend.describe");
+        set_input_schema::<RunInput>(&mut tool_router, "worldbend.run");
+        set_output_schema::<ToolEnvelope<SearchResult>>(&mut tool_router, "worldbend.search");
+        set_output_schema::<ToolEnvelope<OperationDescriptor>>(
+            &mut tool_router,
+            "worldbend.describe",
+        );
+        set_output_schema::<ToolEnvelope<Value>>(&mut tool_router, "worldbend.run");
+
+        let hidden = match surface {
+            ToolSurface::Direct => CATALOG_TOOL_NAMES.as_slice(),
+            ToolSurface::Catalog => DIRECT_TOOL_NAMES.as_slice(),
+        };
+        for name in hidden {
+            tool_router.remove_route(name);
+        }
         Self {
             root: Arc::new(root),
             render_admissions: Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS)),
             render_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)),
+            surface,
             tool_router,
         }
+    }
+
+    /// Search the compact deterministic operation catalog.
+    #[tool(
+        name = "worldbend.search",
+        description = "Search Worldbend operation IDs by deterministic terms. Skip this call when the operation ID is already known.",
+        annotations(
+            title = "Search Worldbend operations",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn search(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SearchResult> {
+        let result = parse_tool_input::<SearchInput>(Value::Object(arguments))
+            .and_then(search_operation_catalog);
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Return the exact current input and output schemas for one operation.
+    #[tool(
+        name = "worldbend.describe",
+        description = "Return the exact closed input and output schemas for one Worldbend operation. Use only when the schema is not already known.",
+        annotations(
+            title = "Describe Worldbend operation",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn describe(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<OperationDescriptor> {
+        let result = parse_tool_input::<DescribeInput>(Value::Object(arguments))
+            .map(|input| describe_operation(input.operation));
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Execute one known operation through the same closed parser and handler
+    /// used by its direct compatibility tool.
+    #[tool(
+        name = "worldbend.run",
+        description = "Run one known deterministic Worldbend operation. arguments are validated against that operation's exact closed schema; use describe only when needed.",
+        annotations(
+            title = "Run Worldbend operation",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn run(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<Value> {
+        let input = match parse_tool_input::<RunInput>(Value::Object(arguments)) {
+            Ok(input) => input,
+            Err(error) => return ToolEnvelope::from_result(Err(error)),
+        };
+        let arguments = Parameters(input.arguments);
+        match input.operation {
+            OperationId::Compose => self.compose(arguments).into_value(),
+            OperationId::Solve => self.solve(arguments).into_value(),
+            OperationId::Inspect => self.inspect(arguments).into_value(),
+            OperationId::Render => self.render(arguments, cancellation).await.into_value(),
+            OperationId::Rectify => self.rectify(arguments).into_value(),
+            OperationId::RectifyRender => self
+                .rectify_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::CanvasRender => self
+                .canvas_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MockupPlan => self.mockup_plan(arguments).into_value(),
+            OperationId::MockupRender => self
+                .mockup_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MockupExtractPlan => self.mockup_extract_plan(arguments).into_value(),
+            OperationId::MockupExtractRender => self
+                .mockup_extract_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MeshPlan => self.mesh_plan(arguments).into_value(),
+            OperationId::MeshRender => self.mesh_render(arguments, cancellation).await.into_value(),
+            OperationId::RemapPlan => self.remap_plan(arguments).into_value(),
+            OperationId::RemapRender => self
+                .remap_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::TimelinePlan => self.timeline_plan(arguments).into_value(),
+            OperationId::TimelineRender => self
+                .timeline_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::Css => self.css(arguments).into_value(),
+        }
+    }
+
+    fn mockup_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MockupPlan> {
+        let result = parse_tool_input::<MockupPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_mockup(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn mockup_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MockupFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MockupRenderInput>(Value::Object(arguments))
+            .and_then(MockupRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "mockup_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_mockup_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_mockup_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn mockup_extract_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MockupExtractPlan> {
+        let result = parse_tool_input::<MockupExtractPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_mockup_extract(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn mockup_extract_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MockupExtractFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MockupExtractRenderInput>(Value::Object(arguments))
+            .and_then(MockupExtractRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "mockup_extract_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_mockup_extract_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_directory(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_mockup_extract_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn mesh_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MeshWarpPlan> {
+        let result = parse_tool_input::<MeshPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_mesh_warp(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn mesh_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MeshWarpFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MeshRenderInput>(Value::Object(arguments))
+            .and_then(MeshRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "mesh_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_mesh_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_mesh_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn remap_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<RemapPlan> {
+        let result = parse_tool_input::<RemapPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_remap(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn remap_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<RemapFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<RemapRenderInput>(Value::Object(arguments))
+            .and_then(RemapRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "remap_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_remap_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_remap_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn timeline_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<TimelinePlan> {
+        let result = parse_tool_input::<TimelinePlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_timeline(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn timeline_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<TimelineFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<TimelineRenderInput>(Value::Object(arguments))
+            .and_then(TimelineRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "timeline_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_timeline_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_directory(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_timeline_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
     }
 
     /// Compose semantic transform adjustments over a saved plane without rasterizing.
@@ -1008,7 +2240,7 @@ impl WorldbendServer {
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
-                        execute_bounded_canvas(
+                        execute_bounded_directory(
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -1059,11 +2291,17 @@ impl ServerHandler for WorldbendServer {
     }
 
     fn get_info(&self) -> ServerInfo {
+        let instructions = match self.surface {
+            ToolSurface::Direct => {
+                "Use one direct Worldbend tool for semantic transform composition, explicit destination geometry, explicit source-plane rectification, ordered Canvas Set rendering, bounded common Warp presets, inspection, render, or CSS. Canvas operations and variants are caller-chosen; Worldbend does not choose crops or infer content. Rectification requires caller-supplied source corners and output dimensions. Plane detection, aspect inference, and custom mesh warp are not provided. Corner order is always TL, TR, BR, BL."
+            }
+            ToolSurface::Catalog => {
+                "Call worldbend.run directly when the operation ID and arguments are known. Use worldbend.search only to find an unfamiliar operation and worldbend.describe only to fetch its exact closed schema. Worldbend executes caller-supplied deterministic geometry and Canvas programs; it does not choose crops, detect planes, infer dimensions, or plan creative work. Corner order is always TL, TR, BR, BL."
+            }
+        };
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("worldbend", env!("CARGO_PKG_VERSION")))
-            .with_instructions(
-                "Use one direct Worldbend tool for semantic transform composition, explicit destination geometry, explicit source-plane rectification, ordered Canvas Set rendering, bounded common Warp presets, inspection, render, or CSS. Canvas operations and variants are caller-chosen; Worldbend does not choose crops or infer content. Rectification requires caller-supplied source corners and output dimensions. Plane detection, aspect inference, and custom mesh warp are not provided. Corner order is always TL, TR, BR, BL.",
-            )
+            .with_instructions(instructions)
     }
 }
 
@@ -1106,11 +2344,11 @@ where
     }
 }
 
-/// Keep one Canvas Set admission and execution slot through the atomic commit
+/// Keep one atomic-directory admission and execution slot through the commit
 /// point. All cancellable/timeout-bound work, including same-parent staging,
 /// completes first. The final token/deadline check is followed by exactly one
 /// synchronous no-replace directory rename and no await.
-async fn execute_bounded_canvas<T, F>(
+async fn execute_bounded_directory<T, F>(
     admission: OwnedSemaphorePermit,
     slots: Arc<Semaphore>,
     deadline_remaining: Duration,
@@ -1128,7 +2366,7 @@ where
     let _slot = tokio::select! {
         _ = cancellation.cancelled() => return Err(TransformError::new(
             ErrorCode::Cancelled,
-            "Canvas Set render was cancelled by the client before completion",
+            "atomic directory render was cancelled by the client before completion",
         )),
         outcome = timeout(slot_remaining, slots.acquire_owned()) => match outcome {
             Ok(Ok(permit)) => permit,
@@ -1137,7 +2375,7 @@ where
                 "render concurrency gate is unavailable",
             )),
             Err(_) => return Err(render_timeout_error(
-                "queued for a Canvas Set execution slot",
+                "queued for an atomic directory execution slot",
                 deadline_remaining,
             )),
         }
@@ -1154,7 +2392,7 @@ where
             let _ = work.await;
             return Err(TransformError::new(
                 ErrorCode::Cancelled,
-                "Canvas Set render was cancelled by the client before completion",
+                "atomic directory render was cancelled by the client before completion",
             ));
         },
         _ = tokio::time::sleep(work_remaining) => {
@@ -1171,7 +2409,7 @@ where
     if cancellation.is_cancelled() {
         return Err(TransformError::new(
             ErrorCode::Cancelled,
-            "Canvas Set render was cancelled by the client before commit",
+            "atomic directory render was cancelled by the client before commit",
         ));
     }
     if started.elapsed() >= deadline_remaining {
@@ -1286,6 +2524,21 @@ where
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WorkerMockupSource {
+    id: String,
+    source: PathBuf,
+    source_sha256: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WorkerRemapMap {
+    path: PathBuf,
+    sha256: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "camelCase")]
 enum WorkerRequest {
     Transform {
@@ -1307,6 +2560,40 @@ enum WorkerRequest {
         program: CanvasWorkerProgram,
         output_directory: PathBuf,
         options: CanvasSetRenderOptions,
+    },
+    Mockup {
+        sources: Vec<WorkerMockupSource>,
+        spec: MockupSpec,
+        output: PathBuf,
+        options: MockupRenderOptions,
+    },
+    MockupExtract {
+        source: PathBuf,
+        source_sha256: String,
+        spec: MockupExtractSpec,
+        output_directory: PathBuf,
+        options: MockupExtractRenderOptions,
+    },
+    Mesh {
+        source: PathBuf,
+        source_sha256: String,
+        spec: MeshWarpSpec,
+        output: PathBuf,
+        options: MeshWarpRenderOptions,
+    },
+    Remap {
+        source: PathBuf,
+        source_sha256: String,
+        map: Option<WorkerRemapMap>,
+        spec: RemapSpec,
+        output: PathBuf,
+        options: RemapRenderOptions,
+    },
+    Timeline {
+        sources: Vec<WorkerMockupSource>,
+        spec: TimelineSpec,
+        output_directory: PathBuf,
+        options: TimelineRenderOptions,
     },
 }
 
@@ -1335,7 +2622,9 @@ async fn run_server(args: Args) -> anyhow::Result<()> {
         .or_else(|| std::env::var_os("WORLDBEND_WORKSPACE_ROOT").map(PathBuf::from))
         .map(|path| WorkspaceRoot::open(&path))
         .transpose()?;
-    let service = WorldbendServer::new(root).serve(stdio()).await?;
+    let service = WorldbendServer::new_with_surface(root, args.surface)
+        .serve(stdio())
+        .await?;
     service.waiting().await?;
     Ok(())
 }
@@ -1406,6 +2695,116 @@ fn run_worker_process() {
             &output_directory,
             options,
         )),
+        Ok(WorkerRequest::Mockup {
+            sources,
+            spec,
+            output,
+            options,
+        }) => {
+            let sources = sources
+                .into_iter()
+                .map(|source| {
+                    (
+                        source.id,
+                        MockupFileSource {
+                            path: source.source,
+                            source_sha256: Some(source.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_mockup_files_with_cancel(
+                &sources,
+                &spec,
+                &output,
+                options,
+                true,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::MockupExtract {
+            source,
+            source_sha256,
+            spec,
+            output_directory,
+            options,
+        }) => write_worker_result(render_mockup_extract_files_with_cancel(
+            &source,
+            Some(&source_sha256),
+            &spec,
+            &output_directory,
+            options,
+            false,
+            &|| false,
+        )),
+        Ok(WorkerRequest::Mesh {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_mesh_warp_file_with_cancel(
+            &source,
+            Some(&source_sha256),
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+            &|| false,
+        )),
+        Ok(WorkerRequest::Remap {
+            source,
+            source_sha256,
+            map,
+            spec,
+            output,
+            options,
+        }) => {
+            let map = map.map(|map| RemapFileMap {
+                path: map.path,
+                sha256: Some(map.sha256),
+            });
+            write_worker_result(render_remap_file_with_cancel(
+                &source,
+                Some(&source_sha256),
+                map.as_ref(),
+                &spec,
+                &output,
+                options,
+                true,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::Timeline {
+            sources,
+            spec,
+            output_directory,
+            options,
+        }) => {
+            let sources = sources
+                .into_iter()
+                .map(|source| {
+                    (
+                        source.id,
+                        TimelineFileSource {
+                            path: source.source,
+                            source_sha256: Some(source.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_timeline_files_with_cancel(
+                &sources,
+                &spec,
+                &output_directory,
+                options,
+                false,
+                &|| false,
+            ));
+        }
         Err(error) => write_worker_result::<FileRenderResult>(Err(error)),
     }
 }
@@ -1488,6 +2887,163 @@ fn prepare_rectify_render_request(
     let output = root.prepare_output(&request.output, request.overwrite)?;
     Ok(PreparedRectifyRenderRequest {
         source,
+        output,
+        request,
+    })
+}
+
+fn prepare_mockup_render_request(
+    root: &WorkspaceRoot,
+    request: MockupRenderRequest,
+) -> TransformResult<PreparedMockupRenderRequest> {
+    let plan = plan_mockup(&request.spec)?;
+    let required = plan
+        .planes
+        .iter()
+        .map(|plane| plane.source_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let provided = request
+        .sources
+        .iter()
+        .map(|source| source.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    if required != provided {
+        let mut required = required.into_iter().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "mockup sources must exactly match the distinct sourceId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    let sources = request
+        .sources
+        .iter()
+        .map(|source| {
+            root.open_source(&source.source)
+                .map(|file| (source.id.clone(), file))
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedMockupRenderRequest {
+        sources,
+        output,
+        request,
+    })
+}
+
+fn prepare_mockup_extract_render_request(
+    root: &WorkspaceRoot,
+    request: MockupExtractRenderRequest,
+) -> TransformResult<PreparedMockupExtractRenderRequest> {
+    let plan = plan_mockup_extract(&request.spec)?;
+    if plan.cumulative_output_pixels > request.options.max_cumulative_pixels {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "mockup extraction exceeds the configured cumulative output pixel limit",
+        )
+        .with_details(json!({
+            "pixels": plan.cumulative_output_pixels,
+            "maximum": request.options.max_cumulative_pixels,
+        })));
+    }
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedMockupExtractRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_mesh_render_request(
+    root: &WorkspaceRoot,
+    request: MeshRenderRequest,
+) -> TransformResult<PreparedMeshRenderRequest> {
+    plan_mesh_warp(&request.spec)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedMeshRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_remap_render_request(
+    root: &WorkspaceRoot,
+    request: RemapRenderRequest,
+) -> TransformResult<PreparedRemapRenderRequest> {
+    let plan = plan_remap(&request.spec)?;
+    if plan.requires_map != request.map.is_some() {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            if plan.requires_map {
+                "displacement remap requires exactly one map raster"
+            } else {
+                "lens remap must not include a map raster"
+            },
+        ));
+    }
+    let source = root.open_source(&request.source)?;
+    let map = request
+        .map
+        .as_deref()
+        .map(|path| root.open_source(path))
+        .transpose()?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedRemapRenderRequest {
+        source,
+        map,
+        output,
+        request,
+    })
+}
+
+fn prepare_timeline_render_request(
+    root: &WorkspaceRoot,
+    request: TimelineRenderRequest,
+) -> TransformResult<PreparedTimelineRenderRequest> {
+    let plan = plan_timeline(&request.spec)?;
+    if plan.cumulative_output_pixels > request.options.max_cumulative_pixels {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "timeline exceeds the configured cumulative output pixel limit",
+        ));
+    }
+    let required = plan
+        .source_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
+    let provided = request
+        .sources
+        .iter()
+        .map(|source| &source.id)
+        .collect::<std::collections::HashSet<_>>();
+    if required != provided {
+        let mut required = required.into_iter().cloned().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "timeline sources must exactly match the planned sourceId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    let sources = request
+        .sources
+        .iter()
+        .map(|source| {
+            root.open_source(&source.source)
+                .map(|file| (source.id.clone(), file))
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedTimelineRenderRequest {
+        sources,
         output,
         request,
     })
@@ -1633,6 +3189,592 @@ async fn run_rectify_worker(
     Ok(result)
 }
 
+async fn run_mockup_worker(
+    prepared: PreparedMockupRenderRequest,
+) -> Result<MockupFileRenderResult, TransformError> {
+    let PreparedMockupRenderRequest {
+        sources,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-mockup-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(ErrorCode::Render, "private mockup staging is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let mut staged_sources = Vec::with_capacity(sources.len());
+    for (index, (id, source)) in sources.into_iter().enumerate() {
+        let staged_source = staging.path().join(format!("source-{index}.raster"));
+        let staged_source_for_copy = staged_source.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private mockup source staging task failed: {error}"),
+            )
+        })??;
+        staged_sources.push(WorkerMockupSource {
+            id,
+            source: staged_source,
+            source_sha256,
+        });
+    }
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Mockup {
+        sources: staged_sources,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: MockupFileRenderResult = execute_worker_request(&request).await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    if !input.dry_run {
+        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("mockup output publication task failed: {error}"),
+                )
+            })??;
+    }
+    Ok(result)
+}
+
+async fn run_mesh_worker(
+    prepared: PreparedMeshRenderRequest,
+) -> Result<MeshWarpFileRenderResult, TransformError> {
+    let PreparedMeshRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-mesh-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(ErrorCode::Render, "private mesh staging is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private mesh source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Mesh {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: MeshWarpFileRenderResult = execute_worker_request(&request).await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    if !input.dry_run {
+        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("mesh output publication task failed: {error}"),
+                )
+            })??;
+    }
+    Ok(result)
+}
+
+async fn run_remap_worker(
+    prepared: PreparedRemapRenderRequest,
+) -> Result<RemapFileRenderResult, TransformError> {
+    let PreparedRemapRenderRequest {
+        source,
+        map,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-remap-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(ErrorCode::Render, "private remap staging is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let maximum = input.options.limits.max_source_bytes;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private remap source staging task failed: {error}"),
+        )
+    })??;
+    let map = match map {
+        Some(map) => {
+            let staged_map = staging.path().join("map.raster");
+            let staged_map_for_copy = staged_map.clone();
+            let map_sha256 = tokio::task::spawn_blocking(move || {
+                copy_source_to_private_staging(map, &staged_map_for_copy, maximum)
+            })
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("private remap map staging task failed: {error}"),
+                )
+            })??;
+            Some(WorkerRemapMap {
+                path: staged_map,
+                sha256: map_sha256,
+            })
+        }
+        None => None,
+    };
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Remap {
+        source: staged_source,
+        source_sha256,
+        map,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: RemapFileRenderResult = execute_worker_request(&request).await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    if !input.dry_run {
+        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("remap output publication task failed: {error}"),
+                )
+            })??;
+    }
+    Ok(result)
+}
+
+async fn run_mockup_extract_worker(
+    prepared: PreparedMockupExtractRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<MockupExtractFileRenderResult>, TransformError> {
+    let PreparedMockupExtractRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-mockup-extract-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Render,
+            "private mockup extraction staging is not writable",
+        )
+        .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private mockup extraction source staging task failed: {error}"),
+        )
+    })??;
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "mockup extraction was cancelled while staging its source",
+        ));
+    }
+
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::MockupExtract {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: MockupExtractFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "mockup extraction was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    normalize_mockup_extract_worker_result(
+        &mut result,
+        &staged_output,
+        &input.output_directory,
+        input.dry_run,
+    )?;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_MOCKUP_PLANES,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("mockup extraction output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_mockup_extract_worker_result(
+    result: &mut MockupExtractFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+) -> TransformResult<()> {
+    if result.plan.outputs.len() != result.items.len() {
+        return Err(invalid_mockup_extract_worker_result(
+            "mockup extraction worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for (planned, item) in result.plan.outputs.iter().zip(&mut result.items) {
+        if planned.id != item.id
+            || planned.filename != format!("{}.png", item.id)
+            || planned.plan.spec.output.width != item.width
+            || planned.plan.spec.output.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_mockup_extract_worker_result(
+                "mockup extraction worker result does not match its ordered plan",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "mockup extraction encoded output byte count overflowed",
+            )
+        })?;
+        let path = staged_output.join(&planned.filename);
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            invalid_mockup_extract_worker_result("mockup extraction worker output file is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
+        {
+            return Err(invalid_mockup_extract_worker_result(
+                "mockup extraction worker output file does not match its result",
+            ));
+        }
+        expected_files.push(planned.filename.clone());
+        item.output = canvas_output_label(output_directory, &item.id);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_mockup_extract_worker_result(
+                "mockup extraction worker output directory is missing",
+            )
+            .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_mockup_extract_worker_result(
+                        "mockup extraction worker output could not be inspected",
+                    )
+                    .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_mockup_extract_worker_result(
+            "mockup extraction worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "mockup extraction encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        MockupExtractRenderStatus::Ready
+    } else {
+        MockupExtractRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_mockup_extract_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+async fn run_timeline_worker(
+    prepared: PreparedTimelineRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<TimelineFileRenderResult>, TransformError> {
+    let PreparedTimelineRenderRequest {
+        sources,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-timeline-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Render,
+            "private timeline staging is not writable",
+        )
+        .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let mut staged_sources = Vec::with_capacity(sources.len());
+    for (index, (id, source)) in sources.into_iter().enumerate() {
+        if cancellation.is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "timeline render was cancelled while staging its sources",
+            ));
+        }
+        let staged_source = staging.path().join(format!("source-{index}.raster"));
+        let staged_source_for_copy = staged_source.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private timeline source staging task failed: {error}"),
+            )
+        })??;
+        staged_sources.push(WorkerMockupSource {
+            id,
+            source: staged_source,
+            source_sha256,
+        });
+    }
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::Timeline {
+        sources: staged_sources,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: TimelineFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "timeline render was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    normalize_timeline_worker_result(
+        &mut result,
+        &staged_output,
+        &input.output_directory,
+        input.dry_run,
+    )?;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_TIMELINE_FRAMES,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("timeline output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_timeline_worker_result(
+    result: &mut TimelineFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+) -> TransformResult<()> {
+    if result.plan.frames.len() != result.items.len() {
+        return Err(invalid_timeline_worker_result(
+            "timeline worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for (planned, item) in result.plan.frames.iter().zip(&mut result.items) {
+        if planned.index != item.index
+            || planned.id != item.id
+            || planned.source_id != item.source_id
+            || result.plan.output.width != item.width
+            || result.plan.output.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_timeline_worker_result(
+                "timeline worker result does not match its ordered plan",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "timeline encoded output byte count overflowed",
+            )
+        })?;
+        let filename = format!("{}.png", item.id);
+        let path = staged_output.join(&filename);
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            invalid_timeline_worker_result("timeline worker output file is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
+        {
+            return Err(invalid_timeline_worker_result(
+                "timeline worker output file does not match its result",
+            ));
+        }
+        expected_files.push(filename);
+        item.output = canvas_output_label(output_directory, &item.id);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_timeline_worker_result("timeline worker output directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_timeline_worker_result("timeline worker output could not be inspected")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_timeline_worker_result(
+            "timeline worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_TIMELINE_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "timeline encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_TIMELINE_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        TimelineRenderStatus::Ready
+    } else {
+        TimelineRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_timeline_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
 async fn run_canvas_worker(
     prepared: PreparedCanvasRenderRequest,
     cancellation: CancellationToken,
@@ -1705,9 +3847,11 @@ async fn run_canvas_worker(
     let staged_output_for_copy = staged_output.clone();
     let staging_cancellation = cancellation.clone();
     let staged = tokio::task::spawn_blocking(move || {
-        output.stage_from_with_cancel(&staged_output_for_copy, &|| {
-            staging_cancellation.is_cancelled()
-        })
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_CANVAS_VARIANTS,
+            &|| staging_cancellation.is_cancelled(),
+        )
     })
     .await
     .map_err(|error| {
@@ -2069,6 +4213,101 @@ async fn monitor_worker_memory(_pid: Option<u32>) -> TransformError {
     std::future::pending().await
 }
 
+fn search_operation_catalog(input: SearchInput) -> TransformResult<SearchResult> {
+    if !(1..=20).contains(&input.limit) {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "search limit must be an integer from 1 through 20",
+        ));
+    }
+    let terms = input
+        .query
+        .split_whitespace()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let matches = OperationId::ALL
+        .into_iter()
+        .filter(|operation| {
+            let haystack = format!(
+                "{} {} {} {}",
+                operation.id(),
+                operation.title(),
+                operation.summary(),
+                operation.search_terms()
+            )
+            .to_ascii_lowercase();
+            terms.iter().all(|term| haystack.contains(term))
+        })
+        .collect::<Vec<_>>();
+    Ok(SearchResult {
+        operations: matches
+            .iter()
+            .copied()
+            .take(usize::from(input.limit))
+            .map(OperationSummary::from)
+            .collect(),
+        total_matches: u32::try_from(matches.len()).unwrap_or(u32::MAX),
+    })
+}
+
+fn describe_operation(operation: OperationId) -> OperationDescriptor {
+    let (input_schema, output_schema) = match operation {
+        OperationId::Compose => operation_schemas::<ComposeInput, AffineComposition>(),
+        OperationId::Solve => operation_schemas::<SolveInput, SolveOutput>(),
+        OperationId::Inspect => operation_schemas::<InspectInput, InspectOutput>(),
+        OperationId::Render => operation_schemas::<RenderInput, FileRenderResult>(),
+        OperationId::Rectify => operation_schemas::<RectifyInput, RectifyPlan>(),
+        OperationId::RectifyRender => {
+            operation_schemas::<RectifyRenderInput, RectifyFileRenderResult>()
+        }
+        OperationId::CanvasRender => (
+            Value::Object(canvas_render_input_schema()),
+            Value::Object(generated_output_schema::<
+                ToolEnvelope<CanvasSetFileRenderResult>,
+            >()),
+        ),
+        OperationId::MockupPlan => operation_schemas::<MockupPlanInput, MockupPlan>(),
+        OperationId::MockupRender => {
+            operation_schemas::<MockupRenderInput, MockupFileRenderResult>()
+        }
+        OperationId::MockupExtractPlan => {
+            operation_schemas::<MockupExtractPlanInput, MockupExtractPlan>()
+        }
+        OperationId::MockupExtractRender => {
+            operation_schemas::<MockupExtractRenderInput, MockupExtractFileRenderResult>()
+        }
+        OperationId::MeshPlan => operation_schemas::<MeshPlanInput, MeshWarpPlan>(),
+        OperationId::MeshRender => operation_schemas::<MeshRenderInput, MeshWarpFileRenderResult>(),
+        OperationId::RemapPlan => operation_schemas::<RemapPlanInput, RemapPlan>(),
+        OperationId::RemapRender => operation_schemas::<RemapRenderInput, RemapFileRenderResult>(),
+        OperationId::TimelinePlan => operation_schemas::<TimelinePlanInput, TimelinePlan>(),
+        OperationId::TimelineRender => {
+            operation_schemas::<TimelineRenderInput, TimelineFileRenderResult>()
+        }
+        OperationId::Css => operation_schemas::<CssInput, worldbend_core::CssTransform>(),
+    };
+    OperationDescriptor {
+        operation,
+        title: operation.title(),
+        summary: operation.summary(),
+        mutates_files: operation.mutates_files(),
+        requires_workspace: operation.requires_workspace(),
+        input_schema,
+        output_schema,
+    }
+}
+
+fn operation_schemas<I, O>() -> (Value, Value)
+where
+    I: JsonSchema + 'static,
+    O: Serialize + JsonSchema + 'static,
+{
+    (
+        Value::Object(generated_input_schema::<I>()),
+        Value::Object(generated_output_schema::<ToolEnvelope<O>>()),
+    )
+}
+
 fn parse_tool_input<T: DeserializeOwned>(arguments: Value) -> Result<T, TransformError> {
     let mut counter = CountingWriter::default();
     serde_json::to_writer(&mut counter, &arguments).map_err(|error| {
@@ -2121,8 +4360,17 @@ where
         .map
         .get_mut(name)
         .unwrap_or_else(|| panic!("missing generated tool route {name}"));
-    route.attr.input_schema = rmcp::handler::server::tool::schema_for_input::<T>()
-        .unwrap_or_else(|error| panic!("invalid generated input schema for {name}: {error}"));
+    route.attr.input_schema = Arc::new(generated_input_schema::<T>());
+}
+
+fn generated_input_schema<T>() -> Map<String, Value>
+where
+    T: JsonSchema + 'static,
+{
+    rmcp::handler::server::tool::schema_for_input::<T>()
+        .unwrap_or_else(|error| panic!("invalid generated input schema: {error}"))
+        .as_ref()
+        .clone()
 }
 
 fn set_canvas_render_input_schema(tool_router: &mut ToolRouter<WorldbendServer>) {
@@ -2132,7 +4380,11 @@ fn set_canvas_render_input_schema(tool_router: &mut ToolRouter<WorldbendServer>)
         .map
         .get_mut(NAME)
         .unwrap_or_else(|| panic!("missing generated tool route {NAME}"));
-    let mut schema = route.attr.input_schema.as_ref().clone();
+    route.attr.input_schema = Arc::new(canvas_render_input_schema());
+}
+
+fn canvas_render_input_schema() -> Map<String, Value> {
+    let mut schema = generated_input_schema::<CanvasRenderInput>();
     schema.insert(
         "oneOf".to_owned(),
         json!([
@@ -2163,7 +4415,7 @@ fn set_canvas_render_input_schema(tool_router: &mut ToolRouter<WorldbendServer>)
             }
         ]),
     );
-    route.attr.input_schema = Arc::new(schema);
+    schema
 }
 
 fn set_output_schema<T>(tool_router: &mut ToolRouter<WorldbendServer>, name: &str)
@@ -2174,6 +4426,14 @@ where
         .map
         .get_mut(name)
         .unwrap_or_else(|| panic!("missing generated tool route {name}"));
+    let output_schema = generated_output_schema::<T>();
+    route.attr.output_schema = Some(Arc::new(output_schema));
+}
+
+fn generated_output_schema<T>() -> Map<String, Value>
+where
+    T: JsonSchema + 'static,
+{
     let mut output_schema = rmcp::handler::server::tool::schema_for_output::<T>()
         .as_ref()
         .clone();
@@ -2181,7 +4441,7 @@ where
     // clients that validate outputSchema as an object schema before accepting
     // tools/list, while retaining schemars' success/failure union below it.
     output_schema.insert("type".to_owned(), json!("object"));
-    route.attr.output_schema = Some(Arc::new(output_schema));
+    output_schema
 }
 
 #[cfg(test)]
@@ -2235,6 +4495,63 @@ mod tests {
                 Some(false)
             );
         }
+    }
+
+    #[test]
+    fn progressive_catalog_is_small_closed_and_exactly_describable() {
+        let server = WorldbendServer::new_with_surface(None, ToolSurface::Catalog);
+        let tools = server.tool_router.list_all();
+        let mut names = tools
+            .iter()
+            .map(|tool| tool.name.as_ref())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            ["worldbend.describe", "worldbend.run", "worldbend.search"]
+        );
+        let complete_tools_list = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": &tools }
+        });
+        let catalog_bytes = serde_json::to_vec(&complete_tools_list).unwrap().len();
+        assert!(
+            catalog_bytes <= MAX_PROGRESSIVE_TOOL_CATALOG_BYTES,
+            "progressive tools/list is {catalog_bytes} bytes; budget is {MAX_PROGRESSIVE_TOOL_CATALOG_BYTES}"
+        );
+        for tool in tools {
+            assert_eq!(
+                tool.annotations.as_ref().and_then(|a| a.open_world_hint),
+                Some(false)
+            );
+        }
+
+        let search = search_operation_catalog(SearchInput {
+            query: "flatten plane".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(search.total_matches, 4);
+        assert_eq!(
+            search
+                .operations
+                .iter()
+                .map(|operation| operation.operation)
+                .collect::<Vec<_>>(),
+            [
+                OperationId::Rectify,
+                OperationId::RectifyRender,
+                OperationId::MockupExtractPlan,
+                OperationId::MockupExtractRender
+            ]
+        );
+
+        let canvas = describe_operation(OperationId::CanvasRender);
+        assert_eq!(canvas.operation, OperationId::CanvasRender);
+        assert_eq!(canvas.input_schema["type"], "object");
+        assert!(canvas.input_schema.get("oneOf").is_some());
+        assert_eq!(canvas.output_schema["type"], "object");
     }
 
     #[test]
@@ -3004,7 +5321,7 @@ mod tests {
         let commit = workspace
             .prepare_output_directory("set")
             .unwrap()
-            .stage_from(private.path())
+            .stage_from(private.path(), worldbend_core::MAX_CANVAS_VARIANTS)
             .unwrap();
         let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
         let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
@@ -3012,7 +5329,7 @@ mod tests {
         let cancellation = CancellationToken::new();
         let work_cancellation = cancellation.child_token();
 
-        let value = execute_bounded_canvas(
+        let value = execute_bounded_directory(
             admission,
             slots.clone(),
             Duration::from_secs(5),
@@ -3046,7 +5363,7 @@ mod tests {
         let commit = workspace
             .prepare_output_directory("set")
             .unwrap()
-            .stage_from(private.path())
+            .stage_from(private.path(), worldbend_core::MAX_CANVAS_VARIANTS)
             .unwrap();
         let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
         let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
@@ -3055,7 +5372,7 @@ mod tests {
         let work_cancellation = cancellation.child_token();
         let cancel_before_return = cancellation.clone();
 
-        let error = execute_bounded_canvas(
+        let error = execute_bounded_directory(
             admission,
             slots.clone(),
             Duration::from_secs(5),
@@ -3077,7 +5394,7 @@ mod tests {
         let residues = fs::read_dir(root.path())
             .unwrap()
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|name| name.starts_with(".worldbend-canvas-"))
+            .filter(|name| name.starts_with(".worldbend-directory-"))
             .collect::<Vec<_>>();
         assert!(
             residues.is_empty(),
@@ -3128,7 +5445,7 @@ mod tests {
                 tokio::task::yield_now().await;
             }
         });
-        let error = execute_bounded_canvas(
+        let error = execute_bounded_directory(
             admission,
             slots.clone(),
             Duration::from_secs(5),
@@ -3136,7 +5453,11 @@ mod tests {
             work_cancellation,
             async move {
                 let staged = tokio::task::spawn_blocking(move || {
-                    target.stage_from_with_cancel(&source, &|| staging_token.is_cancelled())
+                    target.stage_from_with_cancel(
+                        &source,
+                        worldbend_core::MAX_CANVAS_VARIANTS,
+                        &|| staging_token.is_cancelled(),
+                    )
                 })
                 .await
                 .unwrap();

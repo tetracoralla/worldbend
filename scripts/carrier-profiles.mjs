@@ -23,8 +23,11 @@ const packageKeys = {
     "forbiddenPrefixes",
   ],
   agent: [
+    "defaultToolSurface",
+    "nativeCargoFeatures",
     "requiredExecutables",
     "maxToolCatalogBytes",
+    "maxDirectToolCatalogBytes",
     "forbiddenSuffixes",
     "forbiddenPrefixes",
   ],
@@ -82,9 +85,9 @@ export async function loadCarrierProfiles(file = carrierProfilesPath) {
   );
   if (
     JSON.stringify(value.carriers.figma.workspace.siblingWorkspaceIds) !==
-    JSON.stringify(["canvas"])
+    JSON.stringify(["canvas", "mockup", "mesh", "remap"])
   ) {
-    throw new Error("The first independent Figma sibling workspace must be canvas");
+    throw new Error("The current Figma sibling workspaces must remain canvas, mockup, mesh, remap");
   }
   return value;
 }
@@ -154,6 +157,10 @@ function validatePackageProfile(name, profile) {
     } else if (key === "nativeExecutable") {
       if (typeof value !== "string" || value.length === 0 || value.includes("/")) {
         throw new Error(`${name}.package.${key} must be one executable basename`);
+      }
+    } else if (key === "defaultToolSurface") {
+      if (value !== "catalog") {
+        throw new Error(`${name}.package.${key} must be catalog`);
       }
     } else {
       assertUniqueStrings(value, `${name}.package.${key}`);

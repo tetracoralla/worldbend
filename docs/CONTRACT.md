@@ -97,6 +97,16 @@ same-sized 8-bit raster without re-running content-dependent Trim. Exact
 operation equations, backgrounds, carrier ceilings, directory commit, and
 exclusions are owned by `docs/CANVAS_CONTRACT.md`.
 
+## Explicit Place, deformation, remap, and Timeline data
+
+Multi-plane placement and reverse extraction are owned by
+`docs/MOCKUP_CONTRACT.md`. Caller-authored custom grids and explicit
+Brown-Conrady or channel-displacement remaps are owned by
+`docs/DEFORMATION_CONTRACT.md`. Ordered explicit frames and linear corner
+keyframes are owned by `docs/TIMELINE_CONTRACT.md`. These are independent
+versioned programs, not optional TransformSpec fields, perception features, or
+adapter-local loops.
+
 ## Stable errors
 
 | Code | Meaning |
@@ -117,6 +127,7 @@ exclusions are owned by `docs/CANVAS_CONTRACT.md`.
 | `E_TRIM_EMPTY` | Canvas Trim found no alpha above its explicit threshold |
 | `E_RASTER_SHAPE_MISMATCH` | a raster does not match the dimensions recorded by a resolved Canvas Plan |
 | `E_OUTPUT_COLLISION` | Canvas variant IDs or derived output names collide |
+| `E_SHARED_EDGE_MISMATCH` | declared Place / Mockup plane edges differ beyond their explicit tolerance |
 | `E_PATH_OUTSIDE_ROOT` | MCP path is outside its granted workspace |
 | `E_PATH_SYMLINK` | MCP path traversal encountered a symlink |
 | `E_DESTINATION_EXISTS` | output exists without overwrite authority |
@@ -254,15 +265,29 @@ visual acceptance.
 
 ## Agent transport
 
-The MCP surface is exactly `worldbend.compose`, `worldbend.solve`,
-`worldbend.inspect`, `worldbend.render`, `worldbend.rectify`,
-`worldbend.rectify_render`, `worldbend.canvas_render`, and `worldbend.css`. Each ordinary
-task routes directly to one tool. Published JSON Schemas and runtime parsing
-enforce the same canonical
-unions, constants, positive sizes, unknown-field rejection, and server resource
-ceilings. Every tool output schema declares a top-level JSON object while
-retaining the closed success/failure envelope beneath it, so strict MCP clients
-can accept `tools/list` without weakening result validation.
+The MCP binary has two explicit projections over one implementation. `direct`
+is the compatibility surface and remains exactly `worldbend.compose`,
+`worldbend.solve`, `worldbend.inspect`, `worldbend.render`,
+`worldbend.rectify`, `worldbend.rectify_render`,
+`worldbend.canvas_render`, and `worldbend.css`. `catalog` is the default
+installable Agent projection and exposes exactly `worldbend.search`,
+`worldbend.describe`, and `worldbend.run`. A known operation routes directly to
+one `run` call. Search returns compact operation metadata; describe returns the
+exact current closed input and output schemas for one selected operation; run
+dispatches through the same operation-specific parser and handler as the
+direct tool. Search and describe are not planners and are not required when an
+operation and its arguments are already known.
+
+Published JSON Schemas and runtime parsing enforce the same canonical unions,
+constants, positive sizes, unknown-field rejection, and server resource
+ceilings. The compact run envelope deliberately keeps its nested arguments
+generic in `tools/list`; accepting it does not weaken validation because the
+selected operation is parsed against the exact schema returned by describe and
+used by its direct compatibility tool. Every tool output schema declares a
+top-level JSON object while retaining the closed success/failure envelope
+beneath it, so strict MCP clients can accept `tools/list` without weakening
+result validation. The complete direct and compact catalogs have independent
+checked byte ceilings.
 
 Tool arguments are capped at 1 MiB and complete MCP results at 256 KiB. Render
 uses an isolated worker, a 20-second whole-call deadline, a 768 MiB per-worker
@@ -338,7 +363,7 @@ experimental and does not establish cross-provider substitutability by itself.
 
 ## ComfyUI V3 adapter
 
-The experimental local node pack exposes exactly four server-side V3 nodes.
+The experimental local node pack exposes exactly nine server-side V3 nodes.
 `Worldbend_TransformSpec` and `Worldbend_ApplyTransform` form the transform
 pair. The first accepts
 strict JSON, rejects duplicate keys and non-finite JSON constants, calls native
@@ -394,6 +419,15 @@ never re-runs Trim. Different output sizes are Comfy list values, not an IMAGE
 tensor batch. The Canvas route narrows cumulative output to 16 Mi pixels and
 retains the existing `B = 1` input rule.
 
+`Worldbend_RemapSpec` and `Worldbend_ApplyRemap` form the Remap route. Strict
+JSON validation and planning cross native `remap-inspect`. Apply calls native
+`remap-render`, accepts one optional source MASK, and requires exactly one
+displacement IMAGE only when the selected operation is displacement. An
+optional displacement-map MASK supplies native alpha-channel data. Python does
+not evaluate lens equations or sample the displacement field. The returned
+`WORLDBEND_REMAP` value is unchanged so primary and compatible 8-bit control
+images can reuse the same program and map.
+
 These Comfy routes do not yet have the MCP worker's independent 768 MiB process
 ceiling or admitted queue. The existing transform/rectification route uses a
 32 Mi-pixel ceiling and Canvas uses a 16 Mi-pixel cumulative ceiling; their
@@ -422,8 +456,10 @@ package failures.
 
 The Agent carrier packages the declared native executables, Capability
 projection, Product Skill, and legal inventory. HTML, CSS, Python, Figma, or
-Comfy interface material is a package failure. The live eight-tool catalog
-must remain at or below the profile's 81,920-byte ceiling.
+Comfy interface material is a package failure. The live compact catalog must
+remain at or below 16,384 bytes. The eight-tool direct compatibility catalog
+must remain at or below 81,920 bytes and is not loaded by the default plugin
+projection.
 
 The Comfy carrier builds `worldbend` with the `comfy` feature and no default
 CLI features. Its executable command surface is exactly `inspect`, `render`,
@@ -441,12 +477,13 @@ An intentional budget change requires a current measurement and cannot be
 smuggled into the same checker merely to make an unrelated build green.
 
 The Figma `perspective` workspace retains the checked operation order
-Transform, Free, Perspective, Warp, Correct, More. `canvas` is its first
-sibling workspace and owns separate draft, history, controls, messages, and
-runtime resources; entering and returning cannot mutate Perspective semantic
+Transform, Free, Perspective, Warp, Correct, More. One compact icon launcher
+opens the sibling `canvas`, `mockup`, `mesh`, and `remap` task workspaces.
+Each owns its draft, controls, messages, and runtime resources; only the active
+workspace renders. Entering and returning cannot mutate Perspective semantic
 state. The self-contained Figma release may still inline those modules into
 one HTML file; package inlining does not authorize a single ever-growing
-control surface.
+control surface or persistent capability copy.
 
 ## Figma reuse
 
@@ -473,8 +510,10 @@ Warp parameters remain visible while their operation is active so a designer
 can tune continuous values without reopening a popover.
 More follows Warp at the right edge of the operation choices and uses the same
 quiet control language; its popover is reserved for secondary session and
-language actions plus entry into a sibling task workspace. It never hides an
-active Perspective operation or turns that operation into a nested mode.
+language actions. The sibling Canvas task has a quiet `Sizes…` entry beside
+the selected source identity, outside both the operation choices and More. It
+never hides an active Perspective operation or turns that operation into a
+nested mode.
 Navigation into a replacing parameter surface uses a right-facing enter arrow;
 down arrows are reserved for dropdown or disclosure behavior. Product icons
 come from the configured project icon authority and retain its returned SVG

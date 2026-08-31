@@ -4,6 +4,7 @@ import {
   createCanvasDraft,
   MAX_FIGMA_CANVAS_PIXELS,
   removeCanvasVariant,
+  renameCanvasVariant,
   selectCanvasVariant,
   updateCanvasVariant,
   validateCanvasDraft,
@@ -52,5 +53,34 @@ describe("Canvas draft", () => {
     const next = addCanvasVariant(base);
     next.variants[1]!.anchor.x = 1;
     expect(base.variants[0]!.anchor.x).toBe(0);
+  });
+
+  it("validates Crop, Trim, Pad, Contain, Cover, and Stretch together", () => {
+    let draft = createCanvasDraft(100, 80);
+    const kinds = ["crop", "trim", "pad", "contain", "cover", "stretch"] as const;
+    for (let index = 1; index < kinds.length; index += 1) draft = addCanvasVariant(draft);
+    draft = {
+      ...draft,
+      variants: draft.variants.map((variant, index) => ({
+        ...variant,
+        id: kinds[index]!,
+        kind: kinds[index]!,
+        crop: { x: 10, y: 5, width: 40, height: 30 },
+        insets: { top: 1, right: 2, bottom: 3, left: 4 },
+        width: 60,
+        height: 50,
+      })),
+      activeId: "crop",
+    };
+    expect(validateCanvasDraft(draft)).toBeUndefined();
+  });
+
+  it("renames an output without allowing invalid or colliding identities", () => {
+    const draft = addCanvasVariant(createCanvasDraft(100, 80));
+    const renamed = renameCanvasVariant(draft, "output-2", "square");
+    expect(renamed.activeId).toBe("square");
+    expect(renamed.variants.map((variant) => variant.id)).toEqual(["output-1", "square"]);
+    expect(renameCanvasVariant(renamed, "square", "bad name")).toBe(renamed);
+    expect(renameCanvasVariant(renamed, "square", "output-1")).toBe(renamed);
   });
 });

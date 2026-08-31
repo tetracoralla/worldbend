@@ -40,6 +40,9 @@ try {
     "worldbend-cli",
     "-p",
     "worldbend-mcp",
+    "--no-default-features",
+    "--features",
+    agentPackageProfile.nativeCargoFeatures.join(","),
   ]);
   for (const name of agentPackageProfile.requiredExecutables) {
     const executable = executableName(name);

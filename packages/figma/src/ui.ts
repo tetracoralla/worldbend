@@ -100,14 +100,22 @@ import {
   createProductWorkspaceRouter,
   type ProductWorkspaceRouter,
 } from "./product-workspace";
+import { createTaskLauncher } from "./task-launcher";
 import { createCanvasWorkspace } from "./canvas-workspace";
 import type { CanvasWorkspaceCopy } from "./canvas-workspace-view";
+import { createMeshWorkspace, type MeshWorkspaceCopy } from "./mesh-workspace";
+import { createMockupWorkspace, type MockupWorkspaceCopy } from "./mockup-workspace";
+import { createRemapWorkspace, type RemapWorkspaceCopy } from "./remap-workspace";
+import type { DesignerTaskWorkspace, DesignerWorkspaceSource } from "./designer-workspace-common";
 
 const TRANSFORM_PREVIEW_TIMEOUT_MS = 5_000;
 const SOURCE_RASTER_TIMEOUT_MS = 10_000;
 
 const editorMount = required<HTMLDivElement>("editor");
 const canvasWorkspaceRoot = required<HTMLElement>("canvas-workspace");
+const mockupWorkspaceRoot = required<HTMLElement>("mockup-workspace");
+const meshWorkspaceRoot = required<HTMLElement>("mesh-workspace");
+const remapWorkspaceRoot = required<HTMLElement>("remap-workspace");
 const selectionState = required<HTMLParagraphElement>("selection-state");
 const sourceName = required<HTMLElement>("source-name");
 const errorMessage = required<HTMLElement>("error");
@@ -145,7 +153,8 @@ const actionFlipY = required<HTMLButtonElement>("action-flip-y");
 const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
-const actionOpenCanvas = required<HTMLButtonElement>("action-open-canvas");
+const taskLauncherButton = required<HTMLButtonElement>("task-launcher-button");
+const taskMenu = required<HTMLElement>("task-menu");
 const actionUndo = required<HTMLButtonElement>("action-undo");
 const actionRedo = required<HTMLButtonElement>("action-redo");
 const shortcutHelp = required<HTMLParagraphElement>("shortcut-help");
@@ -171,8 +180,10 @@ const localeSystemDetail = required<HTMLElement>("locale-system-detail");
 const localeEnglish = required<HTMLSpanElement>("locale-en-label");
 const localeChinese = required<HTMLSpanElement>("locale-zh-CN-label");
 
-type ShownNodes = { sourceNodeId: string; targetNodeId?: string };
-type ActiveSource = Omit<SourcePayload, "bytes">;
+type ShownNodes = { nodeIds: string[] };
+type ActiveSource = Omit<SourcePayload, "bytes" | "sources"> & {
+  sources?: Array<Omit<NonNullable<SourcePayload["sources"]>[number], "bytes">>;
+};
 
 let current: ActiveSource | undefined;
 // Which layers the editor currently shows. Unlike `current`, this survives a
@@ -329,20 +340,61 @@ const canvasWorkspace = createCanvasWorkspace({
     return translate(activeLocale, messageFromError(error, "unexpectedError"));
   },
 });
+const meshWorkspace = createMeshWorkspace({
+  root: meshWorkspaceRoot,
+  copy: meshWorkspaceCopy,
+  onBack() { productWorkspace.returnToPerspective(); },
+  post,
+  formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
+});
+const mockupWorkspace = createMockupWorkspace({
+  root: mockupWorkspaceRoot,
+  copy: mockupWorkspaceCopy,
+  onBack() { productWorkspace.returnToPerspective(); },
+  post,
+  formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
+});
+const remapWorkspace = createRemapWorkspace({
+  root: remapWorkspaceRoot,
+  copy: remapWorkspaceCopy,
+  onBack() { productWorkspace.returnToPerspective(); },
+  post,
+  formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
+});
+const designerWorkspaces: Record<"mesh" | "mockup" | "remap", DesignerTaskWorkspace> = {
+  mesh: meshWorkspace,
+  mockup: mockupWorkspace,
+  remap: remapWorkspace,
+};
+const taskRoots = {
+  canvas: canvasWorkspaceRoot,
+  mockup: mockupWorkspaceRoot,
+  mesh: meshWorkspaceRoot,
+  remap: remapWorkspaceRoot,
+} as const;
 productWorkspace = createProductWorkspaceRouter({
-  onEnterCanvas() {
-    controls.hidden = true;
-    controls.inert = true;
-    canvasWorkspace.enter();
+  onChange(previous, next) {
+    if (previous === "canvas") canvasWorkspace.leave();
+    if (previous === "mesh" || previous === "mockup" || previous === "remap") designerWorkspaces[previous].leave();
+    if (previous !== "perspective") taskRoots[previous].hidden = true;
+    controls.inert = next !== "perspective";
+    controls.hidden = next !== "perspective" || !current;
+    selectionState.hidden = next !== "perspective" || Boolean(current);
+    if (next === "canvas") canvasWorkspace.enter();
+    if (next === "mesh" || next === "mockup" || next === "remap") designerWorkspaces[next].enter();
+    if (next !== "perspective") taskRoots[next].hidden = false;
+    if (next === "perspective") {
+      renderMode();
+      renderState();
+      queueMicrotask(() => taskLauncherButton.focus());
+    }
   },
-  onReturnToPerspective() {
-    canvasWorkspace.leave();
-    controls.inert = false;
-    controls.hidden = !current;
-    selectionState.hidden = Boolean(current);
-    renderMode();
-    renderState();
-    queueMicrotask(() => moreOptionsButton.focus());
+});
+const taskLauncher = createTaskLauncher({
+  trigger: taskLauncherButton,
+  menu: taskMenu,
+  onChoose(workspace) {
+    productWorkspace.enter(workspace);
   },
 });
 const pivotPicker: PivotPicker = createPivotPicker({
@@ -356,6 +408,9 @@ const pivotPicker: PivotPicker = createPivotPicker({
 // leave the plugin hidden behind the i18n readiness guard.
 applyLocale(localePreference, activeLocale);
 canvasWorkspace.updateLocale();
+meshWorkspace.updateLocale();
+mockupWorkspace.updateLocale();
+remapWorkspace.updateLocale();
 
 function control(id: string): {
   numberInput: HTMLInputElement;
@@ -374,6 +429,9 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
   const message = event.data.pluginMessage;
   if (!message) return;
   if (canvasWorkspace.handleMainMessage(message)) return;
+  for (const workspace of Object.values(designerWorkspaces)) {
+    if (workspace.handleMainMessage(message)) return;
+  }
   if (message.type === "source-raster" || message.type === "source-raster-error") {
     const pending = pendingSourceRasterRequests.get(message.requestId);
     if (!pending || pending.generation !== message.generation) return;
@@ -386,6 +444,9 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
   if (message.type === "locale") {
     applyLocale(message.preference, message.locale);
     canvasWorkspace.updateLocale();
+    meshWorkspace.updateLocale();
+    mockupWorkspace.updateLocale();
+    remapWorkspace.updateLocale();
   }
   if (message.type === "preference-error") showError(message.message);
   if (message.type === "selection-loading") {
@@ -459,7 +520,6 @@ actionFlipY.addEventListener("click", () => void toggleRecipeFlip("y"));
 actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
 actionApplyCopy.addEventListener("click", () => void applyPerspective(true));
-actionOpenCanvas.addEventListener("click", () => productWorkspace.enterCanvas());
 actionUndo.addEventListener("click", () => void stepHistory("undo"));
 actionRedo.addEventListener("click", () => void stepHistory("redo"));
 errorDismiss.addEventListener("click", clearError);
@@ -565,6 +625,7 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
   const keepPreviousPreview = lastShownNodes !== undefined;
   refreshInFlight = false;
   current = undefined;
+  for (const workspace of Object.values(designerWorkspaces)) workspace.clearSource();
   valid = false;
   phase = "loading";
   history = undefined;
@@ -587,19 +648,30 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
 
 function isSameShownSelection(nodeIds: readonly string[]): boolean {
   if (!lastShownNodes || nodeIds.length === 0) return false;
-  const shown = [lastShownNodes.sourceNodeId];
-  if (lastShownNodes.targetNodeId) shown.push(lastShownNodes.targetNodeId);
-  return [...shown].sort().join("\u0000") === [...nodeIds].sort().join("\u0000");
+  return [...lastShownNodes.nodeIds].sort().join("\u0000") === [...nodeIds].sort().join("\u0000");
 }
 
 async function loadSource(generation: number, payload: SourcePayload): Promise<void> {
   if (generation !== activeGeneration || !editor) return;
-  const refreshing =
-    lastShownNodes !== undefined &&
-    lastShownNodes.sourceNodeId === payload.sourceNodeId &&
-    lastShownNodes.targetNodeId === payload.targetNodeId;
+  const nextNodeIds = [
+    ...(payload.sources?.map((source) => source.sourceNodeId) ?? [payload.sourceNodeId]),
+    ...(payload.targetNodeId ? [payload.targetNodeId] : []),
+  ];
+  const refreshing = lastShownNodes !== undefined &&
+    [...lastShownNodes.nodeIds].sort().join("\u0000") === [...nextNodeIds].sort().join("\u0000");
   try {
     const image = await imageFromBytes(payload.bytes);
+    const rasterSources = payload.sources?.length ? payload.sources : [payload];
+    const loadedSources = await Promise.all(rasterSources.map(async (raster, index) => ({
+      sourceNodeId: raster.sourceNodeId,
+      sourceName: raster.sourceName,
+      renderWidth: raster.renderWidth,
+      renderHeight: raster.renderHeight,
+      placement: { ...raster.placement },
+      image: index === 0 && raster.sourceNodeId === payload.sourceNodeId
+        ? image
+        : await imageFromBytes(raster.bytes),
+    })));
     if (generation !== activeGeneration) return;
     const payloadFrame = frameFromSource(payload);
     const nextInitial = payload.rectification
@@ -649,9 +721,30 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     // The decoded image and preview bitmap own the pixels from here. Retain
     // only task metadata so a multi-megabyte source byte array does not stay
     // live for the entire editing session.
-    const { bytes: _decodedBytes, ...activeSource } = payload;
+    const { bytes: _decodedBytes, sources: _decodedSources, ...primaryMetadata } = payload;
+    const activeSource: ActiveSource = {
+      ...primaryMetadata,
+      ...(payload.sources ? {
+        sources: payload.sources.map(({ bytes: _bytes, ...metadata }) => metadata),
+      } : {}),
+    };
     current = activeSource;
-    canvasWorkspace.setSource({ ...activeSource, selectionGeneration: generation }, image);
+    canvasWorkspace.setSource({ ...primaryMetadata, selectionGeneration: generation }, image);
+    const designerSource: DesignerWorkspaceSource = {
+      sources: loadedSources,
+      selectionGeneration: generation,
+      ...(payload.task ? { task: payload.task } : {}),
+      ...(payload.targetNodeId ? { targetPlacement: { ...payload.placement } } : {}),
+      ...(payload.targetNodeId ? { targetNodeId: payload.targetNodeId } : {}),
+    };
+    for (const workspace of Object.values(designerWorkspaces)) workspace.setSource(designerSource);
+    const sourceCount = loadedSources.length;
+    taskLauncher.setAvailability({
+      canvas: sourceCount === 1,
+      mesh: sourceCount === 1,
+      mockup: sourceCount >= 1 && sourceCount <= 8,
+      remap: sourceCount === 1 || sourceCount === 2,
+    });
     initialFrame = cloneFrame(nextInitial);
     baseFrame = cloneFrame(nextActive);
     activeFrame = cloneFrame(nextActive);
@@ -673,17 +766,15 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     lastCompose = undefined;
     transformGestureSession.cancel();
     distortFrameDirty = false;
-    lastShownNodes = {
-      sourceNodeId: payload.sourceNodeId,
-      ...(payload.targetNodeId ? { targetNodeId: payload.targetNodeId } : {}),
-    };
+    lastShownNodes = { nodeIds: nextNodeIds };
     refreshInFlight = false;
     phase = "ready";
     sourceName.textContent = payload.sourceName;
     sourceName.title = payload.sourceName;
     selectionState.hidden = true;
-    if (payload.canvas) productWorkspace.enterCanvas();
-    controls.hidden = productWorkspace.current() === "canvas";
+    if (payload.canvas) productWorkspace.enter("canvas");
+    if (payload.task) productWorkspace.enter(payload.task.kind);
+    controls.hidden = productWorkspace.current() !== "perspective";
     delete controls.dataset.loading;
     syncViewportScene();
     viewport?.fit();
@@ -720,6 +811,9 @@ function showSelectionError(generation: number, message: UserMessage): void {
   refreshInFlight = false;
   current = undefined;
   canvasWorkspace.clearSource(translate(activeLocale, message));
+  for (const workspace of Object.values(designerWorkspaces)) {
+    workspace.clearSource(translate(activeLocale, message));
+  }
   initialFrame = undefined;
   baseFrame = undefined;
   activeFrame = undefined;
@@ -2064,13 +2158,16 @@ function renderState(): void {
   const ready = phase === "ready" && Boolean(current) && Boolean(editor);
   const blockingCompose = composeInFlight && !continuousPreviewInFlight;
   const transformInitializing = ready && editorMode === "transform" && !lastCompose;
-  const menuReady = ready && valid && Boolean(activeFrame) && !blockingCompose && !refreshInFlight;
+  const taskReady = ready && valid && Boolean(activeFrame) && !blockingCompose && !refreshInFlight;
+  const sourceCount = current?.sources?.length ?? (current ? 1 : 0);
+  const menuReady = taskReady && sourceCount === 1;
   const positionReady = menuReady && !transformInitializing && editorMode === "transform" && transformInputsValid;
   for (const button of [actionFlipX, actionFlipY, actionRotateCw]) {
     button.disabled = !positionReady;
   }
   actionApplyCopy.disabled =
     !menuReady || (editorMode === "rectify" && !rectifyInputsValid);
+  taskLauncher.setDisabled(!taskReady);
   actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
   actionUndo.disabled = !ready || !history?.canUndo();
   actionRedo.disabled = !ready || !history?.canRedo();
@@ -2189,7 +2286,12 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionFlipY, translate(locale, "flipVertical"));
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
   localizeIconAction(actionTransformAgain, translate(locale, "transformAgain"));
-  actionOpenCanvas.textContent = translate(locale, "openCanvas");
+  taskLauncher.setLabels(translate(locale, "openTools"), {
+    canvas: translate(locale, "canvasTitle"),
+    mockup: translate(locale, "workspaceMockup"),
+    mesh: translate(locale, "workspaceMesh"),
+    remap: translate(locale, "workspaceRemap"),
+  });
   actionApplyCopy.textContent = translate(locale, "applyAsCopy");
   actionUndo.textContent = translate(locale, "undoEdit");
   actionRedo.textContent = translate(locale, "redoEdit");
@@ -2216,15 +2318,27 @@ function canvasWorkspaceCopy(): CanvasWorkspaceCopy {
   return {
     workspaceLabel: translate(activeLocale, "canvasTitle"),
     previewLabel: translate(activeLocale, "canvasPreview"),
-    fitLabel: translate(activeLocale, "canvasFit"),
     back: translate(activeLocale, "canvasBack"),
     title: translate(activeLocale, "canvasTitle"),
     addVariant: translate(activeLocale, "addCanvasVariant"),
     removeVariant: translate(activeLocale, "removeCanvasVariant"),
+    outputName: translate(activeLocale, "canvasOutputName"),
+    operation: translate(activeLocale, "canvasOperation"),
+    crop: translate(activeLocale, "canvasCrop"),
+    trim: translate(activeLocale, "canvasTrim"),
+    pad: translate(activeLocale, "canvasPad"),
     width: translate(activeLocale, "rectifyWidth"),
     height: translate(activeLocale, "rectifyHeight"),
     contain: translate(activeLocale, "fitContain"),
     cover: translate(activeLocale, "fitCover"),
+    stretch: translate(activeLocale, "canvasStretch"),
+    x: translate(activeLocale, "positionX"),
+    y: translate(activeLocale, "positionY"),
+    threshold: translate(activeLocale, "canvasThreshold"),
+    top: translate(activeLocale, "pivotTop"),
+    right: translate(activeLocale, "pivotRight"),
+    bottom: translate(activeLocale, "pivotBottom"),
+    left: translate(activeLocale, "pivotLeft"),
     anchor: translate(activeLocale, "canvasAnchor"),
     background: translate(activeLocale, "canvasBackground"),
     transparent: translate(activeLocale, "transparent"),
@@ -2249,6 +2363,62 @@ function canvasWorkspaceCopy(): CanvasWorkspaceCopy {
       translate(activeLocale, "pivotBottom"),
       translate(activeLocale, "cornerBottomRight"),
     ],
+  };
+}
+
+function designerCopy(title: MessageKey) {
+  return {
+    back: translate(activeLocale, "canvasBack"),
+    title: translate(activeLocale, title),
+    reset: translate(activeLocale, "reset"),
+    apply: translate(activeLocale, "apply"),
+    applyNew: translate(activeLocale, "applyAsCopy"),
+    applying: translate(activeLocale, "applying"),
+    applied: translate(activeLocale, "designerApplied"),
+  };
+}
+
+function meshWorkspaceCopy(): MeshWorkspaceCopy {
+  return {
+    ...designerCopy("meshTitle"),
+    subdivisions: translate(activeLocale, "meshSubdivisions"),
+    pointLabel: translate(activeLocale, "meshPointLabel"),
+  };
+}
+
+function mockupWorkspaceCopy(): MockupWorkspaceCopy {
+  return {
+    ...designerCopy("mockupTitle"),
+    width: translate(activeLocale, "rectifyWidth"),
+    height: translate(activeLocale, "rectifyHeight"),
+    opacity: translate(activeLocale, "mockupOpacity"),
+    grid: translate(activeLocale, "mockupGrid"),
+    columns: translate(activeLocale, "mockupColumns"),
+    rows: translate(activeLocale, "mockupRows"),
+    corner: translate(activeLocale, "mockupCorner"),
+  };
+}
+
+function remapWorkspaceCopy(): RemapWorkspaceCopy {
+  return {
+    ...designerCopy("remapTitle"),
+    mode: translate(activeLocale, "remapMode"),
+    lens: translate(activeLocale, "remapLens"),
+    displacement: translate(activeLocale, "remapDisplacement"),
+    width: translate(activeLocale, "rectifyWidth"),
+    height: translate(activeLocale, "rectifyHeight"),
+    k1: translate(activeLocale, "remapK1"), k2: translate(activeLocale, "remapK2"),
+    k3: translate(activeLocale, "remapK3"), p1: translate(activeLocale, "remapP1"),
+    p2: translate(activeLocale, "remapP2"), more: translate(activeLocale, "moreOptions"),
+    centerX: translate(activeLocale, "remapCenterX"), centerY: translate(activeLocale, "remapCenterY"),
+    scaleX: translate(activeLocale, "remapScaleX"), scaleY: translate(activeLocale, "remapScaleY"),
+    xChannel: translate(activeLocale, "remapXChannel"), yChannel: translate(activeLocale, "remapYChannel"),
+    neutral: translate(activeLocale, "remapNeutral"), boundary: translate(activeLocale, "remapBoundary"),
+    red: translate(activeLocale, "remapRed"), green: translate(activeLocale, "remapGreen"),
+    blue: translate(activeLocale, "remapBlue"), alpha: translate(activeLocale, "remapAlpha"),
+    luminance: translate(activeLocale, "remapLuminance"), transparent: translate(activeLocale, "transparent"),
+    clamp: translate(activeLocale, "remapClamp"), wrap: translate(activeLocale, "remapWrap"),
+    mapRequired: translate(activeLocale, "remapMapRequired"),
   };
 }
 
@@ -2316,8 +2486,13 @@ function renderSelectionMessage(): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (productWorkspace.current() === "canvas") {
+  const workspace = productWorkspace.current();
+  if (workspace === "canvas") {
     canvasWorkspace.handleKeydown(event);
+    return;
+  }
+  if (workspace === "mesh" || workspace === "mockup" || workspace === "remap") {
+    designerWorkspaces[workspace].handleKeydown(event);
     return;
   }
   // Popovers register first and prevent the keys they own. Do not reinterpret
@@ -2402,12 +2577,12 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 function handleKeyUp(event: KeyboardEvent): void {
-  if (productWorkspace.current() === "canvas") return;
+  if (productWorkspace.current() !== "perspective") return;
   if (event.key === " ") viewport?.setPanActive(false);
 }
 
 function releasePreviewPan(): void {
-  if (productWorkspace.current() === "canvas") return;
+  if (productWorkspace.current() !== "perspective") return;
   viewport?.setPanActive(false);
 }
 

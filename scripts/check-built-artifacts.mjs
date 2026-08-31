@@ -122,7 +122,8 @@ for (const controlId of [
   "pivot-grid",
   "position-x",
   "position-y",
-  "action-open-canvas",
+  "task-launcher-button",
+  "task-menu",
 ]) {
   if (!ui.includes(`id="${controlId}"`)) {
     throw new Error(`Figma UI is missing Free Transform control ${controlId}`);
@@ -149,10 +150,13 @@ for (const canvasControlId of [
   "canvas-add-variant",
   "canvas-variants",
   "canvas-preview",
+  "canvas-variant-id",
+  "canvas-operation",
   "canvas-width",
   "canvas-height",
-  "canvas-fit-contain",
-  "canvas-fit-cover",
+  "canvas-crop-group",
+  "canvas-trim-group",
+  "canvas-pad-group",
   "canvas-anchor-grid",
   "canvas-background",
   "canvas-background-color",
@@ -165,8 +169,10 @@ for (const canvasControlId of [
     throw new Error(`Figma UI is missing Canvas workspace control ${canvasControlId}`);
   }
 }
-if (!/<section\b[^>]*\bid="canvas-workspace"[^>]*\bhidden(?:\s|=|>)/.test(ui)) {
-  throw new Error("Figma Canvas must remain a hidden sibling workspace until explicitly opened");
+for (const workspaceId of figmaProfile.workspace.siblingWorkspaceIds) {
+  if (!new RegExp(`<section\\b[^>]*\\bid="${workspaceId}-workspace"[^>]*\\bhidden(?:\\s|=|>)`).test(ui)) {
+    throw new Error(`Figma ${workspaceId} must remain a hidden sibling workspace until explicitly opened`);
+  }
 }
 assertIdOrder(ui, figmaProfile.workspace.modeControlIds);
 assertIdOrder(ui, [

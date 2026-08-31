@@ -17,14 +17,31 @@ test("current carrier profiles are closed and reference existing features", asyn
     "mode-rectify",
     "more-options",
   ]);
-  assert.deepEqual(profiles.carriers.figma.workspace.siblingWorkspaceIds, ["canvas"]);
+  assert.deepEqual(profiles.carriers.figma.workspace.siblingWorkspaceIds, [
+    "canvas", "mockup", "mesh", "remap",
+  ]);
   assert(profiles.carriers.figma.surfaceFeatureIds.includes("canvas-multi-output"));
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("canvas-multi-output"));
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("place-mockup"));
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("mesh-warp"));
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("lens-displacement-remap"));
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("timeline-motion"));
   assert(profiles.carriers.comfyui.surfaceFeatureIds.includes("canvas-multi-output"));
-  assert.equal(profiles.carriers.agent.package.maxToolCatalogBytes, 80 * 1024);
+  assert.equal(profiles.carriers.agent.package.defaultToolSurface, "catalog");
+  assert.equal(profiles.carriers.agent.package.maxToolCatalogBytes, 16 * 1024);
+  assert.equal(profiles.carriers.agent.package.maxDirectToolCatalogBytes, 80 * 1024);
   assert(!profiles.carriers.figma.surfaceFeatureIds.includes("css-embedding"));
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("css-embedding"));
   assert.deepEqual(profiles.carriers.comfyui.package.nativeCargoFeatures, ["comfy"]);
+  assert.deepEqual(profiles.carriers.agent.package.nativeCargoFeatures, ["full"]);
+  assert(profiles.carriers.figma.surfaceFeatureIds.includes("place-mockup"));
+  assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("place-mockup"));
+  assert(profiles.carriers.figma.surfaceFeatureIds.includes("mesh-warp"));
+  assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("mesh-warp"));
+  assert(profiles.carriers.figma.surfaceFeatureIds.includes("lens-displacement-remap"));
+  assert(profiles.carriers.comfyui.surfaceFeatureIds.includes("lens-displacement-remap"));
+  assert(!profiles.carriers.figma.surfaceFeatureIds.includes("timeline-motion"));
+  assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("timeline-motion"));
 });
 
 test("byte budgets reject only values above the declared maximum", () => {

@@ -13,6 +13,9 @@ const input = required<HTMLInputElement>("source");
 const openButton = required<HTMLButtonElement>("open");
 const workspace = required<HTMLElement>("workspace");
 const mount = required<HTMLElement>("editor");
+const editorHint = required<HTMLParagraphElement>("editor-hint");
+const developerToggle = required<HTMLButtonElement>("developer-toggle");
+const developerOutput = required<HTMLElement>("developer-output");
 const errorMessage = required<HTMLParagraphElement>("error");
 const statusMessage = required<HTMLParagraphElement>("status");
 const resetButton = required<HTMLButtonElement>("reset");
@@ -28,6 +31,7 @@ const zoomInButton = required<HTMLButtonElement>("zoom-in");
 const zoomLevel = required<HTMLOutputElement>("zoom-level");
 
 let sourceImage: HTMLImageElement | undefined;
+let showingExample = false;
 let valid = false;
 let loading = false;
 let action: "reset" | "copy-css" | "copy-spec" | "download" | undefined;
@@ -69,6 +73,7 @@ function createEditor(): PerspectiveEditor | undefined {
         viewport?.handleDistortGesture(event);
       },
       onEditEnd() {
+        editorHint.hidden = true;
         viewport?.revealAllCorners({ animate: true });
       },
       onValidityChange(next) {
@@ -93,6 +98,14 @@ openButton.addEventListener("click", () => {
 });
 
 input.addEventListener("change", () => void replaceImage());
+developerToggle.addEventListener("click", () => {
+  toggleDeveloperMode();
+});
+developerToggle.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  toggleDeveloperMode();
+});
 resetButton.addEventListener("click", () => void resetPerspective());
 copyButton.addEventListener("click", () => void copyCss());
 copySpecButton.addEventListener("click", () => void copySpec());
@@ -125,6 +138,7 @@ async function openExample(): Promise<void> {
     if (generation !== loadGeneration) return;
     if (!loaded) throw new Error("The example image could not be previewed");
     sourceImage = image;
+    showingExample = true;
     workspace.hidden = false;
     viewport?.fit();
     renderSpec(editor.captureSpec());
@@ -134,6 +148,7 @@ async function openExample(): Promise<void> {
     if (generation !== loadGeneration) return;
     editor.clearSource();
     sourceImage = undefined;
+    showingExample = false;
     workspace.hidden = true;
     showError(error);
   } finally {
@@ -149,6 +164,7 @@ async function replaceImage(): Promise<void> {
   if (!file || !editor) return;
   const generation = ++loadGeneration;
   const previousImage = sourceImage;
+  const previousShowingExample = showingExample;
   const previousSpec = previousImage ? editor.captureSpec() : undefined;
   loading = true;
   clearError();
@@ -161,6 +177,7 @@ async function replaceImage(): Promise<void> {
     if (generation !== loadGeneration) return;
     if (!loaded) throw new Error("The image could not be previewed");
     sourceImage = image;
+    showingExample = false;
     workspace.hidden = false;
     viewport?.fit();
     renderSpec(editor.captureSpec());
@@ -171,17 +188,23 @@ async function replaceImage(): Promise<void> {
     if (previousImage && previousSpec) {
       try {
         const restored = await editor.setSource(previousImage, previousSpec);
-        if (restored) sourceImage = previousImage;
-        else {
+        if (restored) {
+          sourceImage = previousImage;
+          showingExample = previousShowingExample;
+        } else {
           editor.clearSource();
           sourceImage = undefined;
+          showingExample = false;
           workspace.hidden = true;
         }
       } catch {
         editor.clearSource();
         sourceImage = undefined;
+        showingExample = false;
         workspace.hidden = true;
       }
+    } else {
+      showingExample = false;
     }
     showError(error);
   } finally {
@@ -302,7 +325,13 @@ function renderState(): void {
   const locked = loading || action !== undefined;
   editor?.setDisabled(locked || !sourceImage);
   openButton.disabled = locked || !editor;
-  openButton.textContent = loading ? "Opening…" : sourceImage ? "Replace image" : "Open image";
+  openButton.textContent = loading
+    ? "Opening…"
+    : sourceImage
+      ? showingExample
+        ? "Open your image"
+        : "Replace image"
+      : "Open image";
   resetButton.disabled = locked || !sourceImage;
   copyButton.disabled = locked || !sourceImage || !valid;
   copySpecButton.disabled = locked || !sourceImage;
@@ -420,8 +449,14 @@ function showCopyFeedback(kind: "css" | "spec"): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && !developerOutput.hidden) {
+    event.preventDefault();
+    setDeveloperMode(false, { restoreFocus: true });
+    return;
+  }
   if (!viewport || !sourceImage || loading || action || eventTargetEditsText(event.target)) return;
   if (event.key === " ") {
+    if (event.target instanceof HTMLElement && event.target.closest("button")) return;
     event.preventDefault();
     viewport.setPanActive(true);
     return;
@@ -444,6 +479,16 @@ function eventTargetEditsText(target: EventTarget | null): boolean {
     target instanceof HTMLElement &&
     Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
   );
+}
+
+function setDeveloperMode(open: boolean, options: { restoreFocus?: boolean } = {}): void {
+  developerOutput.hidden = !open;
+  developerToggle.setAttribute("aria-expanded", String(open));
+  if (options.restoreFocus) developerToggle.focus();
+}
+
+function toggleDeveloperMode(): void {
+  setDeveloperMode(developerOutput.hasAttribute("hidden"));
 }
 
 function clearError(): void {

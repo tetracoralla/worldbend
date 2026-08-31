@@ -428,7 +428,7 @@ pub fn preflight_destination(output: &Path, overwrite: bool) -> TransformResult<
     Ok(())
 }
 
-fn persist_temporary(
+pub(crate) fn persist_temporary(
     temporary: tempfile::NamedTempFile,
     output: &Path,
     overwrite: bool,

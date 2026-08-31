@@ -14,9 +14,9 @@ checks consume this file; it is not a future marketplace or plugin registry.
 
 | Carrier | Current product surface | Compiled or packaged runtime | Deliberately absent |
 | --- | --- | --- | --- |
-| Figma | The mature `perspective` workspace plus the independent `canvas` workspace for explicit Contain/Cover variants | One self-contained UI, main adapter, and a no-CSS WASM build | Core-only Crop/Trim/Pad/Stretch controls, Agent binaries, MCP schemas, Comfy Python, CSS emission |
-| Agent | Eight direct headless MCP tools, including one ordered `canvas_render` set operation, plus CLI and the unchanged conditional Capability projection | Full stable native core and file renderer, with no human UI | Figma HTML/CSS and Comfy Python |
-| ComfyUI | Seven V3 nodes: the existing transform/rectification pairs plus Canvas Set validation, application, and resolved-plan replay | A `comfy` CLI feature build containing only inspect/render, rectification, and Canvas commands | Compose/Solve/CSS/Schema commands, MCP/Skill/Capability files, Figma UI |
+| Figma | The mature `perspective` workspace plus independent Sizes, Mockup, Mesh, and Remap workspaces behind one compact task launcher | One self-contained UI, main adapter, and a no-CSS WASM build with Canvas/Place/Deform/Remap planners | Timeline, Agent binaries, MCP schemas, Comfy Python, CSS emission, automatic perception/calibration |
+| Agent | Compact `search` / `describe` / `run` MCP projection by default, the eight direct headless tools as an explicit compatibility surface, plus CLI and the unchanged conditional Capability projection | Full stable native core and file renderer, including Place / Mockup, custom Mesh, Lens/Displacement Remap, and Timeline, with no human UI | Figma HTML/CSS and Comfy Python |
+| ComfyUI | Nine V3 nodes: transform/rectification pairs, Canvas Set validation/application/plan replay, and Remap validation/application | A `comfy` CLI build containing only transform, rectification, Canvas, and Remap commands | Place, custom Mesh, Timeline, Compose/Solve/CSS/Schema, MCP/Skill/Capability files, Figma UI |
 
 The Figma distribution remains one HTML file because Figma needs a local,
 self-contained plugin. That packaging rule does not require one permanent
@@ -24,17 +24,23 @@ product workspace. The existing Perspective workspace is an executable
 compatibility baseline: its operation order is stored in the profile and
 checked against the built UI. Canvas is recorded as its first sibling
 workspace and owns its controls and initialization in separate source modules.
-A future Place/Mockup or Mesh workspace must retain that separation even if
-the release build finally inlines them into one offline HTML artifact.
+Mockup, Mesh, and Remap follow the same replacing-workspace boundary even
+though the release build inlines them into one offline HTML artifact. Only the
+active workspace renders.
 
 The Web build retains CSS emission. The Figma alias consumes
 `packages/wasm/pkg-figma`, built without the `worldbend-core/css` feature. The
 shared bridge keeps a closed CSS entry only to preserve its import ABI; calling
 that unsupported route returns `E_SCHEMA` and no Figma product control exposes
 it. A real generated-WASM smoke executes both the retained solve path and that
-closed CSS path. The Comfy package builds the same CLI source with the `comfy` feature and
-checks the staged help surface so a full CLI cannot silently enter that
-package.
+closed CSS path. The Comfy package builds the same CLI source with the `comfy`
+feature and checks the staged help surface so a full CLI cannot silently enter
+that package. Place, custom Mesh, and Timeline are Agent-full-only features.
+Remap is shared by Agent full and Comfy because it has a real graph-native
+consumer; Figma omits all four. Reduced compilation and staged command
+inventories check these boundaries. Timeline remains absent from Figma because
+there is no current task-native sequence object, preview, output, and single-
+Undo document contract.
 Canvas exists in the common semantic core, but each projection is deliberately
 narrow: Figma exposes the repeat-use designer controls, Agent exposes one
 atomic directory-set operation, and Comfy exposes graph-native heterogeneous
@@ -53,8 +59,10 @@ These are growth tripwires, not performance or UX acceptance. An intentional
 feature may revise a limit only with a current package measurement and review
 of the user-visible change. Agent and Comfy native binary sizes vary by target,
 so their current checks record bytes but do not pretend one macOS value is a
-portable ceiling. The Agent catalog has a separate enforced 81,920-byte limit
-because every tool-list byte affects the host boundary regardless of disk size.
+portable ceiling. The default Agent catalog has a 16,384-byte limit; its direct
+compatibility catalog has a separate 81,920-byte limit. Every tool-list byte
+affects the host boundary regardless of disk size, while the larger direct
+catalog is paid only by clients that explicitly select it.
 
 ## Adding one deterministic function
 
@@ -70,11 +78,12 @@ because every tool-list byte affects the host boundary regardless of disk size.
    carrier runtime, and complete regression checks. Installed Figma, Agent, and
    Comfy host flows remain separate observations.
 
-## Next structural boundary
+## Current structural boundary
 
-Canvas/multi-output is the first feature family built on this foundation and is
-owned by `docs/CANVAS_CONTRACT.md`. The next structural boundary is
-multi-plane Place/Mockup. It must likewise begin from one agreed deterministic
-contract and may not grow the Perspective or Canvas interfaces into a generic
-Photoshop panel, add speculative registry schema, or multiply Agent tools per
-primitive.
+Canvas/multi-output is owned by `docs/CANVAS_CONTRACT.md`; multi-plane Place /
+Mockup by `docs/MOCKUP_CONTRACT.md`; custom Mesh and Remap by
+`docs/DEFORMATION_CONTRACT.md`; and the ordered frame program by
+`docs/TIMELINE_CONTRACT.md`. Every new Agent family reuses the compact
+operation catalog and may not grow the Perspective or Canvas interfaces into a
+generic Photoshop panel, add speculative registry schema, or multiply
+top-level Agent tools per primitive.

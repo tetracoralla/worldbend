@@ -74,6 +74,8 @@ export type CanvasOperation =
         width: number;
       };
     };
+export type CoordinateSpace = "pixel" | "normalized";
+export type MockupEdge = "top" | "right" | "bottom" | "left";
 /**
  * Coordinate system for the explicitly selected plane in the source image.
  * Pixel coordinates require the reference image size that authored them;
@@ -89,7 +91,23 @@ export type SourcePlane =
       quad: Quad1;
       space: "normalized";
     };
-export type CoordinateSpace = "pixel" | "normalized";
+export type RemapOperation =
+  | {
+      center?: Point1;
+      coefficients: LensCoefficients;
+      kind: "lens";
+      scale?: LensScale;
+    }
+  | {
+      boundary?: "transparent" | "clamp" | "wrap";
+      kind: "displacement";
+      neutral?: number;
+      scaleXPixels: number;
+      scaleYPixels: number;
+      xChannel: RemapChannel;
+      yChannel: RemapChannel;
+    };
+export type RemapChannel = "red" | "green" | "blue" | "alpha" | "luminance";
 export type ErrorCode =
   | "E_SCHEMA"
   | "E_NON_FINITE_COORDINATE"
@@ -105,6 +123,7 @@ export type ErrorCode =
   | "E_TRIM_EMPTY"
   | "E_RASTER_SHAPE_MISMATCH"
   | "E_OUTPUT_COLLISION"
+  | "E_SHARED_EDGE_MISMATCH"
   | "E_UNSUPPORTED_MEDIA"
   | "E_OUTPUT_LIMIT"
   | "E_PATH_OUTSIDE_ROOT"
@@ -130,8 +149,14 @@ export interface WebContract {
   canvasSetSpecInput: CanvasSetSpec;
   canvasSpecInput: CanvasSpec;
   cssTransformOutput: CssTransform;
+  meshWarpPlanOutput: MeshWarpPlan;
+  meshWarpSpecInput: MeshWarpSpec;
+  mockupPlanOutput: MockupPlan;
+  mockupSpecInput: MockupSpec;
   rectifyPlanOutput: RectifyPlan;
   rectifySpecInput: RectifySpec;
+  remapPlanOutput: RemapPlan;
+  remapSpecInput: RemapSpec;
   solveOutput: SolveOutput;
   transformError: TransformError;
   transformRecipeInput: TransformRecipe;
@@ -628,6 +653,149 @@ export interface CssTransform {
   transformOrigin: "0 0";
   width: string;
 }
+export interface MeshWarpPlan {
+  schema: string;
+  solve: SolveOutput;
+  spec: MeshWarpSpec;
+  version: string;
+}
+export interface SolveOutput {
+  diagnostics: SolveDiagnostics;
+  homography: Homography;
+  resolvedDestination: ResolvedDestination;
+  spec: TransformSpec1;
+}
+export interface Homography {
+  /**
+   * @minItems 9
+   * @maxItems 9
+   */
+  inverse: [number, number, number, number, number, number, number, number, number];
+  /**
+   * @minItems 9
+   * @maxItems 9
+   */
+  matrix: [number, number, number, number, number, number, number, number, number];
+}
+export interface ResolvedDestination {
+  quad: Quad1;
+  reference: Size;
+  sourceSpace: CoordinateSpace;
+}
+export interface TransformSpec1 {
+  content?: Content;
+  destination: Destination;
+  schema: "worldbend.transform";
+  version: "0.1";
+}
+export interface MeshWarpSpec {
+  mesh: WarpMesh;
+  schema: string;
+  targetSize?: Size | null;
+  transform: TransformSpec1;
+  version: string;
+}
+export interface WarpMesh {
+  subdivisions: number;
+  vertices: WarpVertex[];
+}
+export interface WarpVertex {
+  source: Point;
+  warped: Point;
+}
+export interface MockupPlan {
+  background: CanvasBackground;
+  canvas: PixelSize;
+  planes: MockupPlanePlan[];
+  schema: string;
+  seams: MockupSeamPlan[];
+  version: string;
+}
+export interface MockupPlanePlan {
+  grid?: MockupGridPlan | null;
+  id: string;
+  measurement?: MockupMeasurement | null;
+  opacity: number;
+  solve: SolveOutput;
+  sourceId: string;
+  transform: TransformSpec1;
+}
+export interface MockupGridPlan {
+  columns: number;
+  horizontal: MockupGridLine[];
+  rows: number;
+  vertical: MockupGridLine[];
+}
+export interface MockupGridLine {
+  end: Point;
+  start: Point;
+}
+export interface MockupMeasurement {
+  bottomPixels: number;
+  bottomPixelsPerUnit: number;
+  height: number;
+  leftPixels: number;
+  leftPixelsPerUnit: number;
+  rightPixels: number;
+  rightPixelsPerUnit: number;
+  topPixels: number;
+  topPixelsPerUnit: number;
+  unit: string;
+  width: number;
+}
+export interface MockupSeamPlan {
+  first: MockupEdgeRef;
+  maximumErrorPixels: number;
+  reversed: boolean;
+  second: MockupEdgeRef;
+  tolerancePixels: number;
+}
+export interface MockupEdgeRef {
+  edge: MockupEdge;
+  planeId: string;
+}
+export interface MockupSpec {
+  background?:
+    | {
+        kind: "transparent";
+      }
+    | {
+        kind: "color";
+        /**
+         * @minItems 4
+         * @maxItems 4
+         */
+        rgba: [number, number, number, number];
+        space: Srgb8Space;
+      };
+  canvas: PixelSize;
+  planes: MockupPlane[];
+  schema: string;
+  seams?: MockupSeam[];
+  version: string;
+}
+export interface MockupPlane {
+  grid?: MockupGrid | null;
+  id: string;
+  measurement?: MockupPhysicalSize | null;
+  opacity?: number;
+  sourceId: string;
+  transform: TransformSpec1;
+}
+export interface MockupGrid {
+  columns: number;
+  rows: number;
+}
+export interface MockupPhysicalSize {
+  height: number;
+  unit: string;
+  width: number;
+}
+export interface MockupSeam {
+  first: MockupEdgeRef;
+  second: MockupEdgeRef;
+  tolerancePixels?: number;
+}
 export interface RectifyPlan {
   diagnostics: RectifyDiagnostics;
   homography: Homography;
@@ -642,40 +810,39 @@ export interface RectifyDiagnostics {
   reprojection: ReprojectionDiagnostics;
   sourceGeometry: GeometryDiagnostics;
 }
-export interface Homography {
-  /**
-   * @minItems 9
-   * @maxItems 9
-   */
-  inverse: [number, number, number, number, number, number, number, number, number];
-  /**
-   * @minItems 9
-   * @maxItems 9
-   */
-  matrix: [number, number, number, number, number, number, number, number, number];
-}
-export interface TransformSpec1 {
-  content?: Content;
-  destination: Destination;
-  schema: "worldbend.transform";
-  version: "0.1";
-}
 export interface RectifySpec {
   output: PixelSize;
   schema: "worldbend.rectify";
   source: SourcePlane;
   version: "0.1";
 }
-export interface SolveOutput {
-  diagnostics: SolveDiagnostics;
-  homography: Homography;
-  resolvedDestination: ResolvedDestination;
-  spec: TransformSpec1;
+export interface RemapPlan {
+  outputPixels: number;
+  requiresMap: boolean;
+  schema: string;
+  spec: RemapSpec;
+  version: string;
 }
-export interface ResolvedDestination {
-  quad: Quad1;
-  reference: Size;
-  sourceSpace: CoordinateSpace;
+export interface RemapSpec {
+  operation: RemapOperation;
+  output: PixelSize;
+  schema: string;
+  version: string;
+}
+export interface Point1 {
+  x: number;
+  y: number;
+}
+export interface LensCoefficients {
+  k1?: number;
+  k2?: number;
+  k3?: number;
+  p1?: number;
+  p2?: number;
+}
+export interface LensScale {
+  x: number;
+  y: number;
 }
 export interface TransformError {
   code: ErrorCode;
@@ -688,14 +855,14 @@ export interface TransformRecipe {
    */
   clearWarp?: boolean;
   flip?: Flip2D;
-  pivot?: Point1;
+  pivot?: Point2;
   /**
    * Clockwise screen-space rotation in degrees. Omit to keep zero rotation.
    */
   rotationDegrees?: number;
   scale?: Scale2D;
   skew?: Skew2D;
-  translation?: Point2;
+  translation?: Point3;
   /**
    * Optional bounded preset warp. Omit to preserve the base spec's warp.
    */
@@ -714,7 +881,7 @@ export interface Flip2D {
  * relative values, never destination pixel coordinates. Omit unless the
  * caller explicitly changes the pivot.
  */
-export interface Point1 {
+export interface Point2 {
   x: number;
   y: number;
 }
@@ -735,15 +902,7 @@ export interface Skew2D {
 /**
  * Translation in resolved destination units. Omit to keep zero translation.
  */
-export interface Point2 {
+export interface Point3 {
   x: number;
   y: number;
-}
-export interface WarpMesh {
-  subdivisions: number;
-  vertices: WarpVertex[];
-}
-export interface WarpVertex {
-  source: Point;
-  warped: Point;
 }

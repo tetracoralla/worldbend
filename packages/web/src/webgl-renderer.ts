@@ -326,18 +326,20 @@ const unitMeshVertices: readonly WarpVertex[] = [
   { source: { x: 0, y: 1 }, warped: { x: 0, y: 1 } },
 ];
 
-const CANONICAL_WARP_SUBDIVISIONS = 16;
+const MIN_MESH_SUBDIVISIONS = 2;
+const MAX_MESH_SUBDIVISIONS = 16;
 
 export function warpMeshVertexData(mesh?: WarpMesh): Float32Array {
   // Validate the complete topology before using caller-reachable dimensions
-  // in an allocation. The public product owns one fixed 16x16 core mesh; a
-  // custom resolution is not a supported WebGL side contract.
+  // in an allocation. Preset Warp supplies the canonical 16x16 mesh while the
+  // custom Mesh contract supplies a core-validated 2..16 grid.
   const subdivisions = mesh?.subdivisions ?? 1;
   const side = subdivisions + 1;
   if (
     mesh &&
     (!Number.isSafeInteger(subdivisions) ||
-      subdivisions !== CANONICAL_WARP_SUBDIVISIONS ||
+      subdivisions < MIN_MESH_SUBDIVISIONS ||
+      subdivisions > MAX_MESH_SUBDIVISIONS ||
       mesh.vertices.length !== side * side)
   ) {
     throw new Error("The warp mesh topology is invalid");

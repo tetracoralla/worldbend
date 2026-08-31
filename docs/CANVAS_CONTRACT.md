@@ -179,12 +179,16 @@ ceiling. One Canvas Set occupies one slot.
 
 Figma exposes Canvas as a sibling `ProductWorkspace`, not an `EditorMode`.
 Perspective keeps its frozen Transform, Free, Perspective, Warp, Correct, More
-sequence. The first human workspace exposes 1..8 explicit output dimensions,
-Contain/Cover, a 3x3 anchor projection, and transparent/solid background. It
-shows one selected preview, creates all requested images in one recoverable
-document mutation, and preserves the complete Perspective draft when entering
-and returning. Crop, Trim, Pad, and Stretch remain core-only until they have a
-task-native human interaction.
+sequence. A compact icon beside the selected source identity opens a short task
+menu; Sizes enters the sibling workspace without entering the mode bar or More
+menu. The human workspace exposes 1..8 named ordered outputs and all six
+canonical operations: Crop, Trim, Pad, Contain, Cover, and Stretch. Only
+operation-relevant controls remain visible. Trim obtains decoded RGBA from the
+current source but delegates the strict alpha predicate and rectangle to the
+core. One selected preview is live at a time; Apply creates all requested
+images in one recoverable document mutation, while a selected saved result can
+be replaced only as one output. Entering and returning preserves the complete
+Perspective draft.
 
 Comfy adds three V3 nodes: a Canvas Set spec node, an Apply Canvas Set node
 that returns heterogeneous IMAGE/MASK output lists plus the resolved plan, and

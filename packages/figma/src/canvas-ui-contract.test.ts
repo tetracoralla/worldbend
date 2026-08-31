@@ -4,16 +4,28 @@ import { describe, expect, it } from "vitest";
 const html = readFileSync(new URL("../ui.html", import.meta.url), "utf8");
 
 describe("Figma product workspace markup", () => {
-  it("keeps Canvas as a sibling of the mature Perspective workspace", () => {
+  it("keeps task workspaces behind one compact source-level launcher", () => {
     const controlsStart = html.indexOf('<section id="controls"');
     const controlsEnd = html.indexOf("</section>", controlsStart);
     const canvasStart = html.indexOf('<section id="canvas-workspace"');
+    const objectGroupStart = html.indexOf('<div id="object-group"');
+    const objectGroupEnd = html.indexOf("</div>", objectGroupStart);
+    const objectMarkup = html.slice(objectGroupStart, objectGroupEnd);
+    const popoverStart = html.indexOf('<div id="settings-popover"');
+    const popoverEnd = html.indexOf("</div>", popoverStart);
+    const popoverMarkup = html.slice(popoverStart, popoverEnd);
 
     expect(controlsStart).toBeGreaterThan(-1);
     expect(controlsEnd).toBeGreaterThan(controlsStart);
     expect(canvasStart).toBeGreaterThan(controlsEnd);
     expect(html.slice(canvasStart, canvasStart + 100)).toContain("hidden");
-    expect(html).toContain('id="action-open-canvas"');
+    expect(objectMarkup).toContain('id="source-name"');
+    expect(objectMarkup).toContain('id="task-launcher-button"');
+    expect(objectMarkup).toContain('id="task-menu"');
+    for (const workspace of ["canvas", "mockup", "mesh", "remap"]) {
+      expect(html).toContain(`data-workspace="${workspace}"`);
+    }
+    expect(popoverMarkup).not.toContain('id="task-launcher-button"');
   });
 
   it("freezes the Perspective mode control order while Canvas remains outside it", () => {
@@ -32,7 +44,7 @@ describe("Figma product workspace markup", () => {
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(modeMarkup).not.toContain("canvas-workspace");
-    expect(modeMarkup).not.toContain("action-open-canvas");
+    expect(modeMarkup).not.toContain("task-launcher-button");
     expect(html.indexOf('id="more-options"')).toBeGreaterThan(
       html.indexOf('id="mode-rectify"'),
     );

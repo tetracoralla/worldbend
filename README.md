@@ -2,15 +2,15 @@
 
 Worldbend is a deterministic 2D spatial-transform and raster-canvas utility for
 people and AI Agents. Give it four ordered corners, a saved `TransformSpec`, an
-explicit source-plane `RectifySpec`, or an ordered `CanvasSetSpec`; it validates
-the program once and produces the same homography, placement, Canvas plan,
-Warp mesh, or raster result through its Rust, CLI, MCP, Web/WASM, Figma, and
-ComfyUI adapters.
+explicit source-plane `RectifySpec`, an ordered `CanvasSetSpec`, or an explicit
+Place, Mesh, Remap, or Timeline program; it validates the program once and
+produces the same plan or raster result through its Rust, CLI, MCP, Web/WASM,
+Figma, and ComfyUI adapters.
 
 Worldbend is intentionally deterministic. It does not detect planes, estimate
 a camera, choose a crop or output ratio, reconstruct 3D scenes, preserve
 editable Figma vectors after a perspective transform, or expose a speculative
-batch API.
+generic batch API. Timeline is a separate ordered, atomic frame contract.
 
 > Project status: `0.1.0` is an experimental commercial pre-release. Source is
 > maintained in a private repository. The transform and error contracts are
@@ -21,23 +21,25 @@ batch API.
 - `worldbend-core`: the canonical `TransformSpec`, explicit planar
   `RectifySpec`, ordered `CanvasSetSpec`, affine composition,
   strict `TL -> TR -> BR -> BL` validation, homography solving, diagnostics,
-  inversion, bounds, six closed Canvas operations, CSS geometry, and ten fixed
-  Warp presets;
+  inversion, bounds, six closed Canvas operations, Place/Mockup and extraction,
+  bounded custom Mesh, Lens/Displacement Remap, Timeline, CSS geometry, and ten
+  fixed Warp presets;
 - `worldbend-render`: inverse-mapped PNG rendering with premultiplied-alpha
-  filtering, ordered multi-output Canvas rendering, bounded resources,
+  filtering, ordered multi-output Canvas and Timeline rendering, bounded resources,
   cancellation, dry-run preflight, and atomic publication;
-- `worldbend`: a structured JSON CLI for compose, solve, inspect, render,
-  rectify, rectify-render, canvas-inspect, canvas-render, and CSS operations;
-- `worldbend-mcp`: the same eight operations as direct MCP tools, with an
-  explicit granted file root and path-escape rejection;
+- `worldbend`: a structured JSON CLI for transform, rectification, Canvas,
+  Place/Mockup, custom Mesh, Remap, Timeline, and CSS operations;
+- `worldbend-mcp`: a compact `search` / `describe` / `run` Agent projection by
+  default in the plugin, plus the same eight direct tools as an explicit
+  compatibility surface, with one granted file root and path-escape rejection;
 - Web/WASM and WebGL2 adapters plus a four-corner editor;
 - a self-contained local Figma plugin with the mature Perspective workspace
   for Transform, Free/Perspective Distort, fixed Warp presets, and manual
   four-point correction, plus a sibling Canvas workspace for explicit
   Contain/Cover output variants;
 - an experimental local ComfyUI V3 node pack that applies the same reusable
-  TransformSpec, explicit RectifySpec, or ordered Canvas Set to one IMAGE and
-  optional MASK through the bundled native core;
+  TransformSpec, explicit RectifySpec, ordered Canvas Set, or explicit Remap
+  to one IMAGE and optional MASK through the bundled native core;
 - an experimental provider-neutral Capability projection for the deliberately
   smaller inspect/render profile.
 
@@ -140,7 +142,10 @@ renderer, `attachPerspective`, and the reusable editor. Its demo uses the
 repository-owned artwork at
 [`examples/worldbend-demo-source.png`](examples/worldbend-demo-source.png),
 opens a non-identity example immediately, and keeps the current TransformSpec,
-CSS matrix, viewport scale, Reset, and PNG export visible in one workspace.
+CSS matrix, viewport scale, Reset, and PNG export in one workspace. The canvas
+is the default surface: drag its four corners, use the compact zoom/Reset
+controls, then download the PNG. Raw TransformSpec and CSS stay outside the
+designer workflow behind one low-emphasis developer-mode icon.
 
 For internal Figma validation, build the self-contained development archive,
 extract it, then import its root `manifest.json` in Figma Desktop via
@@ -162,10 +167,11 @@ pnpm package:comfyui-local
 ```
 
 Copy the resulting folder under `artifacts/comfyui/` into
-`ComfyUI/custom_nodes/` and restart ComfyUI. Seven V3 nodes validate and apply
+`ComfyUI/custom_nodes/` and restart ComfyUI. Nine V3 nodes validate and apply
 one explicit TransformSpec, one explicit source-plane RectifySpec, or one
 ordered Canvas Set to one IMAGE plus optional MASK. Canvas Plan replay keeps
-compatible 8-bit masks and control maps on the same resolved geometry. The node
+compatible 8-bit masks and control maps on the same resolved geometry. Remap
+reuses explicit lens or displacement programs across the same kinds of data. The node
 pack has no frontend JavaScript or transform math; it invokes the bundled
 native Worldbend renderer through private temporary files. See
 [`packages/comfyui/README.md`](packages/comfyui/README.md).
@@ -191,13 +197,16 @@ widening the portable contract. See
 - raster render limits are enforced before allocation and publication;
 - Figma output is a raster Rectangle with an Image fill; the original editable
   source stays intact;
-- custom meshes, arbitrary deformation, perception, camera estimation, 3D,
-  content-aware crop or expansion, PSD compatibility, Comfy IMAGE batches,
-  video, cloud rendering, and public batch semantics are not implemented;
+- arbitrary Bezier/Liquify/brush deformation, perception, camera estimation,
+  3D, content-aware crop or expansion, PSD compatibility, Comfy IMAGE batches,
+  encoded video/audio, cloud rendering, and generic batch semantics are not implemented;
 - performance probes are current measurements, not an SLA.
 
 The exact transform, raster, path, UI, and error semantics are in
-[`docs/CONTRACT.md`](docs/CONTRACT.md). The product boundary is in
+[`docs/CONTRACT.md`](docs/CONTRACT.md). Place / Mockup is specified in
+[`docs/MOCKUP_CONTRACT.md`](docs/MOCKUP_CONTRACT.md), deformation/remap in
+[`docs/DEFORMATION_CONTRACT.md`](docs/DEFORMATION_CONTRACT.md), and Timeline in
+[`docs/TIMELINE_CONTRACT.md`](docs/TIMELINE_CONTRACT.md). The product boundary is in
 [`docs/PRODUCT_MODEL.md`](docs/PRODUCT_MODEL.md).
 
 ## Collaboration and security

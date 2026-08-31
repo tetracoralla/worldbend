@@ -5,9 +5,13 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "css")]
 use worldbend_core::emit_css_transform;
 use worldbend_core::{
-    CanvasSetSpec, CanvasSpec, PixelSize, RectifySpec, Size, TransformError, TransformRecipe,
-    TransformSpec, WarpSpec, build_warp_mesh, compose_affine, plan_canvas, plan_canvas_set,
-    rectify_plane, solve_spec,
+    CanvasOperation, CanvasSetSpec, CanvasSpec, PixelSize, RectifySpec, Size, TransformError,
+    TransformRecipe, TransformSpec, WarpSpec, build_warp_mesh, compose_affine, plan_canvas,
+    plan_canvas_set, rectify_plane, resolve_canvas_set, resolve_trim_rect_rgba, solve_spec,
+};
+#[cfg(feature = "designer")]
+use worldbend_core::{
+    MeshWarpSpec, MockupSpec, RemapSpec, plan_mesh_warp, plan_mockup, plan_remap,
 };
 
 #[wasm_bindgen]
@@ -112,6 +116,50 @@ pub fn canvas_set_plan_json(
         &spec,
         PixelSize::new(source_width, source_height),
     ))
+}
+
+#[wasm_bindgen]
+pub fn canvas_set_plan_rgba_json(
+    spec_json: &str,
+    source_width: u32,
+    source_height: u32,
+    rgba: &[u8],
+) -> Result<String, JsValue> {
+    let spec = parse_canvas_set_spec(spec_json)?;
+    let source_size = PixelSize::new(source_width, source_height);
+    let resolved_trims = spec
+        .variants
+        .iter()
+        .map(|variant| match variant.operation {
+            CanvasOperation::Trim { alpha_threshold } => {
+                resolve_trim_rect_rgba(rgba, source_size, alpha_threshold).map(Some)
+            }
+            _ => Ok(None),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(error_js)?;
+    serialize_result(resolve_canvas_set(&spec, source_size, &resolved_trims))
+}
+
+#[wasm_bindgen]
+#[cfg(feature = "designer")]
+pub fn mockup_plan_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_mockup_spec(spec_json)?;
+    serialize_result(plan_mockup(&spec))
+}
+
+#[wasm_bindgen]
+#[cfg(feature = "designer")]
+pub fn mesh_warp_plan_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_mesh_warp_spec(spec_json)?;
+    serialize_result(plan_mesh_warp(&spec))
+}
+
+#[wasm_bindgen]
+#[cfg(feature = "designer")]
+pub fn remap_plan_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_remap_spec(spec_json)?;
+    serialize_result(plan_remap(&spec))
 }
 
 #[wasm_bindgen]
@@ -220,6 +268,31 @@ fn parse_canvas_set_spec(value: &str) -> Result<CanvasSetSpec, JsValue> {
         error_js(TransformError::new(
             worldbend_core::ErrorCode::Schema,
             format!("invalid CanvasSetSpec JSON: {error}"),
+        ))
+    })
+}
+
+#[cfg(feature = "designer")]
+fn parse_mockup_spec(value: &str) -> Result<MockupSpec, JsValue> {
+    parse_json(value, "MockupSpec")
+}
+
+#[cfg(feature = "designer")]
+fn parse_mesh_warp_spec(value: &str) -> Result<MeshWarpSpec, JsValue> {
+    parse_json(value, "MeshWarpSpec")
+}
+
+#[cfg(feature = "designer")]
+fn parse_remap_spec(value: &str) -> Result<RemapSpec, JsValue> {
+    parse_json(value, "RemapSpec")
+}
+
+#[cfg(feature = "designer")]
+fn parse_json<T: serde::de::DeserializeOwned>(value: &str, label: &str) -> Result<T, JsValue> {
+    serde_json::from_str(value).map_err(|error| {
+        error_js(TransformError::new(
+            worldbend_core::ErrorCode::Schema,
+            format!("invalid {label} JSON: {error}"),
         ))
     })
 }

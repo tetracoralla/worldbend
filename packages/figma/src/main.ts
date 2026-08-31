@@ -24,6 +24,7 @@ import {
   SHARED_TRANSFORM_KEY,
 } from "./stored-plane";
 import {
+  ownedCanvasOperationOutput,
   parseOwnedCanvasSpec,
   SHARED_CANVAS_KEY,
   type OwnedCanvasSpec,
@@ -32,6 +33,11 @@ import {
   CanvasRollbackIncompleteError,
   publishCanvasDocumentTransaction,
 } from "./canvas-document-transaction";
+import {
+  parseStoredDesignerTask,
+  SHARED_DESIGNER_TASK_KEY,
+  type StoredDesignerTask,
+} from "./stored-designer-task";
 
 figma.showUI(__html__, { width: 600, height: 720, themeColors: true });
 
@@ -106,6 +112,7 @@ figma.ui.onmessage = (message: unknown) => {
   }
   if (message.type === "apply") void applyResult(message.payload);
   if (message.type === "apply-canvas") void applyCanvasSet(message.payload);
+  if (message.type === "apply-designer") void applyDesignerResult(message.payload);
 };
 
 async function initializeUi(nextSystemLocales: string[]): Promise<void> {
@@ -196,49 +203,64 @@ async function loadSelection(generation: number): Promise<void> {
 }
 
 async function selectionPayload(selection: readonly SceneNode[]): Promise<SourcePayload> {
-  if (selection.length === 1) {
-    const source = selection[0];
-    if (!source) throw userError("selectOneSource");
-    const stored = readStoredPlane(source);
-    if (stored.status === "invalid") {
-      throw userError("invalidReusablePlane");
-    }
-    if (stored.status === "valid") {
-      throw userError("selectResultWithSource");
-    }
-    return exportSource(source);
+  if (selection.length < 1 || selection.length > 9) throw userError("selectOneOrPair");
+  const candidates = selection.map((node) => ({ node, stored: readStoredPlane(node) }));
+  if (candidates.some((candidate) => candidate.stored.status === "invalid")) {
+    throw userError("invalidReusablePlane");
   }
-
-  if (selection.length === 2) {
-    const candidates = selection.map((node) => ({ node, stored: readStoredPlane(node) }));
-    const invalid = candidates.find((candidate) => candidate.stored.status === "invalid");
-    if (invalid) throw userError("invalidReusablePlane");
-    const targets = candidates.filter((candidate) => candidate.stored.status === "valid");
-    if (targets.length !== 1) {
-      throw userError("selectOneSourceAndResult");
-    }
-    const target = targets[0];
-    const source = candidates.find((candidate) => candidate.node.id !== target?.node.id)?.node;
-    if (!target || target.stored.status !== "valid" || !source) {
-      throw userError("selectOneSourceAndResult");
-    }
-    if (target.node.type !== "RECTANGLE") {
-      throw userError("resultNotReplaceable");
-    }
-    return exportSource(source, target.node, target.stored.operation);
+  const targets = candidates.filter((candidate) => candidate.stored.status === "valid");
+  if (targets.length > 1) throw userError("selectOneSourceAndResult");
+  if (targets.length === 0) {
+    if (selection.length > 8) throw userError("selectOneOrPair");
+    return exportSources(selection);
   }
-
-  throw userError("selectOneOrPair");
+  const target = targets[0]!;
+  if (target.stored.status !== "valid" || target.node.type !== "RECTANGLE") {
+    throw userError("resultNotReplaceable");
+  }
+  const sources = candidates.filter((candidate) => candidate.node.id !== target.node.id).map((candidate) => candidate.node);
+  if (sources.length < 1 || sources.length > 8) throw userError("selectOneSourceAndResult");
+  if (target.stored.operation.kind !== "task" && sources.length !== 1) {
+    throw userError("selectOneSourceAndResult");
+  }
+  if (target.stored.operation.kind === "task" && sources.length !== taskSourceCount(target.stored.operation.task)) {
+    throw userError("selectOneSourceAndResult");
+  }
+  return exportSources(sources, target.node, target.stored.operation);
 }
 
-async function exportSource(
-  source: SceneNode,
+type StoredOperation =
+  | { kind: "transform"; spec: TransformSpec }
+  | { kind: "rectify"; spec: RectifySpecInput }
+  | { kind: "canvas"; spec: OwnedCanvasSpec }
+  | { kind: "task"; task: StoredDesignerTask };
+
+async function exportSources(
+  sources: readonly SceneNode[],
   target?: RectangleNode,
-  storedOperation?:
-    | { kind: "transform"; spec: TransformSpec }
-    | { kind: "rectify"; spec: RectifySpecInput }
-    | { kind: "canvas"; spec: OwnedCanvasSpec },
+  storedOperation?: StoredOperation,
 ): Promise<SourcePayload> {
+  const rasterTarget = storedOperation?.kind === "transform" || storedOperation?.kind === "rectify"
+    ? target
+    : undefined;
+  const rasters = await Promise.all(sources.map((source, index) => exportSourceRaster(source, index === 0 ? rasterTarget : undefined)));
+  const first = rasters[0];
+  if (!first) throw userError("selectOneSource");
+  const targetBox = target?.absoluteBoundingBox;
+  const primary = targetBox && targetBox.width > 0 && targetBox.height > 0
+    ? { ...first, placement: { x: targetBox.x, y: targetBox.y, width: targetBox.width, height: targetBox.height } }
+    : first;
+  return {
+    ...primary,
+    ...(rasters.length > 1 || storedOperation?.kind === "task" ? { sources: rasters } : {}),
+    ...(storedOperation?.kind === "transform" && target ? { spec: storedOperation.spec, targetNodeId: target.id } : {}),
+    ...(storedOperation?.kind === "rectify" && target ? { rectification: storedOperation.spec, targetNodeId: target.id } : {}),
+    ...(storedOperation?.kind === "canvas" && target ? { canvas: storedOperation.spec, targetNodeId: target.id } : {}),
+    ...(storedOperation?.kind === "task" && target ? { task: storedOperation.task, targetNodeId: target.id } : {}),
+  };
+}
+
+async function exportSourceRaster(source: SceneNode, target?: RectangleNode): Promise<SourcePayload> {
   const box = source.absoluteBoundingBox;
   if (!box || box.width <= 0 || box.height <= 0) {
     throw userError("sourceNeedsVisibleBounds");
@@ -281,16 +303,13 @@ async function exportSource(
       width: placementBox.width,
       height: placementBox.height,
     },
-    ...(storedOperation?.kind === "transform" && target
-      ? { spec: storedOperation.spec, targetNodeId: target.id }
-      : {}),
-    ...(storedOperation?.kind === "rectify" && target
-      ? { rectification: storedOperation.spec, targetNodeId: target.id }
-      : {}),
-    ...(storedOperation?.kind === "canvas" && target
-      ? { canvas: storedOperation.spec, targetNodeId: target.id }
-      : {}),
   };
+}
+
+function taskSourceCount(task: StoredDesignerTask): number {
+  if (task.kind === "mockup") return new Set(task.spec.planes.map((plane) => plane.sourceId)).size;
+  if (task.kind === "remap" && task.spec.operation.kind === "displacement") return 2;
+  return 1;
 }
 
 async function refreshSourceRaster(
@@ -469,11 +488,18 @@ async function applyCanvasSet(
       }
       if (!target || target.type !== "RECTANGLE") throw userError("resultUnavailable");
       const stored = readStoredPlane(target);
+      const storedOutput = stored.status === "valid" && stored.operation.kind === "canvas"
+        ? ownedCanvasOperationOutput(stored.operation.spec.operation, {
+            width: prepared.renderWidth,
+            height: prepared.renderHeight,
+          })
+        : undefined;
       if (
         stored.status !== "valid" ||
         stored.operation.kind !== "canvas" ||
-        checkedOutputAxis(target.width) !== prepared.renderWidth ||
-        checkedOutputAxis(target.height) !== prepared.renderHeight
+        !storedOutput ||
+        checkedOutputAxis(target.width) !== storedOutput.width ||
+        checkedOutputAxis(target.height) !== storedOutput.height
       ) {
         throw userError("resultChanged");
       }
@@ -500,6 +526,65 @@ async function applyCanvasSet(
         ? userMessage("rollbackIncomplete")
         : toUserMessage(error, "unexpectedError"),
     });
+  } finally {
+    applying = false;
+  }
+}
+
+async function applyDesignerResult(
+  payload: Extract<UiToMainMessage, { type: "apply-designer" }>["payload"],
+): Promise<void> {
+  const requestGeneration = payload.generation;
+  if (applying) {
+    post({ type: "apply-designer-error", generation: requestGeneration, message: userMessage("applyAlreadyInProgress") });
+    return;
+  }
+  applying = true;
+  try {
+    const prepared = requirePreparedDesignerSelection(payload);
+    const actualIds = figma.currentPage.selection.map((node) => node.id);
+    const expectedIds = [...payload.sourceNodeIds, ...(payload.targetNodeId ? [payload.targetNodeId] : [])];
+    if (requestGeneration !== selectionGeneration || reloadScheduled || !sameIds(actualIds, expectedIds)) {
+      throw userError("selectionChanged");
+    }
+    const source = await figma.getNodeByIdAsync(payload.sourceNodeIds[0]!);
+    if (!source || !isSceneNode(source)) throw userError("selectionChanged");
+    let existing: RectangleNode | undefined;
+    if (payload.targetNodeId && !payload.duplicate) {
+      const target = await figma.getNodeByIdAsync(payload.targetNodeId);
+      if (!target || target.type !== "RECTANGLE") throw userError("resultUnavailable");
+      const stored = readStoredPlane(target);
+      const storedWidth = Number(target.getPluginData(RENDER_WIDTH_KEY));
+      const storedHeight = Number(target.getPluginData(RENDER_HEIGHT_KEY));
+      if (
+        stored.status !== "valid" ||
+        stored.operation.kind !== "task" ||
+        !Number.isSafeInteger(storedWidth) ||
+        !Number.isSafeInteger(storedHeight) ||
+        checkedOutputAxis(target.width) !== storedWidth ||
+        checkedOutputAxis(target.height) !== storedHeight
+      ) throw userError("resultChanged");
+      existing = target;
+    }
+    if (prepared.task?.kind && prepared.task.kind !== payload.task.kind) throw userError("resultChanged");
+    figma.commitUndo();
+    const result = await publishResult({
+      ...(existing ? { existing } : {}),
+      imageHash: figma.createImage(payload.bytes).hash,
+      storedKind: "task",
+      serializedOperation: JSON.stringify(payload.task),
+      sourceName: source.name,
+      placement: payload.placement,
+      renderWidth: payload.renderWidth,
+      renderHeight: payload.renderHeight,
+    });
+    preparedSelection = undefined;
+    try { figma.viewport.scrollAndZoomIntoView([result]); } catch {}
+    try { figma.notify(translate(activeLocale, "designerApplied")); } catch {}
+    try { figma.commitUndo(); } catch {}
+    post({ type: "apply-designer-complete", generation: requestGeneration, targetNodeId: result.id, operation: existing ? "replace" : "apply" });
+  } catch (error) {
+    post({ type: "apply-designer-error", generation: requestGeneration, message: toUserMessage(error, "unexpectedError") });
   } finally {
     applying = false;
   }
@@ -623,7 +708,7 @@ function selectionAncestorIds(selection: readonly SceneNode[]): ReadonlySet<stri
 async function publishResult(input: {
   existing?: RectangleNode;
   imageHash: string;
-  storedKind: "transform" | "rectify" | "canvas";
+  storedKind: "transform" | "rectify" | "canvas" | "task";
   serializedOperation: string;
   sourceName: string;
   placement: SourcePayload["placement"];
@@ -646,6 +731,10 @@ async function publishResult(input: {
   const priorCanvas = input.existing?.getSharedPluginData(
     SHARED_NAMESPACE,
     SHARED_CANVAS_KEY,
+  );
+  const priorTask = input.existing?.getSharedPluginData(
+    SHARED_NAMESPACE,
+    SHARED_DESIGNER_TASK_KEY,
   );
   const priorWidth = input.existing?.getPluginData(RENDER_WIDTH_KEY);
   const priorHeight = input.existing?.getPluginData(RENDER_HEIGHT_KEY);
@@ -697,6 +786,11 @@ async function publishResult(input: {
       SHARED_CANVAS_KEY,
       input.storedKind === "canvas" ? input.serializedOperation : "",
     );
+    result.setSharedPluginData(
+      SHARED_NAMESPACE,
+      SHARED_DESIGNER_TASK_KEY,
+      input.storedKind === "task" ? input.serializedOperation : "",
+    );
     result.setPluginData(RENDER_WIDTH_KEY, String(input.renderWidth));
     result.setPluginData(RENDER_HEIGHT_KEY, String(input.renderHeight));
     return result;
@@ -716,6 +810,7 @@ async function publishResult(input: {
           priorRectification ?? "",
         );
         result.setSharedPluginData(SHARED_NAMESPACE, SHARED_CANVAS_KEY, priorCanvas ?? "");
+        result.setSharedPluginData(SHARED_NAMESPACE, SHARED_DESIGNER_TASK_KEY, priorTask ?? "");
         result.setPluginData(RENDER_WIDTH_KEY, priorWidth ?? "");
         result.setPluginData(RENDER_HEIGHT_KEY, priorHeight ?? "");
       }
@@ -770,6 +865,23 @@ function requirePreparedSelection(
   return prepared.payload;
 }
 
+function requirePreparedDesignerSelection(
+  payload: Extract<UiToMainMessage, { type: "apply-designer" }>["payload"],
+): SourcePayload {
+  const prepared = preparedSelection;
+  const preparedSourceIds = prepared?.payload.sources?.map((source) => source.sourceNodeId) ??
+    (prepared ? [prepared.payload.sourceNodeId] : []);
+  if (
+    !prepared ||
+    prepared.generation !== payload.generation ||
+    prepared.generation !== selectionGeneration ||
+    reloadScheduled ||
+    !sameIds(preparedSourceIds, payload.sourceNodeIds) ||
+    prepared.payload.targetNodeId !== payload.targetNodeId
+  ) throw userError("selectionChanged");
+  return prepared.payload;
+}
+
 function readStoredPlane(
   node: SceneNode,
 ):
@@ -780,15 +892,17 @@ function readStoredPlane(
       operation:
         | { kind: "transform"; spec: TransformSpec }
         | { kind: "rectify"; spec: RectifySpecInput }
-        | { kind: "canvas"; spec: OwnedCanvasSpec };
+        | { kind: "canvas"; spec: OwnedCanvasSpec }
+        | { kind: "task"; task: StoredDesignerTask };
     } {
   const transform = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_TRANSFORM_KEY);
   const rectification = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_RECTIFY_KEY);
   const canvas = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_CANVAS_KEY);
-  if (!transform && !rectification && !canvas) return { status: "none" };
+  const task = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_DESIGNER_TASK_KEY);
+  if (!transform && !rectification && !canvas && !task) return { status: "none" };
   // Exactly one operation owns a reusable result. Ambiguous or malformed
   // plugin data is rejected instead of choosing one silently.
-  if ([transform, rectification, canvas].filter(Boolean).length !== 1) {
+  if ([transform, rectification, canvas, task].filter(Boolean).length !== 1) {
     return { status: "invalid" };
   }
   if (transform) {
@@ -803,10 +917,14 @@ function readStoredPlane(
       ? { status: "valid", operation: { kind: "rectify", spec: parsed } }
       : { status: "invalid" };
   }
-  const parsed = parseOwnedCanvasSpec(canvas);
-  return parsed
-    ? { status: "valid", operation: { kind: "canvas", spec: parsed } }
-    : { status: "invalid" };
+  if (canvas) {
+    const parsed = parseOwnedCanvasSpec(canvas);
+    return parsed
+      ? { status: "valid", operation: { kind: "canvas", spec: parsed } }
+      : { status: "invalid" };
+  }
+  const parsed = parseStoredDesignerTask(task);
+  return parsed ? { status: "valid", operation: { kind: "task", task: parsed } } : { status: "invalid" };
 }
 
 function checkedOutputAxis(value: number): number {
@@ -839,6 +957,12 @@ function selectionMatches(sourceNodeId: string, targetNodeId?: string): boolean 
   const actual = figma.currentPage.selection.map((node) => node.id).sort();
   const expected = [sourceNodeId, ...(targetNodeId ? [targetNodeId] : [])].sort();
   return actual.length === expected.length && actual.every((id, index) => id === expected[index]);
+}
+
+function sameIds(actual: readonly string[], expected: readonly string[]): boolean {
+  const left = [...actual].sort();
+  const right = [...expected].sort();
+  return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
 function isSceneNode(node: BaseNode): node is SceneNode {

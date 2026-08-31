@@ -7,6 +7,8 @@ use serde_json::json;
 /// Presets may change their formula only with a schema/version review; adapters
 /// consume these vertices and never derive their own deformation.
 pub const WARP_MESH_SUBDIVISIONS: u16 = 16;
+pub const MIN_CUSTOM_MESH_SUBDIVISIONS: u16 = 2;
+pub const MAX_CUSTOM_MESH_SUBDIVISIONS: u16 = 16;
 const MAX_ABS_WARP_AMOUNT: f64 = 1.0;
 const MIN_TRIANGLE_AREA: f64 = 1.0e-8;
 
@@ -93,10 +95,12 @@ impl WarpMesh {
     /// (for example deserialized from a carrier). A malformed mesh must surface
     /// a stable schema error, never an index panic deeper in the pipeline.
     pub fn validate(&self) -> TransformResult<()> {
-        if self.subdivisions != WARP_MESH_SUBDIVISIONS {
+        if self.subdivisions < MIN_CUSTOM_MESH_SUBDIVISIONS
+            || self.subdivisions > MAX_CUSTOM_MESH_SUBDIVISIONS
+        {
             return Err(TransformError::new(
                 ErrorCode::Schema,
-                "warp mesh subdivisions do not match the canonical grid",
+                "warp mesh subdivisions must be from 2 through 16",
             ));
         }
         let side = usize::from(self.subdivisions) + 1;

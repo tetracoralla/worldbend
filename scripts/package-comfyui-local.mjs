@@ -78,12 +78,27 @@ for (const command of [
   "rectify-render",
   "canvas-inspect",
   "canvas-render",
+  "remap-inspect",
+  "remap-render",
 ]) {
   if (!binaryHelp.includes(`  ${command}`)) {
     throw new Error(`ComfyUI runtime is missing required command: ${command}`);
   }
 }
-for (const command of ["compose", "solve", "css", "schema"]) {
+for (const command of [
+  "compose",
+  "solve",
+  "css",
+  "schema",
+  "mockup-inspect",
+  "mockup-render",
+  "mockup-extract-inspect",
+  "mockup-extract-render",
+  "mesh-inspect",
+  "mesh-render",
+  "timeline-inspect",
+  "timeline-render",
+]) {
   if (binaryHelp.includes(`  ${command}`)) {
     throw new Error(`ComfyUI runtime unexpectedly contains full CLI command: ${command}`);
   }

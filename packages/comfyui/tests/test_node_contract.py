@@ -15,7 +15,7 @@ class NodeContractTests(unittest.TestCase):
         cls.source = (PACKAGE_ROOT / "nodes.py").read_text(encoding="utf-8")
         cls.module = ast.parse(cls.source)
 
-    def test_canvas_v3_node_ids_and_extension_members_are_explicit(self) -> None:
+    def test_v3_node_ids_and_extension_members_are_explicit(self) -> None:
         classes = {
             node.name: node
             for node in self.module.body
@@ -25,6 +25,8 @@ class NodeContractTests(unittest.TestCase):
             "WorldbendCanvasSetSpecNode",
             "WorldbendApplyCanvasSetNode",
             "WorldbendApplyCanvasPlanNode",
+            "WorldbendRemapSpecNode",
+            "WorldbendApplyRemapNode",
         ]:
             self.assertIn(name, classes)
 
@@ -43,11 +45,13 @@ class NodeContractTests(unittest.TestCase):
         self.assertIsInstance(returned, ast.List)
         members = [value.id for value in returned.elts if isinstance(value, ast.Name)]
         self.assertEqual(
-            members[-3:],
+            members[-5:],
             [
                 "WorldbendCanvasSetSpecNode",
                 "WorldbendApplyCanvasSetNode",
                 "WorldbendApplyCanvasPlanNode",
+                "WorldbendRemapSpecNode",
+                "WorldbendApplyRemapNode",
             ],
         )
 
@@ -84,6 +88,20 @@ class NodeContractTests(unittest.TestCase):
         self.assertEqual(workflow["6"]["class_type"], "Worldbend_ApplyCanvasPlan")
         self.assertEqual(workflow["6"]["inputs"]["plan"], ["3", 2])
         self.assertEqual(workflow["6"]["inputs"]["sampling"], "nearest")
+
+    def test_remap_example_is_valid_api_json_and_reuses_one_remap(self) -> None:
+        workflow = json.loads(
+            (PACKAGE_ROOT / "examples" / "remap-api-workflow.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(workflow["3"]["class_type"], "Worldbend_RemapSpec")
+        self.assertEqual(workflow["4"]["class_type"], "Worldbend_ApplyRemap")
+        self.assertEqual(workflow["6"]["class_type"], "Worldbend_ApplyRemap")
+        self.assertEqual(workflow["4"]["inputs"]["remap"], ["3", 0])
+        self.assertEqual(workflow["6"]["inputs"]["remap"], ["3", 0])
+        self.assertEqual(workflow["4"]["inputs"]["displacement_map"], ["2", 0])
+        self.assertEqual(workflow["6"]["inputs"]["displacement_map"], ["2", 0])
 
 
 if __name__ == "__main__":

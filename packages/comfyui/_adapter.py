@@ -77,6 +77,15 @@ class WorldbendCanvasPlan:
     source_size: tuple[int, int]
 
 
+@dataclass(frozen=True)
+class WorldbendRemap:
+    """Validated lens or displacement remap retained as workflow data."""
+
+    spec_json: str
+    output_size: tuple[int, int]
+    requires_map: bool
+
+
 def create_canvas_set(spec_json: str) -> WorldbendCanvasSet:
     """Validate and retain one strict CanvasSetSpec through the native core.
 
@@ -96,6 +105,29 @@ def create_canvas_set(spec_json: str) -> WorldbendCanvasSet:
     if inspected != document:
         _raise("E_INTERNAL", "native Canvas Set inspection changed the supplied program")
     return WorldbendCanvasSet(spec_json)
+
+
+def create_remap(spec_json: str) -> WorldbendRemap:
+    """Validate one strict RemapSpec through the carrier's native core."""
+
+    document = _validate_spec_json(spec_json)
+    with tempfile.TemporaryDirectory(prefix="worldbend-comfy-remap-spec-") as temporary:
+        spec_path = Path(temporary) / "remap.worldbend.json"
+        spec_path.write_text(spec_json, encoding="utf-8")
+        plan = _run_cli(
+            ["remap-inspect", "--spec", str(spec_path), "--json"],
+            expected_operation="remapInspect",
+        )
+    if plan.get("schema") != "worldbend.remap-plan" or plan.get("version") != "0.1":
+        _raise("E_INTERNAL", "native remap inspection returned an unknown plan header")
+    if plan.get("spec") != document:
+        _raise("E_INTERNAL", "native remap inspection changed the supplied program")
+    output_size = _read_pixel_size(document.get("output"), "remap output")
+    _validate_raster_size(*output_size, "remap output")
+    requires_map = plan.get("requiresMap")
+    if not isinstance(requires_map, bool):
+        _raise("E_INTERNAL", "native remap inspection returned no map requirement")
+    return WorldbendRemap(spec_json, output_size, requires_map)
 
 
 def create_transform(
@@ -288,6 +320,96 @@ def apply_rectification(
         output_image, output_mask = _read_output_rgba(output_path)
 
     return output_image, output_mask, rectification
+
+
+def apply_remap(
+    image: torch.Tensor,
+    remap: WorldbendRemap,
+    quality: str = "standard",
+    mask: Optional[torch.Tensor] = None,
+    displacement_map: Optional[torch.Tensor] = None,
+    displacement_map_mask: Optional[torch.Tensor] = None,
+) -> tuple[torch.Tensor, torch.Tensor, WorldbendRemap]:
+    """Apply one explicit lens or map-driven displacement to IMAGE and MASK."""
+
+    if not isinstance(remap, WorldbendRemap):
+        _raise("E_SCHEMA", "remap must come from Worldbend Remap Spec")
+    if quality not in {"preview", "standard", "high"}:
+        _raise("E_SCHEMA", "quality must be preview, standard, or high")
+    if remap.requires_map != (displacement_map is not None):
+        _raise(
+            "E_SCHEMA",
+            "displacement remaps require exactly one map IMAGE; lens remaps reject it",
+        )
+    if displacement_map is None and displacement_map_mask is not None:
+        _raise("E_SCHEMA", "a displacement map MASK requires a displacement map IMAGE")
+
+    source = _validate_image(image)
+    height = int(source.shape[1])
+    width = int(source.shape[2])
+    source_mask = _validate_mask(mask, height, width) if mask is not None else None
+    map_image = _validate_image(displacement_map) if displacement_map is not None else None
+    map_mask = None
+    if displacement_map_mask is not None:
+        assert map_image is not None
+        map_mask = _validate_mask(
+            displacement_map_mask,
+            int(map_image.shape[1]),
+            int(map_image.shape[2]),
+        )
+    _validate_raster_size(*remap.output_size, "remap output")
+
+    with tempfile.TemporaryDirectory(prefix="worldbend-comfy-remap-render-") as temporary:
+        root = Path(temporary)
+        source_path = root / "source.png"
+        map_path = root / "map.png"
+        spec_path = root / "remap.worldbend.json"
+        output_path = root / "output.png"
+        _write_source_rgba(source, source_mask, source_path)
+        spec_path.write_text(remap.spec_json, encoding="utf-8")
+        arguments = [
+            "remap-render",
+            "--source",
+            str(source_path),
+            "--spec",
+            str(spec_path),
+            "--output",
+            str(output_path),
+            "--quality",
+            quality,
+            "--max-width",
+            str(MAX_AXIS),
+            "--max-height",
+            str(MAX_AXIS),
+            "--max-pixels",
+            str(MAX_PIXELS),
+            "--max-source-bytes",
+            str(MAX_SOURCE_BYTES),
+            "--json",
+        ]
+        if map_image is not None:
+            _write_source_rgba(map_image, map_mask, map_path)
+            arguments.extend(["--map", str(map_path)])
+        result = _run_cli(arguments, expected_operation="remapRender")
+        if (
+            result.get("status") != "written"
+            or result.get("dryRun") is not False
+            or result.get("output") != str(output_path)
+            or result.get("plan", {}).get("requiresMap") != remap.requires_map
+            or result.get("plan", {}).get("spec") != _decode_json_object(remap.spec_json)
+        ):
+            _raise("E_INTERNAL", "native remap execution returned an invalid result identity")
+        evidence = result.get("evidence")
+        if (
+            not isinstance(evidence, dict)
+            or (evidence.get("outputWidth"), evidence.get("outputHeight"))
+            != remap.output_size
+            or (evidence.get("mapSha256") is not None) != remap.requires_map
+        ):
+            _raise("E_INTERNAL", "native remap execution returned invalid dimensions or map identity")
+        output_image, output_mask = _read_output_rgba(output_path)
+
+    return output_image, output_mask, remap
 
 
 def apply_canvas_set(

@@ -7,8 +7,12 @@ publish = false
 description = "Canonical projective plane-mapping model, solver, validation, and diagnostics"
 
 [features]
-default = ["css"]
+default = ["css", "place", "deform", "remap", "timeline"]
 css = []
+place = []
+deform = []
+remap = []
+timeline = []
 
 [dependencies]
 nalgebra.workspace = true

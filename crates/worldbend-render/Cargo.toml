@@ -6,6 +6,13 @@ rust-version.workspace = true
 publish = false
 description = "Native reference raster renderer for Worldbend"
 
+[features]
+default = ["place", "deform", "remap", "timeline"]
+place = ["worldbend-core/place"]
+deform = ["worldbend-core/deform"]
+remap = ["worldbend-core/remap"]
+timeline = ["worldbend-core/timeline"]
+
 [dependencies]
 image.workspace = true
 libc.workspace = true

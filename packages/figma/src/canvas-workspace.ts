@@ -1,6 +1,7 @@
 import {
   CanvasRasterRenderer,
   planCanvasSet,
+  planCanvasSetFromRgba,
   type CanvasSetPlan,
 } from "@worldbend/web";
 import type { MainToUiMessage, SourcePayload, UiToMainMessage } from "./messages";
@@ -10,23 +11,38 @@ import {
   cloneCanvasDraft,
   createCanvasDraft,
   removeCanvasVariant,
+  renameCanvasVariant,
   selectCanvasVariant,
   updateCanvasVariant,
   validateCanvasDraft,
-  type CanvasAnchor,
   type CanvasBackground,
   type CanvasDraft,
+  type CanvasOperationKind,
+  type CanvasVariantDraft,
 } from "./canvas-state";
 import { createCanvasHistory, type CanvasHistory } from "./canvas-history";
-import type { OwnedCanvasSetSpec } from "./stored-canvas";
 import {
   createCanvasWorkspaceView,
   type CanvasWorkspaceCopy,
-  type CanvasWorkspaceView,
 } from "./canvas-workspace-view";
+import {
+  canvasPrimaryActionLabel,
+  canvasResultPlacements,
+  cloneBackground,
+  draftFromStoredCanvas,
+  eventTargetEditsText,
+  hexToRgba,
+  imageRgba,
+  inspectorControls,
+  renderAnchors,
+  renderVariantTabs,
+  rgbaToHex,
+  specFromDraft,
+  type CanvasWorkspacePhase,
+} from "./canvas-workspace-support";
 
-type WorkspaceSource = Omit<SourcePayload, "bytes"> & { selectionGeneration: number };
-type WorkspacePhase = "idle" | "planning" | "ready" | "applying" | "applied";
+type WorkspaceSource = Omit<SourcePayload, "bytes" | "sources"> & { selectionGeneration: number };
+type WorkspacePhase = CanvasWorkspacePhase;
 
 export interface CanvasWorkspace {
   enter(): void;
@@ -45,7 +61,10 @@ export function createCanvasWorkspace(input: {
   copy(): CanvasWorkspaceCopy;
   onBack(): void;
   post(message: UiToMainMessage): void;
-  requestSourceRaster(source: WorkspaceSource, desired: { width: number; height: number }): Promise<Uint8Array>;
+  requestSourceRaster(
+    source: WorkspaceSource,
+    desired: { width: number; height: number },
+  ): Promise<Uint8Array>;
   decodeImage(bytes: Uint8Array): Promise<HTMLImageElement>;
   formatError(error: unknown): string;
 }): CanvasWorkspace {
@@ -53,6 +72,7 @@ export function createCanvasWorkspace(input: {
   let active = false;
   let source: WorkspaceSource | undefined;
   let sourceImage: HTMLImageElement | undefined;
+  let sourceRgba: Uint8Array | undefined;
   let draft: CanvasDraft | undefined;
   let baseline: CanvasDraft | undefined;
   let history: CanvasHistory | undefined;
@@ -72,10 +92,36 @@ export function createCanvasWorkspace(input: {
     if (!draft || source?.targetNodeId) return;
     updateDraft(removeCanvasVariant(draft, draft.activeId));
   });
-  view.width.addEventListener("change", () => commitAxis("width", view.width.value));
-  view.height.addEventListener("change", () => commitAxis("height", view.height.value));
-  view.contain.addEventListener("click", () => commitFit("contain"));
-  view.cover.addEventListener("click", () => commitFit("cover"));
+  view.variantId.addEventListener("change", commitVariantId);
+  view.operation.addEventListener("change", () => {
+    if (!draft) return;
+    updateDraft(
+      updateCanvasVariant(draft, draft.activeId, {
+        kind: view.operation.value as CanvasOperationKind,
+      }),
+    );
+  });
+  view.width.addEventListener("change", () => commitNumber("width", view.width.value));
+  view.height.addEventListener("change", () => commitNumber("height", view.height.value));
+  for (const [control, key] of [
+    [view.cropX, "x"],
+    [view.cropY, "y"],
+    [view.cropWidth, "width"],
+    [view.cropHeight, "height"],
+  ] as const) {
+    control.addEventListener("change", () => commitNestedNumber("crop", key, control.value));
+  }
+  view.trimThreshold.addEventListener("change", () =>
+    commitNumber("trimThreshold", view.trimThreshold.value),
+  );
+  for (const [control, key] of [
+    [view.padTop, "top"],
+    [view.padRight, "right"],
+    [view.padBottom, "bottom"],
+    [view.padLeft, "left"],
+  ] as const) {
+    control.addEventListener("change", () => commitNestedNumber("insets", key, control.value));
+  }
   view.background.addEventListener("change", () => {
     commitBackground(
       view.background.value === "color"
@@ -92,7 +138,7 @@ export function createCanvasWorkspace(input: {
       });
     }
   });
-  view.reset.addEventListener("click", () => resetDraft());
+  view.reset.addEventListener("click", resetDraft);
   view.apply.addEventListener("click", () => void apply(false));
   view.applyNew.addEventListener("click", () => void apply(true));
   input.root.hidden = true;
@@ -131,14 +177,20 @@ export function createCanvasWorkspace(input: {
       source?.targetNodeId === nextSource.targetNodeId;
     source = nextSource;
     sourceImage = image;
+    sourceRgba = undefined;
     undoRouted = false;
     visibleError = "";
     if (!same || !draft) {
       draft = nextSource.canvas
-        ? draftFromStoredCanvas(nextSource.canvas.operation)
-        : createCanvasDraft(nextSource.renderWidth, nextSource.renderHeight);
+        ? draftFromStoredCanvas(nextSource.canvas.operation, image.naturalWidth, image.naturalHeight)
+        : createCanvasDraft(image.naturalWidth, image.naturalHeight);
       baseline = cloneCanvasDraft(draft);
       history = createCanvasHistory(draft);
+    } else {
+      draft = { ...draft, source: { width: image.naturalWidth, height: image.naturalHeight } };
+      baseline = baseline
+        ? { ...baseline, source: { ...draft.source } }
+        : cloneCanvasDraft(draft);
     }
     phase = active ? "planning" : "ready";
     render();
@@ -156,6 +208,7 @@ export function createCanvasWorkspace(input: {
   function clearSource(error = ""): void {
     source = undefined;
     sourceImage = undefined;
+    sourceRgba = undefined;
     draft = undefined;
     baseline = undefined;
     history = undefined;
@@ -185,10 +238,7 @@ export function createCanvasWorkspace(input: {
     visibleError = "";
     render();
     try {
-      const nextPlan = await planCanvasSet(specFromDraft(plannedDraft), {
-        width: sourceImage.naturalWidth,
-        height: sourceImage.naturalHeight,
-      });
+      const nextPlan = await planDraft(plannedDraft, sourceImage);
       if (!active || generation !== planGeneration || draft !== plannedDraft) return;
       plan = nextPlan;
       phase = "ready";
@@ -201,6 +251,16 @@ export function createCanvasWorkspace(input: {
       visibleError = input.formatError(error);
       render();
     }
+  }
+
+  async function planDraft(plannedDraft: CanvasDraft, image: HTMLImageElement): Promise<CanvasSetPlan> {
+    const spec = specFromDraft(plannedDraft);
+    const sourceSize = { width: image.naturalWidth, height: image.naturalHeight };
+    if (!plannedDraft.variants.some((variant) => variant.kind === "trim")) {
+      return planCanvasSet(spec, sourceSize);
+    }
+    sourceRgba ??= imageRgba(image);
+    return planCanvasSetFromRgba(spec, sourceSize, sourceRgba);
   }
 
   function renderActivePreview(): void {
@@ -224,19 +284,13 @@ export function createCanvasWorkspace(input: {
     visibleError = "";
     render();
     try {
-      const desired = applyingDraft.variants.reduce(
-        (size, variant) => ({
-          width: Math.max(size.width, variant.width),
-          height: Math.max(size.height, variant.height),
-        }),
-        { width: 1, height: 1 },
-      );
-      const bytes = await input.requestSourceRaster(applyingSource, desired);
-      const finalSource = await input.decodeImage(bytes);
-      const finalPlan = await planCanvasSet(specFromDraft(applyingDraft), {
-        width: finalSource.naturalWidth,
-        height: finalSource.naturalHeight,
+      const bytes = await input.requestSourceRaster(applyingSource, {
+        width: sourceImage.naturalWidth,
+        height: sourceImage.naturalHeight,
       });
+      const finalSource = await input.decodeImage(bytes);
+      sourceRgba = undefined;
+      const finalPlan = await planDraft(applyingDraft, finalSource);
       if (
         !active ||
         generation !== planGeneration ||
@@ -339,15 +393,37 @@ export function createCanvasWorkspace(input: {
     void requestPlan();
   }
 
-  function commitAxis(axis: "width" | "height", value: string): void {
+  function commitVariantId(): void {
     if (!draft) return;
-    const parsed = Number(value);
-    updateDraft(updateCanvasVariant(draft, draft.activeId, { [axis]: parsed }));
+    const currentId = draft.activeId;
+    const nextId = view.variantId.value.trim();
+    const next = renameCanvasVariant(draft, currentId, nextId);
+    if (next === draft && nextId !== currentId) {
+      visibleError = input.copy().invalid;
+      render();
+      return;
+    }
+    updateDraft(next);
   }
 
-  function commitFit(fit: "contain" | "cover"): void {
+  function commitNumber(key: "width" | "height" | "trimThreshold", value: string): void {
     if (!draft) return;
-    updateDraft(updateCanvasVariant(draft, draft.activeId, { fit }));
+    updateDraft(updateCanvasVariant(draft, draft.activeId, { [key]: Number(value) }));
+  }
+
+  function commitNestedNumber(
+    group: "crop" | "insets",
+    key: string,
+    value: string,
+  ): void {
+    if (!draft) return;
+    const variant = activeCanvasVariant(draft);
+    if (!variant) return;
+    updateDraft(
+      updateCanvasVariant(draft, draft.activeId, {
+        [group]: { ...variant[group], [key]: Number(value) },
+      }),
+    );
   }
 
   function commitBackground(background: CanvasBackground): void {
@@ -364,43 +440,21 @@ export function createCanvasWorkspace(input: {
     const copy = input.copy();
     view.applyCopy(copy);
     view.sourceName.textContent = source?.sourceName ?? "";
-    renderVariantTabs(view, draft, (id) => {
+    renderVariantTabs(view, draft, plan, (id) => {
       if (!draft) return;
       draft = selectCanvasVariant(draft, id);
       renderActivePreview();
       render();
     });
     const variant = draft ? activeCanvasVariant(draft) : undefined;
-    if (variant) {
-      view.width.value = String(variant.width);
-      view.height.value = String(variant.height);
-      view.contain.setAttribute("aria-pressed", String(variant.fit === "contain"));
-      view.cover.setAttribute("aria-pressed", String(variant.fit === "cover"));
-      renderAnchors(view, variant.anchor, copy, (anchor) => {
-        if (!draft) return;
-        updateDraft(updateCanvasVariant(draft, draft.activeId, { anchor }));
-      });
-      view.background.value = variant.background.kind;
-      view.backgroundColor.hidden = variant.background.kind !== "color";
-      if (variant.background.kind === "color") {
-        view.backgroundColor.value = rgbaToHex(variant.background.rgba);
-      }
-    }
+    if (variant) renderInspector(variant, copy);
     const busy = phase === "planning" || phase === "applying";
     const ready = Boolean(source && variant) && phase === "ready" && !validateCanvasDraft(draft!);
-    for (const control of [
-      view.width,
-      view.height,
-      view.contain,
-      view.cover,
-      view.background,
-      view.backgroundColor,
-      ...view.anchorGrid.querySelectorAll<HTMLButtonElement>("button"),
-    ]) {
-      control.disabled = busy || !variant;
-    }
-    view.addVariant.disabled = busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length >= 8;
-    view.removeVariant.disabled = busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length <= 1;
+    for (const control of inspectorControls(view)) control.disabled = busy || !variant;
+    view.addVariant.disabled =
+      busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length >= 8;
+    view.removeVariant.disabled =
+      busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length <= 1;
     view.reset.disabled = busy || !baseline;
     view.apply.disabled = !ready;
     view.applyNew.hidden = !source?.targetNodeId;
@@ -423,6 +477,38 @@ export function createCanvasWorkspace(input: {
     input.root.setAttribute("aria-busy", String(busy));
   }
 
+  function renderInspector(variant: CanvasVariantDraft, copy: CanvasWorkspaceCopy): void {
+    view.variantId.value = variant.id;
+    view.operation.value = variant.kind;
+    view.outputGroup.hidden = !["contain", "cover", "stretch"].includes(variant.kind);
+    view.cropGroup.hidden = variant.kind !== "crop";
+    view.trimGroup.hidden = variant.kind !== "trim";
+    view.padGroup.hidden = variant.kind !== "pad";
+    view.anchorField.hidden = !["contain", "cover"].includes(variant.kind);
+    view.backgroundField.hidden = !["pad", "contain", "cover"].includes(variant.kind);
+    view.backgroundColor.hidden =
+      view.backgroundField.hidden || variant.background.kind !== "color";
+    view.width.value = String(variant.width);
+    view.height.value = String(variant.height);
+    view.cropX.value = String(variant.crop.x);
+    view.cropY.value = String(variant.crop.y);
+    view.cropWidth.value = String(variant.crop.width);
+    view.cropHeight.value = String(variant.crop.height);
+    view.trimThreshold.value = String(variant.trimThreshold);
+    view.padTop.value = String(variant.insets.top);
+    view.padRight.value = String(variant.insets.right);
+    view.padBottom.value = String(variant.insets.bottom);
+    view.padLeft.value = String(variant.insets.left);
+    renderAnchors(view, variant.anchor, copy, (anchor) => {
+      if (!draft) return;
+      updateDraft(updateCanvasVariant(draft, draft.activeId, { anchor }));
+    });
+    view.background.value = variant.background.kind;
+    if (variant.background.kind === "color") {
+      view.backgroundColor.value = rgbaToHex(variant.background.rgba);
+    }
+  }
+
   return {
     enter,
     leave,
@@ -439,154 +525,13 @@ export function createCanvasWorkspace(input: {
   };
 }
 
-export function canvasPrimaryActionLabel(
-  copy: Pick<CanvasWorkspaceCopy, "apply" | "applyVariants" | "applying" | "replace">,
-  state: { phase: WorkspacePhase; replacing: boolean; variantCount: number },
-): string {
-  if (state.phase === "applying") return copy.applying;
-  if (state.replacing) return copy.replace;
-  return state.variantCount > 1 ? copy.applyVariants : copy.apply;
-}
-
-export function canvasResultPlacements(
-  base: SourcePayload["placement"],
-  sizes: readonly { width: number; height: number }[],
-  replacing: boolean,
-): SourcePayload["placement"][] {
-  if (replacing && sizes.length === 1) {
-    return [{ x: base.x, y: base.y, width: sizes[0]!.width, height: sizes[0]!.height }];
-  }
-  let x = base.x + base.width + 48;
-  return sizes.map((size) => {
-    const placement = { x, y: base.y, width: size.width, height: size.height };
-    x += size.width + 48;
-    return placement;
-  });
-}
-
-function specFromDraft(draft: CanvasDraft): OwnedCanvasSetSpec {
-  return {
-    schema: "worldbend.canvas-set",
-    version: "0.1",
-    variants: draft.variants.map((variant) => ({
-      id: variant.id,
-      operation: {
-        kind: variant.fit,
-        output: { width: variant.width, height: variant.height },
-        anchor: { ...variant.anchor },
-        background:
-          variant.background.kind === "transparent"
-            ? { kind: "transparent" }
-            : { ...variant.background, rgba: [...variant.background.rgba] },
-      },
-    })),
-  };
-}
-
-function draftFromStoredCanvas(operation: OwnedCanvasSetSpec["variants"][number]["operation"]): CanvasDraft {
-  const draft = createCanvasDraft(operation.output.width, operation.output.height);
-  draft.variants[0] = {
-    ...draft.variants[0]!,
-    fit: operation.kind,
-    anchor: { ...operation.anchor },
-    background:
-      operation.background.kind === "transparent"
-        ? { kind: "transparent" }
-        : { ...operation.background, rgba: [...operation.background.rgba] },
-  };
-  return draft;
-}
-
-function renderVariantTabs(
-  view: CanvasWorkspaceView,
-  draft: CanvasDraft | undefined,
-  select: (id: string) => void,
-): void {
-  view.variants.replaceChildren();
-  const variants = draft?.variants ?? [];
-  for (let index = 0; index < variants.length; index += 1) {
-    const variant = variants[index]!;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.role = "tab";
-    button.id = `canvas-variant-tab-${variant.id}`;
-    button.dataset.variantId = variant.id;
-    const active = variant.id === draft?.activeId;
-    button.setAttribute("aria-selected", String(active));
-    button.setAttribute("aria-controls", "canvas-preview");
-    button.tabIndex = active ? 0 : -1;
-    button.textContent = `${variant.width} × ${variant.height}`;
-    button.addEventListener("click", () => select(variant.id));
-    button.addEventListener("keydown", (event) => {
-      const targetIndex = variantTabTargetIndex(event.key, index, variants.length);
-      if (targetIndex === undefined) return;
-      event.preventDefault();
-      const next = variants[targetIndex];
-      if (!next) return;
-      select(next.id);
-      queueMicrotask(() => {
-        view.variants
-          .querySelector<HTMLButtonElement>(`[data-variant-id="${next.id}"]`)
-          ?.focus();
-      });
-    });
-    view.variants.append(button);
-    if (active) view.preview.setAttribute("aria-labelledby", button.id);
-  }
-}
-
-export function variantTabTargetIndex(
-  key: string,
-  current: number,
-  count: number,
-): number | undefined {
-  if (count <= 0) return undefined;
-  if (key === "Home") return 0;
-  if (key === "End") return count - 1;
-  if (key === "ArrowRight") return (current + 1) % count;
-  if (key === "ArrowLeft") return (current - 1 + count) % count;
-  return undefined;
-}
-
-function eventTargetEditsText(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
-  );
-}
-
-function renderAnchors(
-  view: CanvasWorkspaceView,
-  selected: { x: CanvasAnchor; y: CanvasAnchor },
-  copy: CanvasWorkspaceCopy,
-  choose: (anchor: { x: CanvasAnchor; y: CanvasAnchor }) => void,
-): void {
-  view.anchorGrid.replaceChildren();
-  const values: CanvasAnchor[] = [0, 0.5, 1];
-  let index = 0;
-  for (const y of values) {
-    for (const x of values) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.setAttribute("aria-label", copy.anchors[index++] ?? copy.anchor);
-      button.setAttribute("aria-pressed", String(x === selected.x && y === selected.y));
-      button.addEventListener("click", () => choose({ x, y }));
-      view.anchorGrid.append(button);
-    }
-  }
-}
-
 function activeGeneration(source: WorkspaceSource): number {
   return source.selectionGeneration;
 }
 
-function hexToRgba(value: string): [number, number, number, number] {
-  const match = /^#([0-9a-f]{6})$/i.exec(value);
-  if (!match) return [255, 255, 255, 255];
-  const packed = Number.parseInt(match[1]!, 16);
-  return [(packed >> 16) & 255, (packed >> 8) & 255, packed & 255, 255];
-}
-
-function rgbaToHex(rgba: readonly number[]): string {
-  return `#${rgba.slice(0, 3).map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0")).join("")}`;
-}
+export {
+  canvasPrimaryActionLabel,
+  canvasResultPlacements,
+  specFromDraft,
+  variantTabTargetIndex,
+} from "./canvas-workspace-support";

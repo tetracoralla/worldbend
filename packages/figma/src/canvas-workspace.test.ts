@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   canvasPrimaryActionLabel,
   canvasResultPlacements,
+  specFromDraft,
   variantTabTargetIndex,
 } from "./canvas-workspace";
+import { createCanvasDraft } from "./canvas-state";
 
 const actionCopy = {
   apply: "Apply as image",
@@ -73,5 +75,24 @@ describe("Canvas variant tab keyboard navigation", () => {
     expect(variantTabTargetIndex("Home", 2, 3)).toBe(0);
     expect(variantTabTargetIndex("End", 0, 3)).toBe(2);
     expect(variantTabTargetIndex("Enter", 1, 3)).toBeUndefined();
+  });
+});
+
+describe("Canvas operation projection", () => {
+  it("keeps Crop, Trim, Pad, and Stretch semantically distinct", () => {
+    const base = createCanvasDraft(100, 80);
+    const variant = base.variants[0]!;
+    const operations = [
+      { ...variant, kind: "crop" as const, crop: { x: 3, y: 4, width: 50, height: 40 } },
+      { ...variant, kind: "trim" as const, trimThreshold: 12 },
+      { ...variant, kind: "pad" as const, insets: { top: 1, right: 2, bottom: 3, left: 4 } },
+      { ...variant, kind: "stretch" as const, width: 64, height: 32 },
+    ];
+    expect(operations.map((candidate) => specFromDraft({ ...base, variants: [candidate] }).variants[0]!.operation)).toEqual([
+      { kind: "crop", rect: { x: 3, y: 4, width: 50, height: 40 } },
+      { kind: "trim", alphaThreshold: 12 },
+      { kind: "pad", insets: { top: 1, right: 2, bottom: 3, left: 4 }, background: { kind: "transparent" } },
+      { kind: "stretch", output: { width: 64, height: 32 } },
+    ]);
   });
 });

@@ -17,7 +17,7 @@ use worldbend_core::{
     CanvasBackground, CanvasOperation, CanvasOperationKind, CanvasPlan, CanvasSetPlan,
     CanvasSetSpec, ErrorCode, MAX_CANVAS_AXIS, MAX_CANVAS_PIXELS, MAX_CANVAS_SET_PIXELS, PixelRect,
     PixelSize, Point, Quad, Srgb8Space, TransformError, TransformResult, TransformSpec,
-    resolve_canvas_set,
+    resolve_canvas_set, resolve_trim_rect_rgba_with_cancel,
 };
 
 const MAX_EXACT_JSON_INTEGER: u64 = 9_007_199_254_740_991;
@@ -137,9 +137,13 @@ fn resolve_canvas_set_for_rgba(
         .variants
         .iter()
         .map(|variant| match variant.operation {
-            CanvasOperation::Trim { alpha_threshold } => {
-                resolve_trim_rect(source, alpha_threshold, is_cancelled).map(Some)
-            }
+            CanvasOperation::Trim { alpha_threshold } => resolve_trim_rect_rgba_with_cancel(
+                source.as_raw(),
+                source_size,
+                alpha_threshold,
+                is_cancelled,
+            )
+            .map(Some),
             _ => Ok(None),
         })
         .collect::<TransformResult<Vec<_>>>()?;
@@ -266,44 +270,6 @@ pub fn render_canvas_set_file(
         result.dry_run = false;
     }
     Ok(result)
-}
-
-fn resolve_trim_rect(
-    source: &RgbaImage,
-    alpha_threshold: u8,
-    is_cancelled: &(dyn Fn() -> bool + Sync),
-) -> TransformResult<PixelRect> {
-    let mut left = source.width();
-    let mut top = source.height();
-    let mut right = 0_u32;
-    let mut bottom = 0_u32;
-    let mut occupied = false;
-    for y in 0..source.height() {
-        if is_cancelled() {
-            return Err(cancelled_error());
-        }
-        for x in 0..source.width() {
-            if source.get_pixel(x, y)[3] > alpha_threshold {
-                occupied = true;
-                left = left.min(x);
-                top = top.min(y);
-                right = right.max(x + 1);
-                bottom = bottom.max(y + 1);
-            }
-        }
-    }
-    if !occupied {
-        return Err(TransformError::new(
-            ErrorCode::TrimEmpty,
-            "Trim found no primary-image alpha above alphaThreshold",
-        ));
-    }
-    Ok(PixelRect {
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
-    })
 }
 
 fn validate_plan_limits(
@@ -571,7 +537,7 @@ fn source_over(foreground: Rgba<u8>, background: Rgba<u8>) -> Rgba<u8> {
     Rgba(output)
 }
 
-fn preflight_output_directory(output: &Path) -> TransformResult<()> {
+pub(crate) fn preflight_output_directory(output: &Path) -> TransformResult<()> {
     let parent = output
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
@@ -594,7 +560,10 @@ fn preflight_output_directory(output: &Path) -> TransformResult<()> {
     }
 }
 
-fn publish_directory_noreplace(source: &Path, destination: &Path) -> TransformResult<()> {
+pub(crate) fn publish_directory_noreplace(
+    source: &Path,
+    destination: &Path,
+) -> TransformResult<()> {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
         use std::{ffi::CString, os::unix::ffi::OsStrExt};
@@ -1124,8 +1093,12 @@ mod tests {
 
         let trim_calls = AtomicUsize::new(0);
         assert_eq!(
-            resolve_trim_rect(&source, 0, &|| trim_calls.fetch_add(1, Ordering::SeqCst)
-                >= 3)
+            resolve_trim_rect_rgba_with_cancel(
+                source.as_raw(),
+                PixelSize::new(source.width(), source.height()),
+                0,
+                &|| trim_calls.fetch_add(1, Ordering::SeqCst) >= 3,
+            )
             .unwrap_err()
             .code,
             ErrorCode::Cancelled

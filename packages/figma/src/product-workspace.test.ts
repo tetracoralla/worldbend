@@ -5,19 +5,21 @@ describe("product workspace routing", () => {
   it("enters Canvas as a replacing child and returns without touching the parent draft", () => {
     const perspectiveDraft = { mode: "distort", quad: { tl: { x: -0.2, y: 0.1 } } };
     const snapshot = structuredClone(perspectiveDraft);
-    const onEnterCanvas = vi.fn();
-    const onReturnToPerspective = vi.fn();
-    const router = createProductWorkspaceRouter({ onEnterCanvas, onReturnToPerspective });
+    const onChange = vi.fn();
+    const router = createProductWorkspaceRouter({ onChange });
 
     expect(router.current()).toBe("perspective");
-    expect(router.enterCanvas()).toBe(true);
-    expect(router.enterCanvas()).toBe(false);
+    expect(router.enter("canvas")).toBe(true);
+    expect(router.enter("canvas")).toBe(false);
     expect(router.current()).toBe("canvas");
+    expect(router.enter("mesh")).toBe(true);
+    expect(router.current()).toBe("mesh");
     expect(router.returnToPerspective()).toBe(true);
     expect(router.returnToPerspective()).toBe(false);
     expect(router.current()).toBe("perspective");
     expect(perspectiveDraft).toEqual(snapshot);
-    expect(onEnterCanvas).toHaveBeenCalledTimes(1);
-    expect(onReturnToPerspective).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenNthCalledWith(1, "perspective", "canvas");
+    expect(onChange).toHaveBeenNthCalledWith(2, "canvas", "mesh");
+    expect(onChange).toHaveBeenNthCalledWith(3, "mesh", "perspective");
   });
 });

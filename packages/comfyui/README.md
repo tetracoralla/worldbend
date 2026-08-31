@@ -1,7 +1,8 @@
 # Worldbend for ComfyUI (experimental local package)
 
-Worldbend brings reusable `TransformSpec`, explicit `RectifySpec`, and ordered
-`CanvasSetSpec` data into ComfyUI without adding a second geometry engine. The
+Worldbend brings reusable `TransformSpec`, explicit `RectifySpec`, ordered
+`CanvasSetSpec`, and explicit `RemapSpec` data into ComfyUI without adding a
+second geometry engine. The
 Python nodes adapt Comfy tensors and masks to the bundled native Worldbend
 renderer; validation, planning, sampling, alpha handling, and output bounds
 remain owned by the same Rust core used by the CLI, Agent Host, Web/WASM, and
@@ -38,6 +39,12 @@ See Comfy's official [V3 migration reference](https://docs.comfy.org/custom-node
   8-bit control IMAGE. Sampling (`nearest` or `linear`) and outside fill are
   explicit. Replay requires the exact recorded source dimensions and never
   re-runs Trim.
+- **Worldbend Remap Spec** validates one explicit Brown-Conrady lens program or
+  channel-driven displacement program and emits `WORLDBEND_REMAP`.
+- **Apply Worldbend Remap** applies that value to one IMAGE and MASK. A
+  displacement program requires exactly one map IMAGE; an optional map MASK
+  supplies its alpha channel. Reusing the same Remap and map keeps compatible
+  control images on the same deterministic geometry.
 
 The MASK convention matches ComfyUI `LoadImage`: `1` is transparent/masked and
 therefore becomes source alpha `0`. The native renderer currently publishes
@@ -51,6 +58,8 @@ normal-vector renormalization are not part of this boundary.
 The Canvas list outputs preserve the exact variant order and are Comfy lists,
 not a padded tensor batch. See `examples/canvas-api-workflow.json` for one
 primary render followed by synchronized control-map replay.
+`examples/remap-api-workflow.json` shows one displacement program and map reused
+for a primary image and a control image.
 
 ## Local install
 

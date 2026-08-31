@@ -7,6 +7,10 @@
     "bounded-warp",
     "planar-rectification",
     "canvas-multi-output",
+    "place-mockup",
+    "mesh-warp",
+    "lens-displacement-remap",
+    "timeline-motion",
     "native-raster",
     "css-embedding"
   ],
@@ -18,7 +22,10 @@
         "affine-composition",
         "bounded-warp",
         "planar-rectification",
-        "canvas-multi-output"
+        "canvas-multi-output",
+        "place-mockup",
+        "mesh-warp",
+        "lens-displacement-remap"
       ],
       "workspace": {
         "id": "perspective",
@@ -30,7 +37,7 @@
           "mode-rectify",
           "more-options"
         ],
-        "siblingWorkspaceIds": ["canvas"]
+        "siblingWorkspaceIds": ["canvas", "mockup", "mesh", "remap"]
       },
       "package": {
         "runtimeEntries": [
@@ -53,17 +60,24 @@
         "bounded-warp",
         "planar-rectification",
         "canvas-multi-output",
+        "place-mockup",
+        "mesh-warp",
+        "lens-displacement-remap",
+        "timeline-motion",
         "native-raster",
         "css-embedding"
       ],
       "package": {
+        "defaultToolSurface": "catalog",
+        "nativeCargoFeatures": ["full"],
         "requiredExecutables": [
           "worldbend",
           "worldbend-capability",
           "worldbend-mcp",
           "worldbend-transport-schema-probe"
         ],
-        "maxToolCatalogBytes": 81920,
+        "maxToolCatalogBytes": 16384,
+        "maxDirectToolCatalogBytes": 81920,
         "forbiddenSuffixes": [".html", ".css", ".py"],
         "forbiddenPrefixes": ["figma/", "comfyui/"]
       }
@@ -76,6 +90,7 @@
         "bounded-warp",
         "planar-rectification",
         "canvas-multi-output",
+        "lens-displacement-remap",
         "native-raster"
       ],
       "package": {
@@ -88,7 +103,8 @@
         "exampleEntries": [
           "examples/basic-api-workflow.json",
           "examples/rectification-api-workflow.json",
-          "examples/canvas-api-workflow.json"
+          "examples/canvas-api-workflow.json",
+          "examples/remap-api-workflow.json"
         ],
         "nativeExecutable": "worldbend",
         "nativeCargoFeatures": ["comfy"],

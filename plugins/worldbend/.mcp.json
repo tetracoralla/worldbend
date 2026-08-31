@@ -2,7 +2,7 @@
   "mcpServers": {
     "worldbend": {
       "command": "./bin/worldbend-mcp",
-      "args": [],
+      "args": ["--surface", "catalog"],
       "cwd": ".",
       "env_vars": ["WORLDBEND_WORKSPACE_ROOT"]
     }

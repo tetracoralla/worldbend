@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { isWorkspacePluginVersion } from "./plugin-version.mjs";
 import { skillFrontmatter } from "./skill-frontmatter.mjs";
+import { loadCarrierProfiles } from "./carrier-profiles.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(root, "plugins", "worldbend");
@@ -30,6 +31,7 @@ const manifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
 await assertContainedRegularFile(manifestPath, "plugin manifest");
 const manifest = await readJson(manifestPath);
 const workspacePackage = await readJson(path.join(root, "package.json"));
+const carrierProfiles = await loadCarrierProfiles();
 
 assert(manifest.name === "worldbend", "plugin name must remain worldbend");
 assert(
@@ -83,8 +85,12 @@ assert(
 );
 assert(server.cwd === ".", "MCP server cwd must remain plugin-local");
 assert(
-  Array.isArray(server.args) && server.args.length === 0,
-  "MCP server must not add implicit command arguments",
+  JSON.stringify(server.args) ===
+    JSON.stringify([
+      "--surface",
+      carrierProfiles.carriers.agent.package.defaultToolSurface,
+    ]),
+  "MCP server must select the checked Agent tool surface",
 );
 assert(
   Array.isArray(server.env_vars) &&

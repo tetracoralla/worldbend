@@ -1,8 +1,8 @@
-export type ProductWorkspace = "perspective" | "canvas";
+export type ProductWorkspace = "perspective" | "canvas" | "mockup" | "mesh" | "remap";
 
 export interface ProductWorkspaceRouter {
   current(): ProductWorkspace;
-  enterCanvas(): boolean;
+  enter(workspace: Exclude<ProductWorkspace, "perspective">): boolean;
   returnToPerspective(): boolean;
 }
 
@@ -12,23 +12,19 @@ export interface ProductWorkspaceRouter {
  * replacing Canvas workspace opens.
  */
 export function createProductWorkspaceRouter(input: {
-  onEnterCanvas(): void;
-  onReturnToPerspective(): void;
+  onChange(previous: ProductWorkspace, next: ProductWorkspace): void;
 }): ProductWorkspaceRouter {
   let workspace: ProductWorkspace = "perspective";
+  const move = (next: ProductWorkspace): boolean => {
+    if (workspace === next) return false;
+    const previous = workspace;
+    workspace = next;
+    input.onChange(previous, next);
+    return true;
+  };
   return {
     current: () => workspace,
-    enterCanvas() {
-      if (workspace === "canvas") return false;
-      workspace = "canvas";
-      input.onEnterCanvas();
-      return true;
-    },
-    returnToPerspective() {
-      if (workspace === "perspective") return false;
-      workspace = "perspective";
-      input.onReturnToPerspective();
-      return true;
-    },
+    enter: (next) => move(next),
+    returnToPerspective: () => move("perspective"),
   };
 }

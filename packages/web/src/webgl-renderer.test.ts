@@ -83,7 +83,7 @@ describe("warpMeshVertexData", () => {
     );
   });
 
-  it("rejects custom grid resolution before allocation", () => {
+  it("accepts the bounded custom grid and rejects unsafe resolutions before allocation", () => {
     const subdivisions = 2;
     const mesh: WarpMesh = {
       subdivisions,
@@ -94,7 +94,10 @@ describe("warpMeshVertexData", () => {
         return { source, warped: { ...source } };
       }),
     };
-    expect(() => warpMeshVertexData(mesh)).toThrow("topology is invalid");
+    expect(warpMeshVertexData(mesh)).toHaveLength(subdivisions * subdivisions * 2 * 3 * 4);
+    expect(() => warpMeshVertexData({ subdivisions: 1, vertices: [] })).toThrow(
+      "topology is invalid",
+    );
     expect(() =>
       warpMeshVertexData({ subdivisions: Number.MAX_SAFE_INTEGER, vertices: [] }),
     ).toThrow("topology is invalid");

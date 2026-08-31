@@ -80,6 +80,37 @@ CANVAS_SET = json.dumps(
     }
 )
 
+IDENTITY_REMAP = json.dumps(
+    {
+        "schema": "worldbend.remap",
+        "version": "0.1",
+        "output": {"width": 2, "height": 2},
+        "operation": {
+            "kind": "lens",
+            "coefficients": {"k1": 0, "k2": 0, "k3": 0, "p1": 0, "p2": 0},
+            "center": {"x": 0.5, "y": 0.5},
+            "scale": {"x": 0.5, "y": 0.5},
+        },
+    }
+)
+
+DISPLACEMENT_REMAP = json.dumps(
+    {
+        "schema": "worldbend.remap",
+        "version": "0.1",
+        "output": {"width": 2, "height": 2},
+        "operation": {
+            "kind": "displacement",
+            "xChannel": "red",
+            "yChannel": "green",
+            "scaleXPixels": 10,
+            "scaleYPixels": 10,
+            "neutral": 128,
+            "boundary": "transparent",
+        },
+    }
+)
+
 
 class AdapterIntegrationTests(unittest.TestCase):
     @classmethod
@@ -251,6 +282,66 @@ class AdapterIntegrationTests(unittest.TestCase):
         with self.assertRaises(adapter.WorldbendNodeError) as raised:
             adapter.create_rectification(json.dumps(document))
         self.assertEqual(raised.exception.code, "E_SCHEMA")
+
+    def test_identity_lens_remap_and_mask_cross_the_real_native_boundary(self) -> None:
+        remap = adapter.create_remap(IDENTITY_REMAP)
+        self.assertFalse(remap.requires_map)
+        image = torch.tensor(
+            [
+                [
+                    [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                    [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
+                ]
+            ],
+            dtype=torch.float32,
+        )
+        mask = torch.tensor([[[0.0, 0.25], [0.5, 1.0]]], dtype=torch.float32)
+
+        output_image, output_mask, retained = adapter.apply_remap(
+            image,
+            remap,
+            mask=mask,
+        )
+
+        self.assertEqual(tuple(output_image.shape), (1, 2, 2, 3))
+        self.assertEqual(tuple(output_mask.shape), (1, 2, 2))
+        expected_image = image.clone()
+        expected_image[0, 1, 1] = 0.0
+        self.assertTrue(torch.equal(output_image, expected_image))
+        expected_mask = 1.0 - torch.round((1.0 - mask) * 255.0) / 255.0
+        self.assertTrue(torch.equal(output_mask, expected_mask))
+        self.assertIs(retained, remap)
+
+    def test_displacement_requires_one_map_and_supports_map_alpha(self) -> None:
+        remap = adapter.create_remap(DISPLACEMENT_REMAP)
+        self.assertTrue(remap.requires_map)
+        image = torch.ones((1, 2, 2, 3), dtype=torch.float32)
+        neutral = torch.full((1, 2, 2, 3), 128.0 / 255.0, dtype=torch.float32)
+        map_mask = torch.zeros((1, 2, 2), dtype=torch.float32)
+
+        with self.assertRaises(adapter.WorldbendNodeError) as missing:
+            adapter.apply_remap(image, remap)
+        self.assertEqual(missing.exception.code, "E_SCHEMA")
+
+        output_image, output_mask, retained = adapter.apply_remap(
+            image,
+            remap,
+            displacement_map=neutral,
+            displacement_map_mask=map_mask,
+        )
+        self.assertEqual(tuple(output_image.shape), (1, 2, 2, 3))
+        self.assertTrue(torch.equal(output_image, image))
+        self.assertTrue(torch.equal(output_mask, torch.zeros_like(output_mask)))
+        self.assertIs(retained, remap)
+
+    def test_lens_remap_rejects_an_unrequested_map_before_native_render(self) -> None:
+        remap = adapter.create_remap(IDENTITY_REMAP)
+        image = torch.zeros((1, 2, 2, 3), dtype=torch.float32)
+        with mock.patch.object(adapter, "_run_cli") as native:
+            with self.assertRaises(adapter.WorldbendNodeError) as raised:
+                adapter.apply_remap(image, remap, displacement_map=image)
+        self.assertEqual(raised.exception.code, "E_SCHEMA")
+        native.assert_not_called()
 
     def test_canvas_set_spec_is_strict_bounded_json_without_python_geometry(self) -> None:
         canvas_set = adapter.create_canvas_set(CANVAS_SET)

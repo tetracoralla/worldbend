@@ -14,6 +14,7 @@ import {
 } from "./i18n";
 import {
   isOwnedCanvasSetSpec,
+  ownedCanvasOperationOutput,
   type OwnedCanvasSetSpec,
   type OwnedCanvasSpec,
 } from "./stored-canvas";
@@ -21,17 +22,26 @@ import {
   MAX_FIGMA_CANVAS_PIXELS,
   MAX_FIGMA_CANVAS_VARIANTS,
 } from "./canvas-state";
+import {
+  isStoredDesignerTask,
+  type StoredDesignerTask,
+} from "./stored-designer-task";
 
-export interface SourcePayload {
+export interface SourceRasterPayload {
   bytes: Uint8Array;
   sourceNodeId: string;
   sourceName: string;
   renderWidth: number;
   renderHeight: number;
   placement: { x: number; y: number; width: number; height: number };
+}
+
+export interface SourcePayload extends SourceRasterPayload {
+  sources?: SourceRasterPayload[];
   spec?: TransformSpec;
   rectification?: RectifySpecInput;
   canvas?: OwnedCanvasSpec;
+  task?: StoredDesignerTask;
   targetNodeId?: string;
 }
 
@@ -68,7 +78,14 @@ export type MainToUiMessage =
       targetNodeIds: string[];
       operation: "apply" | "replace";
     }
-  | { type: "apply-canvas-error"; generation: number; message: UserMessage };
+  | { type: "apply-canvas-error"; generation: number; message: UserMessage }
+  | {
+      type: "apply-designer-complete";
+      generation: number;
+      targetNodeId: string;
+      operation: "apply" | "replace";
+    }
+  | { type: "apply-designer-error"; generation: number; message: UserMessage };
 
 export type UiToMainMessage =
   | { type: "ready"; systemLocales: string[] }
@@ -116,6 +133,20 @@ export type UiToMainMessage =
         /** Create a new result instead of replacing the selected Canvas result. */
         duplicate?: boolean;
       };
+    }
+  | {
+      type: "apply-designer";
+      payload: {
+        generation: number;
+        task: StoredDesignerTask;
+        sourceNodeIds: string[];
+        bytes: Uint8Array;
+        renderWidth: number;
+        renderHeight: number;
+        placement: Placement;
+        targetNodeId?: string;
+        duplicate?: boolean;
+      };
     };
 
 export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
@@ -159,6 +190,7 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
     );
   }
   if (value["type"] === "apply-canvas") return isApplyCanvasMessage(value);
+  if (value["type"] === "apply-designer") return isApplyDesignerMessage(value);
   if (value["type"] !== "apply" || !isRecord(value["payload"])) return false;
   const payload = value["payload"];
   const allowed = new Set([
@@ -199,6 +231,38 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
   );
 }
 
+function isApplyDesignerMessage(
+  value: Record<string, unknown>,
+): value is Extract<UiToMainMessage, { type: "apply-designer" }> {
+  if (!hasExactKeys(value, ["type", "payload"]) || !isRecord(value["payload"])) return false;
+  const payload = value["payload"];
+  const expected = [
+    "generation", "task", "sourceNodeIds", "bytes", "renderWidth", "renderHeight", "placement",
+    ...(payload["targetNodeId"] === undefined ? [] : ["targetNodeId"]),
+    ...(payload["duplicate"] === undefined ? [] : ["duplicate"]),
+  ];
+  return (
+    hasExactKeys(payload, expected) &&
+    Number.isSafeInteger(payload["generation"]) &&
+    Number(payload["generation"]) >= 1 &&
+    isStoredDesignerTask(payload["task"]) &&
+    Array.isArray(payload["sourceNodeIds"]) &&
+    payload["sourceNodeIds"].length >= 1 &&
+    payload["sourceNodeIds"].length <= 8 &&
+    new Set(payload["sourceNodeIds"]).size === payload["sourceNodeIds"].length &&
+    payload["sourceNodeIds"].every((id) => typeof id === "string" && id.length > 0) &&
+    payload["bytes"] instanceof Uint8Array &&
+    payload["bytes"].byteLength >= 1 &&
+    payload["bytes"].byteLength <= 128 * 1024 * 1024 &&
+    isFigmaImageAxis(payload["renderWidth"]) &&
+    isFigmaImageAxis(payload["renderHeight"]) &&
+    isPlacement(payload["placement"]) &&
+    (payload["targetNodeId"] === undefined ||
+      (typeof payload["targetNodeId"] === "string" && payload["targetNodeId"].length > 0)) &&
+    (payload["duplicate"] === undefined || typeof payload["duplicate"] === "boolean")
+  );
+}
+
 function isApplyCanvasMessage(
   value: Record<string, unknown>,
 ): value is Extract<UiToMainMessage, { type: "apply-canvas" }> {
@@ -234,6 +298,9 @@ function isApplyCanvasMessage(
   for (let index = 0; index < payload["outputs"].length; index += 1) {
     const output = payload["outputs"][index];
     const variant = payload["setSpec"].variants[index];
+    const declaredOutput = variant
+      ? ownedCanvasOperationOutput(variant.operation)
+      : undefined;
     if (
       !isRecord(output) ||
       !hasExactKeys(output, ["id", "bytes", "renderWidth", "renderHeight", "placement"]) ||
@@ -243,8 +310,9 @@ function isApplyCanvasMessage(
       output["bytes"].byteLength < 1 ||
       !isFigmaImageAxis(output["renderWidth"]) ||
       !isFigmaImageAxis(output["renderHeight"]) ||
-      output["renderWidth"] !== variant.operation.output.width ||
-      output["renderHeight"] !== variant.operation.output.height ||
+      (declaredOutput !== undefined &&
+        (output["renderWidth"] !== declaredOutput.width ||
+          output["renderHeight"] !== declaredOutput.height)) ||
       !isPlacement(output["placement"]) ||
       !sameAspectRatio(
         output["placement"],

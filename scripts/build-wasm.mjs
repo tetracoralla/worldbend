@@ -51,7 +51,9 @@ const cargoArguments = [
   "--target",
   "wasm32-unknown-unknown",
 ];
-if (profile === "figma") cargoArguments.push("--no-default-features");
+if (profile === "figma") {
+  cargoArguments.push("--no-default-features", "--features", "designer");
+}
 await run("cargo", cargoArguments);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });

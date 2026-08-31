@@ -1,0 +1,39 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "primary.png" }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "displacement-map.png" }
+  },
+  "3": {
+    "class_type": "Worldbend_RemapSpec",
+    "inputs": {
+      "spec_json": "{\n  \"schema\": \"worldbend.remap\",\n  \"version\": \"0.1\",\n  \"output\": { \"width\": 1024, \"height\": 1024 },\n  \"operation\": {\n    \"kind\": \"displacement\",\n    \"xChannel\": \"red\",\n    \"yChannel\": \"green\",\n    \"scaleXPixels\": 48,\n    \"scaleYPixels\": 48,\n    \"neutral\": 128,\n    \"boundary\": \"transparent\"\n  }\n}"
+    }
+  },
+  "4": {
+    "class_type": "Worldbend_ApplyRemap",
+    "inputs": {
+      "image": ["1", 0],
+      "mask": ["1", 1],
+      "displacement_map": ["2", 0],
+      "remap": ["3", 0],
+      "quality": "standard"
+    }
+  },
+  "5": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "control-map.png" }
+  },
+  "6": {
+    "class_type": "Worldbend_ApplyRemap",
+    "inputs": {
+      "image": ["5", 0],
+      "displacement_map": ["2", 0],
+      "remap": ["3", 0],
+      "quality": "preview"
+    }
+  }
+}

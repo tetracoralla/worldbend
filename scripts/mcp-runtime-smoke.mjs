@@ -19,7 +19,9 @@ import { loadCarrierProfiles } from "./carrier-profiles.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const carrierProfiles = await loadCarrierProfiles();
-const maxToolCatalogBytes = carrierProfiles.carriers.agent.package.maxToolCatalogBytes;
+const agentPackageProfile = carrierProfiles.carriers.agent.package;
+const maxToolCatalogBytes = agentPackageProfile.maxToolCatalogBytes;
+const maxDirectToolCatalogBytes = agentPackageProfile.maxDirectToolCatalogBytes;
 const REQUEST_TIMEOUT_MS = 30_000;
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const pluginRootArgument = process.argv.indexOf("--plugin-root");
@@ -43,6 +45,11 @@ let pixelSpec;
 let normalizedSpec;
 let rectifySpec;
 let canvasSetSpec;
+let mockupSpec;
+let mockupExtractSpec;
+let meshSpec;
+let remapSpec;
+let timelineSpec;
 let mcpComposeResult;
 let mcpFlippedComposeResult;
 let mcpWarpComposeResult;
@@ -58,6 +65,7 @@ async function main() {
   stagingRoot = await mkdtemp(path.join(tmpdir(), "worldbend-mcp-private-stage-"));
   let fixtureValidated = false;
   let client;
+  let catalogClient;
   try {
     assertSafeFixtureRoot(fixtureRoot);
     fixtureValidated = true;
@@ -82,6 +90,11 @@ async function main() {
     normalizedSpec = makeNormalizedSpec();
     rectifySpec = makeRectifySpec(2, 2);
     canvasSetSpec = makeCanvasSetSpec();
+    mockupSpec = makeMockupSpec();
+    mockupExtractSpec = makeMockupExtractSpec();
+    meshSpec = makeMeshSpec();
+    remapSpec = makeRemapSpec();
+    timelineSpec = makeTimelineSpec();
     await writeFile(
       path.join(fixtureRoot, "pixel.projective.json"),
       JSON.stringify(pixelSpec),
@@ -94,6 +107,17 @@ async function main() {
       path.join(fixtureRoot, "rectify.projective.json"),
       JSON.stringify(rectifySpec),
     );
+
+    catalogClient = new StdioClient(mcp, [
+      "--root",
+      fixtureRoot,
+      "--surface",
+      agentPackageProfile.defaultToolSurface,
+    ]);
+    await catalogClient.initialize();
+    await checkProgressiveCatalog(catalogClient);
+    await catalogClient.close();
+    catalogClient = undefined;
 
     client = new StdioClient(mcp, ["--root", fixtureRoot]);
     await client.initialize();
@@ -109,13 +133,333 @@ async function main() {
     await checkBoundedConcurrency(client);
     checkCliAdapter();
     console.log(
-      `Built CLI/MCP runtime smoke passed (tools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms)`,
+      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms)`,
     );
   } finally {
+    if (catalogClient) await catalogClient.close();
     if (client) await client.close();
     if (fixtureValidated) await rm(fixtureRoot, { recursive: true, force: true });
     await rm(stagingRoot, { recursive: true, force: true });
   }
+}
+
+async function checkProgressiveCatalog(activeClient) {
+  const response = await activeClient.request("tools/list", {});
+  assert.deepEqual(
+    response.result.tools.map((tool) => tool.name).sort(),
+    ["worldbend.describe", "worldbend.run", "worldbend.search"],
+  );
+  assert(
+    response.wireBytes <= maxToolCatalogBytes,
+    `progressive tools/list is ${response.wireBytes} bytes; budget is ${maxToolCatalogBytes}`,
+  );
+  metrics.catalogToolsListBytes = response.wireBytes;
+
+  const search = await activeClient.callTool("worldbend.search", {
+    query: "flatten plane",
+  });
+  assert.equal(search.result.structuredContent.ok, true);
+  assert.deepEqual(
+    search.result.structuredContent.result.operations.map((entry) => entry.operation),
+    [
+      "rectify",
+      "rectify_render",
+      "mockup_extract_plan",
+      "mockup_extract_render",
+    ],
+  );
+
+  const describe = await activeClient.callTool("worldbend.describe", {
+    operation: "canvas_render",
+  });
+  assert.equal(describe.result.structuredContent.ok, true);
+  assert.equal(describe.result.structuredContent.result.inputSchema.type, "object");
+  assert(Array.isArray(describe.result.structuredContent.result.inputSchema.oneOf));
+  assert.equal(describe.result.structuredContent.result.outputSchema.type, "object");
+
+  const mockupSearch = await activeClient.callTool("worldbend.search", {
+    query: "mockup packaging",
+  });
+  assert.equal(mockupSearch.result.structuredContent.ok, true);
+  assert.deepEqual(
+    mockupSearch.result.structuredContent.result.operations.map((entry) => entry.operation),
+    [
+      "mockup_plan",
+      "mockup_render",
+      "mockup_extract_plan",
+      "mockup_extract_render",
+    ],
+  );
+  const mockupDescription = await activeClient.callTool("worldbend.describe", {
+    operation: "mockup_render",
+  });
+  assert.equal(mockupDescription.result.structuredContent.ok, true);
+  assert.equal(
+    mockupDescription.result.structuredContent.result.inputSchema.$defs.MockupSpec
+      .properties.schema.type,
+    "string",
+  );
+
+  const run = await activeClient.callTool("worldbend.run", {
+    operation: "solve",
+    arguments: { destination: pixelSpec.destination },
+  });
+  assert.equal(run.result.structuredContent.ok, true);
+  assert.equal(
+    run.result.structuredContent.result.spec.schema,
+    "worldbend.transform",
+  );
+  assert.equal(run.result.structuredContent.result.diagnostics.geometry.convex, true);
+
+  const rejected = await activeClient.callTool("worldbend.run", {
+    operation: "solve",
+    arguments: { destination: pixelSpec.destination, unexpected: true },
+  });
+  expectToolError(rejected, "E_SCHEMA");
+
+  const mockupPlan = await activeClient.callTool("worldbend.run", {
+    operation: "mockup_plan",
+    arguments: { spec: mockupSpec },
+  });
+  assert.equal(mockupPlan.result.structuredContent.ok, true);
+  assert.deepEqual(
+    mockupPlan.result.structuredContent.result.planes.map((plane) => plane.id),
+    ["front", "side"],
+  );
+  assert.equal(mockupPlan.result.structuredContent.result.seams[0].reversed, true);
+
+  const mockupDry = await activeClient.callTool("worldbend.run", {
+    operation: "mockup_render",
+    arguments: {
+      sources: [
+        { id: "artwork", source: "source.png" },
+        { id: "side-artwork", source: "source.jpg" },
+      ],
+      spec: mockupSpec,
+      output: "out/mockup-dry.png",
+      dryRun: true,
+    },
+  });
+  assert.equal(mockupDry.result.structuredContent.ok, true);
+  assert.equal(mockupDry.result.structuredContent.result.status, "ready");
+  assert.equal(mockupDry.result.structuredContent.result.evidence.outputWidth, 4);
+  assert.equal(mockupDry.result.structuredContent.result.evidence.outputHeight, 2);
+  assert.equal(await exists(path.join(fixtureRoot, "out", "mockup-dry.png")), false);
+
+  const mockupWritten = await activeClient.callTool("worldbend.run", {
+    operation: "mockup_render",
+    arguments: {
+      sources: [
+        { id: "artwork", source: "source.png" },
+        { id: "side-artwork", source: "source.jpg" },
+      ],
+      spec: mockupSpec,
+      output: "out/mockup.png",
+    },
+  });
+  assert.equal(mockupWritten.result.structuredContent.ok, true);
+  assert.equal(mockupWritten.result.structuredContent.result.status, "written");
+  const mockupBytes = await readFile(path.join(fixtureRoot, "out", "mockup.png"));
+  assert.deepEqual([...mockupBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(
+    mockupWritten.result.structuredContent.result.evidence.outputSha256,
+    sha256(mockupBytes),
+  );
+  assert.deepEqual(await stagingDirectories(), []);
+
+  const extractPlan = await activeClient.callTool("worldbend.run", {
+    operation: "mockup_extract_plan",
+    arguments: { spec: mockupExtractSpec },
+  });
+  assert.equal(extractPlan.result.structuredContent.ok, true);
+  assert.deepEqual(
+    extractPlan.result.structuredContent.result.outputs.map((output) => output.filename),
+    ["front.png", "detail.png"],
+  );
+
+  const extractDry = await activeClient.callTool("worldbend.run", {
+    operation: "mockup_extract_render",
+    arguments: {
+      source: "source.png",
+      spec: mockupExtractSpec,
+      outputDirectory: "out/extract-dry",
+      dryRun: true,
+    },
+  });
+  assert.equal(extractDry.result.structuredContent.ok, true);
+  assert.equal(extractDry.result.structuredContent.result.status, "ready");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "extract-dry")), false);
+
+  const extractWritten = await activeClient.callTool("worldbend.run", {
+    operation: "mockup_extract_render",
+    arguments: {
+      source: "source.png",
+      spec: mockupExtractSpec,
+      outputDirectory: "out/extracted",
+    },
+  });
+  assert.equal(extractWritten.result.structuredContent.ok, true);
+  assert.equal(extractWritten.result.structuredContent.result.status, "written");
+  assert.deepEqual(
+    (await readdir(path.join(fixtureRoot, "out", "extracted"))).sort(),
+    ["detail.png", "front.png"],
+  );
+  for (const item of extractWritten.result.structuredContent.result.items) {
+    const bytes = await readFile(path.join(fixtureRoot, item.output));
+    assert.equal(item.sha256, sha256(bytes));
+  }
+
+  const meshPlan = await activeClient.callTool("worldbend.run", {
+    operation: "mesh_plan",
+    arguments: { spec: meshSpec },
+  });
+  assert.equal(meshPlan.result.structuredContent.ok, true);
+  assert.equal(meshPlan.result.structuredContent.result.spec.mesh.subdivisions, 2);
+
+  const meshDry = await activeClient.callTool("worldbend.run", {
+    operation: "mesh_render",
+    arguments: {
+      source: "source.png",
+      spec: meshSpec,
+      output: "out/mesh-dry.png",
+      dryRun: true,
+    },
+  });
+  assert.equal(meshDry.result.structuredContent.ok, true);
+  assert.equal(meshDry.result.structuredContent.result.status, "ready");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "mesh-dry.png")), false);
+
+  const meshWritten = await activeClient.callTool("worldbend.run", {
+    operation: "mesh_render",
+    arguments: {
+      source: "source.png",
+      spec: meshSpec,
+      output: "out/mesh.png",
+    },
+  });
+  assert.equal(meshWritten.result.structuredContent.ok, true);
+  const meshBytes = await readFile(path.join(fixtureRoot, "out", "mesh.png"));
+  assert.equal(meshWritten.result.structuredContent.result.evidence.outputSha256, sha256(meshBytes));
+
+  const remapPlan = await activeClient.callTool("worldbend.run", {
+    operation: "remap_plan",
+    arguments: { spec: remapSpec },
+  });
+  assert.equal(remapPlan.result.structuredContent.ok, true);
+  assert.equal(remapPlan.result.structuredContent.result.requiresMap, false);
+
+  const remapWithUnknownOperationField = structuredClone(remapSpec);
+  remapWithUnknownOperationField.operation.unexpected = true;
+  expectToolError(
+    await activeClient.callTool("worldbend.run", {
+      operation: "remap_plan",
+      arguments: { spec: remapWithUnknownOperationField },
+    }),
+    "E_SCHEMA",
+  );
+
+  const remapDry = await activeClient.callTool("worldbend.run", {
+    operation: "remap_render",
+    arguments: {
+      source: "source.png",
+      spec: remapSpec,
+      output: "out/remap-dry.png",
+      dryRun: true,
+    },
+  });
+  assert.equal(remapDry.result.structuredContent.ok, true);
+  assert.equal(remapDry.result.structuredContent.result.status, "ready");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "remap-dry.png")), false);
+
+  const remapWritten = await activeClient.callTool("worldbend.run", {
+    operation: "remap_render",
+    arguments: {
+      source: "source.png",
+      spec: remapSpec,
+      output: "out/remap.png",
+    },
+  });
+  assert.equal(remapWritten.result.structuredContent.ok, true);
+  const remapBytes = await readFile(path.join(fixtureRoot, "out", "remap.png"));
+  assert.equal(
+    remapWritten.result.structuredContent.result.evidence.outputSha256,
+    sha256(remapBytes),
+  );
+
+  const missingMap = await activeClient.callTool("worldbend.run", {
+    operation: "remap_render",
+    arguments: {
+      source: "source.png",
+      spec: makeDisplacementSpec(),
+      output: "out/missing-map.png",
+      dryRun: true,
+    },
+  });
+  expectToolError(missingMap, "E_SCHEMA");
+
+  const timelinePlan = await activeClient.callTool("worldbend.run", {
+    operation: "timeline_plan",
+    arguments: { spec: timelineSpec },
+  });
+  assert.equal(timelinePlan.result.structuredContent.ok, true);
+  assert.deepEqual(
+    timelinePlan.result.structuredContent.result.frames.map((frame) => frame.id),
+    ["frame-000000", "frame-000001"],
+  );
+
+  const timelineWithUnknownProgramField = structuredClone(timelineSpec);
+  timelineWithUnknownProgramField.program.unexpected = true;
+  expectToolError(
+    await activeClient.callTool("worldbend.run", {
+      operation: "timeline_plan",
+      arguments: { spec: timelineWithUnknownProgramField },
+    }),
+    "E_SCHEMA",
+  );
+
+  const timelineDry = await activeClient.callTool("worldbend.run", {
+    operation: "timeline_render",
+    arguments: {
+      sources: [{ id: "still", source: "source.png" }],
+      spec: timelineSpec,
+      outputDirectory: "out/timeline-dry",
+      dryRun: true,
+    },
+  });
+  assert.equal(timelineDry.result.structuredContent.ok, true);
+  assert.equal(timelineDry.result.structuredContent.result.status, "ready");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "timeline-dry")), false);
+
+  const timelineWritten = await activeClient.callTool("worldbend.run", {
+    operation: "timeline_render",
+    arguments: {
+      sources: [{ id: "still", source: "source.png" }],
+      spec: timelineSpec,
+      outputDirectory: "out/timeline",
+    },
+  });
+  assert.equal(timelineWritten.result.structuredContent.ok, true);
+  assert.equal(timelineWritten.result.structuredContent.result.status, "written");
+  assert.deepEqual(
+    (await readdir(path.join(fixtureRoot, "out", "timeline"))).sort(),
+    ["frame-000000.png", "frame-000001.png"],
+  );
+  for (const item of timelineWritten.result.structuredContent.result.items) {
+    const bytes = await readFile(path.join(fixtureRoot, item.output));
+    assert.equal(item.sha256, sha256(bytes));
+  }
+
+  const timelineSeventeenWritten = await activeClient.callTool("worldbend.run", {
+    operation: "timeline_render",
+    arguments: {
+      sources: [{ id: "still", source: "source.png" }],
+      spec: makeTimelineSpec(17),
+      outputDirectory: "out/timeline-17",
+    },
+  });
+  assert.equal(timelineSeventeenWritten.result.structuredContent.ok, true);
+  assert.equal(timelineSeventeenWritten.result.structuredContent.result.items.length, 17);
+  assert.equal((await readdir(path.join(fixtureRoot, "out", "timeline-17"))).length, 17);
 }
 
 async function checkEveryToolRejectsUnknownFields(activeClient) {
@@ -202,8 +546,8 @@ async function checkToolCatalog(activeClient) {
   // The profile owns the catalog ceiling so packaging and runtime checks cannot
   // silently drift apart.
   assert(
-    response.wireBytes <= maxToolCatalogBytes,
-    `tools/list is ${response.wireBytes} bytes; budget is ${maxToolCatalogBytes}`,
+    response.wireBytes <= maxDirectToolCatalogBytes,
+    `direct tools/list is ${response.wireBytes} bytes; budget is ${maxDirectToolCatalogBytes}`,
   );
   metrics.toolsListBytes = response.wireBytes;
 
@@ -1186,6 +1530,134 @@ function makeCanvasSetSpec() {
         },
       },
     ],
+  };
+}
+
+function makeMockupSpec() {
+  const plane = (id, sourceId, left, right) => ({
+    id,
+    sourceId,
+    transform: {
+      schema: "worldbend.transform",
+      version: "0.1",
+      destination: {
+        space: "pixel",
+        reference: { width: 4, height: 2 },
+        quad: {
+          tl: { x: left, y: 0 },
+          tr: { x: right, y: 0 },
+          br: { x: right, y: 2 },
+          bl: { x: left, y: 2 },
+        },
+      },
+      content: { fit: "stretch" },
+    },
+    grid: { columns: 2, rows: 2 },
+    measurement: { width: 10, height: 20, unit: "cm" },
+  });
+  return {
+    schema: "worldbend.mockup",
+    version: "0.1",
+    canvas: { width: 4, height: 2 },
+    background: { kind: "transparent" },
+    planes: [
+      plane("front", "artwork", 0, 2),
+      plane("side", "side-artwork", 2, 4),
+    ],
+    seams: [
+      {
+        first: { planeId: "front", edge: "right" },
+        second: { planeId: "side", edge: "left" },
+        tolerancePixels: 0,
+      },
+    ],
+  };
+}
+
+function makeMockupExtractSpec() {
+  return {
+    schema: "worldbend.mockup-extract",
+    version: "0.1",
+    outputs: [
+      { id: "front", rectify: makeRectifySpec(2, 2) },
+      { id: "detail", rectify: makeRectifySpec(3, 2) },
+    ],
+  };
+}
+
+function makeMeshSpec() {
+  const subdivisions = 2;
+  const vertices = [];
+  for (let y = 0; y <= subdivisions; y += 1) {
+    for (let x = 0; x <= subdivisions; x += 1) {
+      const source = { x: x / subdivisions, y: y / subdivisions };
+      vertices.push({
+        source,
+        warped: x === 1 && y === 1 ? { x: 0.6, y: 0.5 } : source,
+      });
+    }
+  }
+  return {
+    schema: "worldbend.mesh-warp",
+    version: "0.1",
+    transform: makePixelSpec(4, 4),
+    mesh: { subdivisions, vertices },
+  };
+}
+
+function makeRemapSpec() {
+  return {
+    schema: "worldbend.remap",
+    version: "0.1",
+    output: { width: 1, height: 1 },
+    operation: {
+      kind: "lens",
+      coefficients: { k1: 0, k2: 0, k3: 0, p1: 0, p2: 0 },
+      center: { x: 0.5, y: 0.5 },
+      scale: { x: 1, y: 1 },
+    },
+  };
+}
+
+function makeDisplacementSpec() {
+  return {
+    schema: "worldbend.remap",
+    version: "0.1",
+    output: { width: 1, height: 1 },
+    operation: {
+      kind: "displacement",
+      xChannel: "red",
+      yChannel: "green",
+      scaleXPixels: 1,
+      scaleYPixels: 1,
+      neutral: 128,
+      boundary: "transparent",
+    },
+  };
+}
+
+function makeTimelineSpec(frameCount = 2) {
+  return {
+    schema: "worldbend.timeline",
+    version: "0.1",
+    output: { width: 1, height: 1 },
+    program: {
+      kind: "keyframes",
+      sourceId: "still",
+      frameCount,
+      base: makeNormalizedSpec(),
+      keyframes: [
+        {
+          frame: 0,
+          quad: makeNormalizedSpec().destination.quad,
+        },
+        {
+          frame: frameCount - 1,
+          quad: makeNormalizedSpec().destination.quad,
+        },
+      ],
+      interpolation: "linear",
+    },
   };
 }
 

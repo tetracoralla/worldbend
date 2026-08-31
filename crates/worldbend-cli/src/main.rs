@@ -1,8 +1,12 @@
+#![recursion_limit = "256"]
+
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 #[cfg(feature = "full")]
 use schemars::{JsonSchema, schema_for};
 use serde::Serialize;
 use serde_json::{Value, json};
+#[cfg(feature = "full")]
+use std::collections::HashMap;
 use std::{
     fs,
     io::{self, Read, Write},
@@ -11,21 +15,33 @@ use std::{
 };
 #[cfg(feature = "full")]
 use worldbend_core::{
-    AffineComposition, CanvasPlan, CanvasSpec, CssTransform, Flip2D, Point, Quad, RectifyPlan,
-    Scale2D, Skew2D, SolveOutput, TransformRecipe, WarpMesh, WarpPreset, WarpSpec, compose_affine,
-    emit_css_transform, solve_spec,
+    AffineComposition, CanvasPlan, CanvasSpec, CssTransform, Flip2D, MeshWarpPlan, MeshWarpSpec,
+    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, Point, Quad, RectifyPlan,
+    RemapPlan, Scale2D, Skew2D, SolveOutput, TimelinePlan, TimelineSpec, TransformRecipe, WarpMesh,
+    WarpPreset, WarpSpec, compose_affine, emit_css_transform, plan_mesh_warp, plan_mockup,
+    plan_mockup_extract, plan_timeline, solve_spec,
 };
 use worldbend_core::{
     CanvasBackground, CanvasSetPlan, CanvasSetSpec, ErrorCode, MAX_CANVAS_PIXELS,
     MAX_CANVAS_SET_PIXELS, RectifySpec, Size, Srgb8Space, TransformError, TransformSpec,
     bounded_text, inspect_spec, rectify_plane,
 };
+#[cfg(any(feature = "full", feature = "comfy"))]
+use worldbend_core::{RemapSpec, plan_remap};
 use worldbend_render::{
     CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetProgram,
     CanvasSetRenderOptions, DEFAULT_MAX_AXIS, DEFAULT_MAX_PIXELS, DEFAULT_MAX_SOURCE_BYTES,
     RectifyRenderOptions, RenderLimits, RenderOptions, SamplingQuality, rectify_file,
     render_canvas_set_file, render_file,
 };
+#[cfg(feature = "full")]
+use worldbend_render::{
+    MeshWarpRenderOptions, MockupExtractRenderOptions, MockupRenderOptions, TimelineRenderOptions,
+    render_mesh_warp_file_with_cancel, render_mockup_extract_files, render_mockup_files,
+    render_timeline_files,
+};
+#[cfg(any(feature = "full", feature = "comfy"))]
+use worldbend_render::{RemapFileMap, RemapRenderOptions, render_remap_file_with_cancel};
 
 const MAX_SPEC_BYTES: usize = 1024 * 1024;
 const MAX_CLI_ERROR_CHARS: usize = 4096;
@@ -253,6 +269,193 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Validate and plan one explicit ordered multi-plane mockup.
+    #[cfg(feature = "full")]
+    MockupInspect {
+        /// Path to a worldbend.mockup JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Composite explicit source rasters onto an ordered multi-plane mockup.
+    #[cfg(feature = "full")]
+    MockupRender {
+        /// Repeat SOURCE_ID=PATH once for every distinct sourceId in the spec.
+        #[arg(long, required = true)]
+        source: Vec<String>,
+        /// Path to a worldbend.mockup JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// PNG output path.
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        #[arg(long)]
+        dry_run: bool,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and plan ordered reverse extraction of explicit source planes.
+    #[cfg(feature = "full")]
+    MockupExtractInspect {
+        /// Path to a worldbend.mockup-extract JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Extract explicit source planes into one atomically published PNG directory.
+    #[cfg(feature = "full")]
+    MockupExtractRender {
+        /// PNG, JPEG, or WebP source path.
+        #[arg(long)]
+        source: PathBuf,
+        /// Path to a worldbend.mockup-extract JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// New output directory; existing paths are rejected.
+        #[arg(long)]
+        output_directory: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long, default_value_t = worldbend_core::MAX_MOCKUP_EXTRACT_PIXELS)]
+        max_cumulative_pixels: u64,
+        #[arg(long)]
+        dry_run: bool,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and plan one explicit custom deformation mesh.
+    #[cfg(feature = "full")]
+    MeshInspect {
+        /// Path to a worldbend.mesh-warp JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render one explicit custom deformation mesh.
+    #[cfg(feature = "full")]
+    MeshRender {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and plan one explicit lens or displacement remap.
+    #[cfg(any(feature = "full", feature = "comfy"))]
+    RemapInspect {
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render one explicit lens or displacement remap.
+    #[cfg(any(feature = "full", feature = "comfy"))]
+    RemapRender {
+        #[arg(long)]
+        source: PathBuf,
+        /// Required only for displacement and rejected for lens remaps.
+        #[arg(long)]
+        map: Option<PathBuf>,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and expand one explicit frame or linear-keyframe timeline.
+    #[cfg(feature = "full")]
+    TimelineInspect {
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render an ordered timeline into one atomically published PNG directory.
+    #[cfg(feature = "full")]
+    TimelineRender {
+        /// Repeat SOURCE_ID=PATH once for every distinct sourceId in the timeline.
+        #[arg(long, required = true)]
+        source: Vec<String>,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output_directory: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long, default_value_t = worldbend_core::MAX_TIMELINE_PIXELS)]
+        max_cumulative_pixels: u64,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Emit a live-element CSS matrix3d transform.
     #[cfg(feature = "full")]
     Css {
@@ -360,6 +563,12 @@ struct WebContract {
     canvas_set_spec_input: CanvasSetSpec,
     canvas_plan_output: CanvasPlan,
     canvas_set_plan_output: CanvasSetPlan,
+    mockup_spec_input: MockupSpec,
+    mockup_plan_output: MockupPlan,
+    mesh_warp_spec_input: MeshWarpSpec,
+    mesh_warp_plan_output: MeshWarpPlan,
+    remap_spec_input: RemapSpec,
+    remap_plan_output: RemapPlan,
     warp_mesh_output: WarpMesh,
     css_transform_output: CssTransform,
     transform_error: TransformError,
@@ -679,6 +888,250 @@ fn run(command: Command) -> Result<Value, TransformError> {
             })
         }
         #[cfg(feature = "full")]
+        Command::MockupInspect { spec, json: _ } => {
+            let spec: MockupSpec = read_json_file(&spec, "MockupSpec")?;
+            let result = plan_mockup(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "mockupInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MockupRender {
+            source,
+            spec,
+            output,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec: MockupSpec = read_json_file(&spec, "MockupSpec")?;
+            let sources = parse_mockup_sources(source)?;
+            let result = render_mockup_files(
+                &sources,
+                &spec,
+                &output,
+                MockupRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                },
+                overwrite,
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "mockupRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MockupExtractInspect { spec, json: _ } => {
+            let spec: MockupExtractSpec = read_json_file(&spec, "MockupExtractSpec")?;
+            let result = plan_mockup_extract(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "mockupExtractInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MockupExtractRender {
+            source,
+            spec,
+            output_directory,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            max_cumulative_pixels,
+            dry_run,
+            json: _,
+        } => {
+            let spec: MockupExtractSpec = read_json_file(&spec, "MockupExtractSpec")?;
+            let result = render_mockup_extract_files(
+                &source,
+                &spec,
+                &output_directory,
+                MockupExtractRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                    max_cumulative_pixels,
+                },
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "mockupExtractRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MeshInspect { spec, json: _ } => {
+            let spec: MeshWarpSpec = read_json_file(&spec, "MeshWarpSpec")?;
+            let result = plan_mesh_warp(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "meshInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MeshRender {
+            source,
+            spec,
+            output,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec: MeshWarpSpec = read_json_file(&spec, "MeshWarpSpec")?;
+            let result = render_mesh_warp_file_with_cancel(
+                &source,
+                None,
+                &spec,
+                &output,
+                MeshWarpRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                },
+                overwrite,
+                dry_run,
+                &|| false,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "meshRender",
+                result,
+            })
+        }
+        #[cfg(any(feature = "full", feature = "comfy"))]
+        Command::RemapInspect { spec, json: _ } => {
+            let spec: RemapSpec = read_json_file(&spec, "RemapSpec")?;
+            let result = plan_remap(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "remapInspect",
+                result,
+            })
+        }
+        #[cfg(any(feature = "full", feature = "comfy"))]
+        Command::RemapRender {
+            source,
+            map,
+            spec,
+            output,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec: RemapSpec = read_json_file(&spec, "RemapSpec")?;
+            let map = map.map(|path| RemapFileMap { path, sha256: None });
+            let result = render_remap_file_with_cancel(
+                &source,
+                None,
+                map.as_ref(),
+                &spec,
+                &output,
+                RemapRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                },
+                overwrite,
+                dry_run,
+                &|| false,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "remapRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::TimelineInspect { spec, json: _ } => {
+            let spec: TimelineSpec = read_json_file(&spec, "TimelineSpec")?;
+            let result = plan_timeline(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "timelineInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::TimelineRender {
+            source,
+            spec,
+            output_directory,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            max_cumulative_pixels,
+            dry_run,
+            json: _,
+        } => {
+            let spec: TimelineSpec = read_json_file(&spec, "TimelineSpec")?;
+            let sources = parse_mockup_sources(source)?;
+            let result = render_timeline_files(
+                &sources,
+                &spec,
+                &output_directory,
+                TimelineRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                    max_cumulative_pixels,
+                },
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "timelineRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
         Command::Css {
             spec,
             element_size,
@@ -715,6 +1168,26 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "canvasReplayOptions": schema_for!(CanvasReplayOptions),
                 "canvasSetRenderOptions": schema_for!(CanvasSetRenderOptions),
                 "canvasSetFileRenderResult": schema_for!(worldbend_render::CanvasSetFileRenderResult),
+                "mockupSpec": schema_for!(MockupSpec),
+                "mockupPlan": schema_for!(MockupPlan),
+                "mockupRenderOptions": schema_for!(MockupRenderOptions),
+                "mockupFileRenderResult": schema_for!(worldbend_render::MockupFileRenderResult),
+                "mockupExtractSpec": schema_for!(MockupExtractSpec),
+                "mockupExtractPlan": schema_for!(MockupExtractPlan),
+                "mockupExtractRenderOptions": schema_for!(MockupExtractRenderOptions),
+                "mockupExtractFileRenderResult": schema_for!(worldbend_render::MockupExtractFileRenderResult),
+                "meshWarpSpec": schema_for!(MeshWarpSpec),
+                "meshWarpPlan": schema_for!(MeshWarpPlan),
+                "meshWarpRenderOptions": schema_for!(MeshWarpRenderOptions),
+                "meshWarpFileRenderResult": schema_for!(worldbend_render::MeshWarpFileRenderResult),
+                "remapSpec": schema_for!(RemapSpec),
+                "remapPlan": schema_for!(RemapPlan),
+                "remapRenderOptions": schema_for!(RemapRenderOptions),
+                "remapFileRenderResult": schema_for!(worldbend_render::RemapFileRenderResult),
+                "timelineSpec": schema_for!(TimelineSpec),
+                "timelinePlan": schema_for!(TimelinePlan),
+                "timelineRenderOptions": schema_for!(TimelineRenderOptions),
+                "timelineFileRenderResult": schema_for!(worldbend_render::TimelineFileRenderResult),
                 "renderOptions": schema_for!(RenderOptions),
                 "fileRenderResult": schema_for!(worldbend_render::FileRenderResult),
                 "rectifyRenderOptions": schema_for!(RectifyRenderOptions),
@@ -725,6 +1198,30 @@ fn run(command: Command) -> Result<Value, TransformError> {
             }
         })),
     }
+}
+
+#[cfg(feature = "full")]
+fn parse_mockup_sources(values: Vec<String>) -> Result<HashMap<String, PathBuf>, TransformError> {
+    let mut sources = HashMap::with_capacity(values.len());
+    for value in values {
+        let (id, path) = value.split_once('=').ok_or_else(|| {
+            TransformError::new(ErrorCode::Schema, "--source must use SOURCE_ID=PATH syntax")
+        })?;
+        if id.is_empty() || path.is_empty() {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "--source requires a non-empty SOURCE_ID and PATH",
+            ));
+        }
+        if sources.insert(id.to_owned(), PathBuf::from(path)).is_some() {
+            return Err(TransformError::new(
+                ErrorCode::OutputCollision,
+                "--source ids must be unique",
+            )
+            .with_details(json!({ "sourceId": id })));
+        }
+    }
+    Ok(sources)
 }
 
 #[cfg(feature = "full")]
@@ -917,7 +1414,8 @@ fn exit_code(code: ErrorCode) -> u8 {
         | ErrorCode::CropBounds
         | ErrorCode::TrimEmpty
         | ErrorCode::RasterShapeMismatch
-        | ErrorCode::OutputCollision => 3,
+        | ErrorCode::OutputCollision
+        | ErrorCode::SharedEdgeMismatch => 3,
         ErrorCode::UnsupportedMedia => 4,
         ErrorCode::OutputLimit
         | ErrorCode::PathOutsideRoot

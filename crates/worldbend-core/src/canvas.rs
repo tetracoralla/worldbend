@@ -316,6 +316,86 @@ pub fn plan_canvas_set(
     resolve_canvas_set(spec, source_size, &vec![None; spec.variants.len()])
 }
 
+/// Resolve the alpha-dependent Trim rectangle from one decoded 8-bit RGBA
+/// raster. Browser and native adapters share this function so neither carrier
+/// owns a second Trim predicate or off-by-one convention.
+pub fn resolve_trim_rect_rgba(
+    rgba: &[u8],
+    source_size: PixelSize,
+    alpha_threshold: u8,
+) -> TransformResult<PixelRect> {
+    resolve_trim_rect_rgba_with_cancel(rgba, source_size, alpha_threshold, &|| false)
+}
+
+pub fn resolve_trim_rect_rgba_with_cancel(
+    rgba: &[u8],
+    source_size: PixelSize,
+    alpha_threshold: u8,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<PixelRect> {
+    source_size.validate("sourceSize")?;
+    if alpha_threshold > 254 {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "alphaThreshold must be in 0..254",
+        ));
+    }
+    let expected = usize::try_from(
+        u64::from(source_size.width)
+            .checked_mul(u64::from(source_size.height))
+            .and_then(|pixels| pixels.checked_mul(4))
+            .ok_or_else(output_limit_overflow)?,
+    )
+    .map_err(|_| output_limit_overflow())?;
+    if rgba.len() != expected {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "decoded RGBA byte length does not match the declared Canvas source",
+        ));
+    }
+    let mut minimum_x = source_size.width;
+    let mut minimum_y = source_size.height;
+    let mut maximum_x = 0_u32;
+    let mut maximum_y = 0_u32;
+    let mut occupied = false;
+    for y in 0..source_size.height {
+        if is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "Canvas Trim was cancelled",
+            ));
+        }
+        for x in 0..source_size.width {
+            let pixel = u64::from(y)
+                .checked_mul(u64::from(source_size.width))
+                .and_then(|offset| offset.checked_add(u64::from(x)))
+                .and_then(|offset| offset.checked_mul(4))
+                .and_then(|offset| offset.checked_add(3))
+                .and_then(|offset| usize::try_from(offset).ok())
+                .ok_or_else(output_limit_overflow)?;
+            if rgba[pixel] > alpha_threshold {
+                occupied = true;
+                minimum_x = minimum_x.min(x);
+                minimum_y = minimum_y.min(y);
+                maximum_x = maximum_x.max(x);
+                maximum_y = maximum_y.max(y);
+            }
+        }
+    }
+    if !occupied {
+        return Err(TransformError::new(
+            ErrorCode::TrimEmpty,
+            "Trim found no primary-image alpha above alphaThreshold",
+        ));
+    }
+    Ok(PixelRect {
+        x: minimum_x,
+        y: minimum_y,
+        width: maximum_x - minimum_x + 1,
+        height: maximum_y - minimum_y + 1,
+    })
+}
+
 pub fn resolve_canvas_set(
     spec: &CanvasSetSpec,
     source_size: PixelSize,
@@ -1163,6 +1243,33 @@ mod tests {
         let schema = serde_json::to_string(&schemars::schema_for!(CanvasSpec)).unwrap();
         assert!(schema.contains("alphaThreshold"));
         assert!(!schema.contains("alpha_threshold"));
+    }
+
+    #[test]
+    fn decoded_rgba_trim_uses_the_canonical_strict_alpha_predicate() {
+        let source = PixelSize::new(3, 2);
+        let mut rgba = vec![0_u8; 3 * 2 * 4];
+        rgba[15] = 7;
+        rgba[11] = 8;
+        assert_eq!(
+            resolve_trim_rect_rgba(&rgba, source, 7).unwrap(),
+            PixelRect {
+                x: 2,
+                y: 0,
+                width: 1,
+                height: 1,
+            }
+        );
+        assert_eq!(
+            resolve_trim_rect_rgba(&rgba, source, 8).unwrap_err().code,
+            ErrorCode::TrimEmpty
+        );
+        assert_eq!(
+            resolve_trim_rect_rgba(&rgba[..rgba.len() - 1], source, 0)
+                .unwrap_err()
+                .code,
+            ErrorCode::Schema
+        );
     }
 
     #[test]

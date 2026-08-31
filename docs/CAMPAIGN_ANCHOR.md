@@ -23,6 +23,13 @@ workflow carriers.
   `worldbend.canvas-set@0.1` operations execute caller-supplied Crop, Trim,
   Pad, Contain, Cover, or Stretch programs. They do not select a crop, infer a
   ratio, identify content, or choose output variants.
+- `worldbend.mockup@0.1` and `worldbend.mockup-extract@0.1` execute explicit
+  ordered multi-plane placement and reverse extraction.
+- `worldbend.mesh-warp@0.1` executes one bounded caller-authored regular mesh;
+  `worldbend.remap@0.1` executes explicit lens coefficients or a supplied
+  channel displacement map.
+- `worldbend.timeline@0.1` expands explicit frames or linearly interpolated
+  corner keyframes and publishes one ordered atomic PNG sequence.
 - Corner order is `TL -> TR -> BR -> BL`; source flips use the explicit source
   orientation contract and never mirrored destination order.
 - Native rasterization uses inverse mapping, pixel centers, premultiplied-alpha
@@ -30,9 +37,10 @@ workflow carriers.
   and atomic publication.
 - CLI, MCP, Web/WASM, Figma, the local ComfyUI nodes, and the conditional
   Capability projection adapt the same core.
-- Perception, camera estimation, content-aware expansion, 3D, custom meshes,
-  arbitrary deformation, vector-preserving Figma output, video, cloud
-  services, and public batch semantics remain outside the current release.
+- Perception, camera estimation, content-aware expansion, 3D reconstruction,
+  arbitrary Bezier/Liquify/brush deformation, vector-preserving Figma output,
+  encoded video/audio, cloud services, and generic batch semantics remain
+  outside the current release.
 
 ## Current campaign state
 
@@ -42,26 +50,28 @@ interoperability identifiers such as `ProjectiveSpec`,
 contract names; they are not a second product brand or a customer-facing old
 name.
 
-The ComfyUI phase now has seven experimental V3 nodes under
+The ComfyUI phase now has nine experimental V3 nodes under
 `packages/comfyui`: two validate/apply a reusable TransformSpec, two
 validate/apply an explicit RectifySpec, and three validate an ordered Canvas
 Set, apply it once to heterogeneous IMAGE/MASK lists, and replay the resolved
-Plan on a same-shape 8-bit control raster. Python contains no transform,
-rectification, or Canvas geometry. The adapter rejects batches and video,
+Plan on a same-shape 8-bit control raster. Two more validate and apply explicit
+lens or displacement Remaps. Python contains no transform, rectification,
+Canvas, or Remap geometry. The adapter rejects batches and video,
 caps individual rasters at 8192 pixels per axis and 32 Mi pixels, narrows one
 Canvas Set to 16 Mi output pixels cumulatively, polls Comfy cancellation,
 enforces a 120-second child deadline, and preserves native stable errors.
 
-`pnpm test:comfyui` currently passes 24 tests. Four Canvas cases cross the real
+`pnpm test:comfyui` currently passes 28 tests. Canvas and Remap cases cross the real
 native boundary and check ordered heterogeneous dimensions and alpha, returned
 file metadata, Trim replay without re-trimming, and pre-publication 16-MiP
-rejection. The local package includes three API workflow examples alongside a
+rejection. The local package includes four API workflow examples alongside a
 reduced executable exposing only `inspect`, `render`, `rectify`,
-`rectify-render`, `canvas-inspect`, and `canvas-render`, plus a checksum
+`rectify-render`, `canvas-inspect`, `canvas-render`, `remap-inspect`, and
+`remap-render`, plus a checksum
 manifest, legal notices, copied dependency licenses, and SPDX inventory. The
-current `darwin-arm64` archive is 1,540,790 bytes with SHA-256
-`d9918326a309549c3eebe6d9130f772e396688d5a6bd430a5cc1f5445182b888`;
-the unpacked package is 3,421,864 bytes and its reduced executable is 2,003,600
+current `darwin-arm64` archive is 1,582,679 bytes with SHA-256
+`81538ef5252fe0e5767fb45e71c445e6a8723fd9ba5fdb270aebd42db05edaf4`;
+the unpacked package is 3,532,013 bytes and its reduced executable is 2,102,944
 bytes. These identify only the locally built package and do not establish
 Comfy host loading or a cross-platform release.
 No ComfyUI installation is present on this machine, so V3 host registration and
@@ -88,10 +98,10 @@ The current source passes the complete `pnpm check`: Rust workspace tests,
 Web and Figma tests, repository script tests, formatting, lint, contract drift,
 types, real WASM/Figma builds, package inventory, built CLI/MCP smoke, and
 Capability conformance. The current local Figma package includes the
-unpublished rectification and Canvas workspaces. Its archive is 427,045 bytes
+unpublished rectification and Canvas workspaces. Its archive is 428,230 bytes
 with SHA-256
-`1e8dae7506cf38cc563b2d9bc88c9a4c4a9fb1f9324b90d64dba13839f29f84d`;
-runtime entries total 390,747 bytes and the unpacked package is 966,258 bytes.
+`0ea84868cedfb43aea3c885708e9019cdd89c778e26afdfcc87f4e60882b8942`;
+runtime entries total 394,704 bytes and the unpacked package is 970,215 bytes.
 An isolated Chromium run exercised the compressed-WASM Canvas round trip, but
 this exact package has not been run in Figma Desktop or uploaded to the
 existing Community listing. Figma received the earlier Community submission
@@ -198,10 +208,73 @@ accurate even though Worldbend itself has no declared product license.
   the Community listing before sharing the URL with company designers.
 - Install the staged ComfyUI package in a real supported host and close the V3
   registration/workflow/cancellation lane. Until then that lane is `BLOCKED`.
-- After real Comfy dogfood, promote the smallest repeated deterministic
-  graphics task that removes Agent reasoning or manual reconstruction. Do not
-  infer Registry release readiness or video/batch semantics from the local
-  single-image package.
+- Continue the owner-authorized deterministic expansion campaign below. This
+  does not authorize a source push, package publication, Figma resubmission,
+  Comfy Registry action, or weakening an installed-host lane that remains
+  unobserved.
+
+## Active deterministic expansion campaign
+
+On 2026-08-31 the owner authorized implementation of the remaining agreed
+deterministic graphics program. The objective is to grow Worldbend's shared
+spatial-processing source without making every carrier install the complete
+source superset or making every Agent load every operation schema.
+
+The implementation order is fixed by dependency and cost:
+
+1. replace future one-tool-per-operation growth with a progressive Agent
+   catalog while preserving the current eight direct tools as a compatibility
+   surface;
+2. make carrier feature-family compilation and package absence executable
+   rather than relying only on source-directory separation;
+3. add explicit Place/Mockup operations for caller-supplied planes and source
+   assets, including reusable forward placement and reverse extraction;
+4. add caller-authored Mesh and Displacement operations, then explicit
+   lens/projection transforms and same-program replay for compatible image,
+   mask, depth, and control rasters;
+5. add an explicit ordered frame-sequence contract driven only by supplied
+   keyframes or per-frame transforms after correlation, cumulative resource,
+   failure, cancellation, and publication semantics are closed.
+
+The deterministic boundary remains strict. Worldbend executes explicit
+parameters, points, grids, maps, masks, and timelines; it does not detect a
+plane, choose a crop, infer depth, estimate optical flow, recognize a subject,
+invent camera parameters, or decide what an Agent should do. Structured input
+continues to have a zero-model direct execution route.
+
+The Agent compatibility surface keeps the existing direct tool names and
+one-call behavior. The installable Agent projection may use a compact
+`search`/`describe`/`run` surface: a known operation runs in one call, search
+and exact-schema description are paid only for an unfamiliar operation, and
+`run` validates against the same closed operation-specific input as the direct
+route. Both complete catalogs have independent byte ceilings. Adding the
+compact surface on top of the current eight-tool catalog without hiding the
+eight schemas would not solve the cost problem and is therefore not an
+acceptable implementation.
+
+Every feature family must have at least one current carrier before its compile
+feature is added. Figma receives only task-native human workspaces, Agent gets
+stable headless operations without UI, and ComfyUI gets only graph-native
+raster/control-map nodes. Package absence, built command/tool/node inventory,
+runtime bytes, archive bytes, unpacked bytes, complete Agent catalog bytes,
+and reduced compilation are checks. A shared source feature does not imply
+carrier symmetry.
+
+Campaign completion requires current source plus fresh development regression,
+built Agent direct and compact-surface runtime checks, Figma and Comfy package
+isolation measurements, and affected real runtime flows. Figma document
+mutation, installed Community behavior, and installed ComfyUI behavior remain
+separate host observations; unavailable hosts stay `BLOCKED` rather than being
+inferred from builds. Owner business/experience acceptance remains separate.
+
+The progressive Agent catalog, carrier feature builds, Place/Mockup and reverse
+extraction, custom Mesh, Lens/Displacement Remap, Comfy Remap projection, and
+ordered Timeline are implemented. The development and package-cost closeout is
+current: the complete repository check, the 28-test Comfy adapter suite, both
+Agent catalog surfaces, and the reduced carrier packages pass. The eight direct
+MCP tools remain frozen; advanced families exist only behind the bounded compact
+catalog. Installed Figma and ComfyUI host observations remain separate and are
+not implied by this development completion.
 
 ## Completed deterministic plane-rectification batch
 
@@ -295,13 +368,14 @@ Completed implementation and current checks:
 - Comfy exposes three Canvas V3 nodes and invokes one reduced native process
   for the complete ordered set or Plan replay;
 - complete `pnpm check`, `pnpm test:comfyui`, and local Comfy packaging pass.
-  The built Agent catalog is 79,582 bytes; runtime smoke observed two worker
-  slots, two overload rejections, 7-ms ordinary cancellation cleanup, and 7-ms
-  Canvas cancellation cleanup. The staged Agent plugin files total 10,125,778
+  The default progressive Agent catalog is 7,542 bytes and the opt-in direct
+  compatibility catalog is 80,716 bytes; runtime smoke observed two worker
+  slots, two overload rejections, 6-ms ordinary cancellation cleanup, and 6-ms
+  Canvas cancellation cleanup. The staged Agent plugin files total 12,326,323
   bytes and contain no Figma HTML/CSS or Comfy Python;
-- current Figma measurements are 390,747 runtime bytes, 427,045 archive bytes,
-  and 966,258 unpacked bytes, all inside the unchanged profile ceilings. The
-  no-CSS Figma WASM is 340,713 bytes and is stored as a compressed inlined
+- current Figma measurements are 394,540 runtime bytes, 428,198 archive bytes,
+  and 970,051 unpacked bytes, all inside the unchanged profile ceilings. The
+  no-CSS Figma WASM is 340,996 bytes and is stored as a compressed inlined
   payload; an isolated real Chromium round trip passed.
 
 The exact changed build has not been exercised inside Figma Desktop, and no
@@ -363,3 +437,129 @@ adopted. They conflict with the current reusable-result, input-validation, and
 minimal-playground contracts and had no reproduced defect. No commit, push,
 publication, Figma resubmission, or Comfy Registry action is authorized by
 this repair batch.
+
+## Completed correctness and minimalist-UI repair
+
+On 2026-08-31 the owner authorized one unified repair while retaining an
+extremely minimal human UI. Current source and built runtime now establish:
+
+- directory staging takes the producing operation's explicit file ceiling, so
+  the 1..240-frame Timeline contract no longer inherits Canvas's 16-file
+  ceiling; a real compact-MCP 17-frame render publishes all 17 ordered PNGs;
+- nested tagged `RemapOperation` and `TimelineProgram` values reject unknown
+  fields with `E_SCHEMA`, matching the closed Agent boundary;
+- Remap `preview`, `standard`, and `high` now mean nearest, premultiplied-alpha
+  linear, and premultiplied-alpha Catmull-Rom cubic sampling respectively. On
+  the repository artwork and a nontrivial lens program, standard and high
+  produced distinct SHA-256 values
+  `092c354370d26de4621a85c827910052a285686247b32c27f3ad5fb4d7f4793a`
+  and `2390b13c9c3f99ff056e101890e6911cd9b8affd993c30948880029e5b7b6570`;
+- the Web demo now defaults to one full-width canvas with only a one-time
+  `Drag the four corners` hint, compact Reset/zoom/export actions, and a closed
+  icon-only developer-mode disclosure for current TransformSpec/CSS. No raw
+  implementation term appears in the designer's default UI. The bundled
+  example says `Open your image`, while an owner-loaded image says `Replace image`;
+- Figma keeps the frozen Transform, Free, Perspective, Warp, Correct, More
+  operation sequence. A quiet localized `Sizes…` entry now sits beside the
+  selected source identity, outside both the mode bar and More menu.
+
+Fresh `pnpm check` is PASS, including formatting, clippy, the complete Rust
+workspace, carrier compilation, schema drift, Web/Figma tests and builds,
+package inventories, live CLI/MCP smoke, Capability conformance, and built
+artifact checks. `pnpm test:comfyui` separately passes all 28 tests. Current
+runtime measurements are compact/direct MCP catalogs of 7,542/80,716 bytes,
+two worker slots, two overload rejections, 6-ms ordinary and Canvas
+cancellation cleanup, and a Figma package of 394,704 runtime bytes, 428,230
+archive bytes, and 970,215 unpacked bytes, all inside declared ceilings.
+
+Fresh in-app Chromium observations at default and 360 x 800 viewports found no
+horizontal overflow or console errors. Keyboard corner editing changed the
+canonical corner, dismissed the one-time hint, and kept disclosed JSON/CSS
+synchronized; Reset restored the identity corner and did not repeat learned
+help. A follow-up product-boundary correction replaced the visible `Code`
+label and native details disclosure with one 30-pixel, low-emphasis button
+containing the 16-pixel authority-sourced `icon-park:code` glyph. The button
+has no visible text; Enter and Space toggle the technical overlay, while Escape
+closes it and restores focus. The same default and 360 x 800 browser checks
+found zero overflow or console errors after this change. The built Figma HTML localized the entry as `尺寸…`, placed it under
+`object-group`, and kept it outside `mode-switch` and `settings-popover` with
+zero console errors. This does not establish document mutation in Figma
+Desktop. Worldbend is not installed from the local Codex marketplace, and no
+ComfyUI host is present, so those installed-host lanes remain BLOCKED rather
+than inferred from staged artifacts. No commit, push, installation,
+publication, deployment, Figma resubmission, or Comfy Registry action was
+performed.
+
+## Completed designer-workspace expansion
+
+On 2026-08-31 the owner rejected the current Figma carrier's narrow feature
+projection and authorized the complete in-repository UI repair. The finish line
+is a quiet Perspective base plus reachable replacing workspaces for the
+existing deterministic Canvas, Place / Mockup, custom Mesh, and Remap families.
+Minimalism applies per layer: one compact temporary task launcher, task-local
+controls beside the affected object, and no persistent capability explanations
+or Agent/protocol metadata.
+
+The Canvas workspace must expose all six core-owned operations, preserve 1..8
+ordered outputs, and make every output ID distinguishable and editable without
+creating a second naming field. Place / Mockup, Mesh, and Remap must validate
+through the canonical Rust/WASM plans and publish recoverable Figma raster
+results with stored reusable programs. Perspective state, mode order, history,
+viewport, and controls must survive every workspace round trip.
+
+Timeline remains outside the Figma carrier in this campaign. It has no current
+Figma-native sequence object, preview, output, and single-Undo contract; adding
+controls without those behaviors would recreate the feature-without-task
+failure this campaign is repairing. Reverse Mockup extraction and automatic
+plane, subject, depth, map, or camera inference are likewise not part of the
+designer projection.
+
+Current state at campaign entry: the Rust families and headless carrier routes
+exist in the preserved dirty worktree; Figma has only Perspective and a
+Contain/Cover Canvas subset; `ProductWorkspace` is hard-coded to those two
+routes; the main UI controller is 2,492 lines. The implementation may change
+Figma/Web-WASM adapter code, carrier declarations, focused tests, and owning
+contracts. It may not commit, push, publish, upload, deploy, discard existing
+dirty work, or infer installed Figma behavior from browser/package checks.
+
+Closeout requires focused state/contract tests, the complete current
+development check, current Figma package/byte measurements, and rendered
+browser interaction for the launcher, every workspace, keyboard/focus return,
+round-trip state preservation, and representative invalid/recovery paths.
+Figma document mutation and installed Community behavior remain separate host
+observations when the exact build cannot be exercised there; owner visual and
+task-fit acceptance remains separate from technical completion.
+
+Closeout on 2026-08-31 established the authorized local finish line:
+
+- one icon-only task launcher exposes Sizes, Mockup, Mesh, and Remap without
+  changing the familiar Perspective mode strip; availability follows the real
+  selected-source count and keyboard navigation skips disabled tasks;
+- Sizes exposes Crop, Trim, Pad, Contain, Cover, and Stretch, keeps 1..8 named
+  ordered outputs, and plans Trim from decoded RGBA through the canonical core;
+- Mockup supports 1..8 ordered planes, Mesh exposes a bounded 2x2..16x16 fixed
+  boundary grid, and Remap exposes one-source Lens plus two-source
+  Displacement. Direct handles remain keyboard operable, advanced Lens values
+  stay behind a temporary disclosure, and every task stores a reusable program
+  on the recoverable raster result;
+- the stateful Sizes controller was separated from its pure planning and DOM
+  helpers; Mockup, Mesh, Remap, their shared shell, direct-point overlay, task
+  launcher, stored-task contract, and canonical WASM planner bridge remain
+  distinct modules instead of expanding the pre-existing UI controller;
+- rendered isolated-browser flows covered English and Simplified Chinese,
+  single- and two-source routing, all six Sizes control states, direct Mesh
+  keyboard movement, temporary Lens disclosure, multi-plane Mockup, Lens and
+  Displacement Remap, focus return, and the complete encode/apply response for
+  all four workspaces. A MutationObserver warning was reproduced with a blank
+  iframe and is owned by the browser harness, not the plugin source;
+- complete `pnpm check` passes, including strict Rust formatting/clippy, the
+  complete Rust workspace, 163 Web tests, 149 Figma tests, type checks, real
+  Figma WASM smoke, package/stage validation, live CLI/MCP runtime smoke,
+  Capability conformance, and built-artifact checks. The current Figma package
+  measures 499,169 runtime bytes, 475,835 archive bytes, and 1,074,680 unpacked
+  bytes, inside the unchanged carrier ceilings.
+
+The exact build was not installed into Figma Desktop and no live document was
+mutated, so installed-host human runtime remains unobserved. Timeline remains
+excluded for the stated product-contract reason. No commit, push, publication,
+deployment, upload, or existing-worktree discard occurred.

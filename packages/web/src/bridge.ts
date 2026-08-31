@@ -1,6 +1,7 @@
 import initWasm, {
   canvas_plan_json as canvasPlanJson,
   canvas_set_plan_json as canvasSetPlanJson,
+  canvas_set_plan_rgba_json as canvasSetPlanRgbaJson,
   compose_json as composeJson,
   css_json as cssJson,
   rectify_json as rectifyJson,
@@ -116,6 +117,31 @@ export async function planCanvasSet(
   assertSourcePixelSize(sourceSize);
   return invoke<CanvasSetPlan>(() =>
     canvasSetPlanJson(JSON.stringify(spec), sourceSize.width, sourceSize.height),
+  );
+}
+
+/** Resolve alpha-dependent Trim variants from one decoded 8-bit RGBA raster. */
+export async function planCanvasSetFromRgba(
+  spec: CanvasSetSpecInput,
+  sourceSize: CanvasPixelSize,
+  rgba: Uint8Array,
+): Promise<CanvasSetPlan> {
+  await initializeWorldbend();
+  assertSourcePixelSize(sourceSize);
+  const expected = sourceSize.width * sourceSize.height * 4;
+  if (!Number.isSafeInteger(expected) || rgba.byteLength !== expected) {
+    throw new TransformError({
+      code: "E_SCHEMA",
+      message: "Decoded RGBA bytes do not match the Canvas source dimensions",
+    });
+  }
+  return invoke<CanvasSetPlan>(() =>
+    canvasSetPlanRgbaJson(
+      JSON.stringify(spec),
+      sourceSize.width,
+      sourceSize.height,
+      rgba,
+    ),
   );
 }
 
