@@ -1,5 +1,10 @@
-import type { TransformSpec } from "@worldbend/web/types";
-import { isFigmaImageAxis, isOwnedTransformSpec, isRecord } from "./stored-plane";
+import type { RectifySpecInput, TransformSpec } from "@worldbend/web/types";
+import {
+  isFigmaImageAxis,
+  isOwnedRectifySpec,
+  isOwnedTransformSpec,
+  isRecord,
+} from "./stored-plane";
 import {
   isLocalePreference,
   isSupportedLocale,
@@ -7,6 +12,15 @@ import {
   type SupportedLocale,
   type UserMessage,
 } from "./i18n";
+import {
+  isOwnedCanvasSetSpec,
+  type OwnedCanvasSetSpec,
+  type OwnedCanvasSpec,
+} from "./stored-canvas";
+import {
+  MAX_FIGMA_CANVAS_PIXELS,
+  MAX_FIGMA_CANVAS_VARIANTS,
+} from "./canvas-state";
 
 export interface SourcePayload {
   bytes: Uint8Array;
@@ -16,6 +30,8 @@ export interface SourcePayload {
   renderHeight: number;
   placement: { x: number; y: number; width: number; height: number };
   spec?: TransformSpec;
+  rectification?: RectifySpecInput;
+  canvas?: OwnedCanvasSpec;
   targetNodeId?: string;
 }
 
@@ -45,7 +61,14 @@ export type MainToUiMessage =
       targetNodeId: string;
       operation: "apply" | "replace";
     }
-  | { type: "apply-error"; generation: number; message: UserMessage };
+  | { type: "apply-error"; generation: number; message: UserMessage }
+  | {
+      type: "apply-canvas-complete";
+      generation: number;
+      targetNodeIds: string[];
+      operation: "apply" | "replace";
+    }
+  | { type: "apply-canvas-error"; generation: number; message: UserMessage };
 
 export type UiToMainMessage =
   | { type: "ready"; systemLocales: string[] }
@@ -65,13 +88,32 @@ export type UiToMainMessage =
       payload: {
         generation: number;
         bytes: Uint8Array;
-        spec: TransformSpec;
+        spec?: TransformSpec;
+        rectification?: RectifySpecInput;
         sourceNodeId: string;
         renderWidth: number;
         renderHeight: number;
         placement: Placement;
         targetNodeId?: string;
         /** Create a new result instead of replacing an existing pair target. */
+        duplicate?: boolean;
+      };
+    }
+  | {
+      type: "apply-canvas";
+      payload: {
+        generation: number;
+        sourceNodeId: string;
+        setSpec: OwnedCanvasSetSpec;
+        outputs: Array<{
+          id: string;
+          bytes: Uint8Array;
+          renderWidth: number;
+          renderHeight: number;
+          placement: Placement;
+        }>;
+        targetNodeId?: string;
+        /** Create a new result instead of replacing the selected Canvas result. */
         duplicate?: boolean;
       };
     };
@@ -116,12 +158,14 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
       isFigmaImageAxis(value["desiredHeight"])
     );
   }
+  if (value["type"] === "apply-canvas") return isApplyCanvasMessage(value);
   if (value["type"] !== "apply" || !isRecord(value["payload"])) return false;
   const payload = value["payload"];
   const allowed = new Set([
     "generation",
     "bytes",
     "spec",
+    "rectification",
     "sourceNodeId",
     "renderWidth",
     "renderHeight",
@@ -136,7 +180,8 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
     !(payload["bytes"] instanceof Uint8Array) ||
     payload["bytes"].byteLength < 1 ||
     payload["bytes"].byteLength > 128 * 1024 * 1024 ||
-    !isOwnedTransformSpec(payload["spec"]) ||
+    (isOwnedTransformSpec(payload["spec"]) ===
+      isOwnedRectifySpec(payload["rectification"])) ||
     typeof payload["sourceNodeId"] !== "string" ||
     payload["sourceNodeId"].length === 0 ||
     !isFigmaImageAxis(payload["renderWidth"]) ||
@@ -152,6 +197,82 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
     payload["targetNodeId"] === undefined ||
     (typeof payload["targetNodeId"] === "string" && payload["targetNodeId"].length > 0)
   );
+}
+
+function isApplyCanvasMessage(
+  value: Record<string, unknown>,
+): value is Extract<UiToMainMessage, { type: "apply-canvas" }> {
+  if (!hasExactKeys(value, ["type", "payload"]) || !isRecord(value["payload"])) return false;
+  const payload = value["payload"];
+  if (
+    !hasExactKeys(payload, [
+      "generation",
+      "sourceNodeId",
+      "setSpec",
+      "outputs",
+      ...(payload["targetNodeId"] === undefined ? [] : ["targetNodeId"]),
+      ...(payload["duplicate"] === undefined ? [] : ["duplicate"]),
+    ]) ||
+    !Number.isSafeInteger(payload["generation"]) ||
+    Number(payload["generation"]) < 1 ||
+    typeof payload["sourceNodeId"] !== "string" ||
+    payload["sourceNodeId"].length === 0 ||
+    !isOwnedCanvasSetSpec(payload["setSpec"]) ||
+    !Array.isArray(payload["outputs"]) ||
+    payload["outputs"].length < 1 ||
+    payload["outputs"].length > MAX_FIGMA_CANVAS_VARIANTS ||
+    payload["outputs"].length !== payload["setSpec"].variants.length ||
+    (payload["targetNodeId"] !== undefined &&
+      (typeof payload["targetNodeId"] !== "string" || payload["targetNodeId"].length === 0)) ||
+    (payload["duplicate"] !== undefined && typeof payload["duplicate"] !== "boolean") ||
+    (payload["targetNodeId"] !== undefined && payload["outputs"].length !== 1)
+  ) {
+    return false;
+  }
+  let pixels = 0;
+  let bytes = 0;
+  for (let index = 0; index < payload["outputs"].length; index += 1) {
+    const output = payload["outputs"][index];
+    const variant = payload["setSpec"].variants[index];
+    if (
+      !isRecord(output) ||
+      !hasExactKeys(output, ["id", "bytes", "renderWidth", "renderHeight", "placement"]) ||
+      !variant ||
+      output["id"] !== variant.id ||
+      !(output["bytes"] instanceof Uint8Array) ||
+      output["bytes"].byteLength < 1 ||
+      !isFigmaImageAxis(output["renderWidth"]) ||
+      !isFigmaImageAxis(output["renderHeight"]) ||
+      output["renderWidth"] !== variant.operation.output.width ||
+      output["renderHeight"] !== variant.operation.output.height ||
+      !isPlacement(output["placement"]) ||
+      !sameAspectRatio(
+        output["placement"],
+        output["renderWidth"],
+        output["renderHeight"],
+      )
+    ) {
+      return false;
+    }
+    pixels += output["renderWidth"] * output["renderHeight"];
+    bytes += output["bytes"].byteLength;
+    if (
+      !Number.isSafeInteger(pixels) ||
+      pixels > MAX_FIGMA_CANVAS_PIXELS ||
+      !Number.isSafeInteger(bytes) ||
+      bytes > 128 * 1024 * 1024
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameAspectRatio(placement: Placement, width: number, height: number): boolean {
+  const left = placement.width * height;
+  const right = placement.height * width;
+  const tolerance = Number.EPSILON * 16 * Math.max(1, Math.abs(left), Math.abs(right));
+  return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= tolerance;
 }
 
 function isPlacement(value: unknown): value is Placement {
@@ -178,6 +299,12 @@ function isPlacement(value: unknown): value is Placement {
     Number.isFinite(height) &&
     height > 0
   );
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
 }
 
 export function isMainToUiLocaleMessage(

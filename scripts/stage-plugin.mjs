@@ -5,10 +5,17 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { writePluginLegalMaterial } from "./generate-plugin-legal.mjs";
+import {
+  assertCarrierIsolation,
+  listRegularFiles,
+  loadCarrierProfiles,
+} from "./carrier-profiles.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(root, "plugins", "worldbend");
 const workspacePackage = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+const carrierProfiles = await loadCarrierProfiles();
+const agentPackageProfile = carrierProfiles.carriers.agent.package;
 const output = path.join(pluginRoot, "bin");
 const staging = await mkdtemp(path.join(pluginRoot, ".bin-stage-"));
 const backup = path.join(pluginRoot, `.bin-backup-${randomUUID()}`);
@@ -34,12 +41,7 @@ try {
     "-p",
     "worldbend-mcp",
   ]);
-  for (const name of [
-    "worldbend",
-    "worldbend-capability",
-    "worldbend-mcp",
-    "worldbend-transport-schema-probe",
-  ]) {
+  for (const name of agentPackageProfile.requiredExecutables) {
     const executable = executableName(name);
     const destination = path.join(staging, executable);
     await copyFile(path.join(root, "target", "release", executable), destination);
@@ -115,6 +117,11 @@ try {
     await rm(replacement.backup, { recursive: true, force: true }).catch(() => {});
   }
   await rm(legalStaging, { recursive: true, force: true }).catch(() => {});
+  assertCarrierIsolation(
+    await listRegularFiles(pluginRoot),
+    agentPackageProfile,
+    "Agent plugin",
+  );
 } catch (error) {
   await rm(staging, { recursive: true, force: true }).catch(() => {});
   await rm(capabilityStaging, { recursive: true, force: true }).catch(() => {});

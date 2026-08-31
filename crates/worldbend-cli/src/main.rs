@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
+#[cfg(feature = "full")]
 use schemars::{JsonSchema, schema_for};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -8,18 +9,29 @@ use std::{
     path::PathBuf,
     process::ExitCode,
 };
+#[cfg(feature = "full")]
 use worldbend_core::{
-    AffineComposition, CssTransform, ErrorCode, Flip2D, Point, Quad, Scale2D, Size, Skew2D,
-    SolveOutput, TransformError, TransformRecipe, TransformSpec, WarpMesh, WarpPreset, WarpSpec,
-    bounded_text, compose_affine, emit_css_transform, inspect_spec, solve_spec,
+    AffineComposition, CanvasPlan, CanvasSpec, CssTransform, Flip2D, Point, Quad, RectifyPlan,
+    Scale2D, Skew2D, SolveOutput, TransformRecipe, WarpMesh, WarpPreset, WarpSpec, compose_affine,
+    emit_css_transform, solve_spec,
+};
+use worldbend_core::{
+    CanvasBackground, CanvasSetPlan, CanvasSetSpec, ErrorCode, MAX_CANVAS_PIXELS,
+    MAX_CANVAS_SET_PIXELS, RectifySpec, Size, Srgb8Space, TransformError, TransformSpec,
+    bounded_text, inspect_spec, rectify_plane,
 };
 use worldbend_render::{
-    CanvasMode, DEFAULT_MAX_AXIS, DEFAULT_MAX_PIXELS, DEFAULT_MAX_SOURCE_BYTES, RenderLimits,
-    RenderOptions, SamplingQuality, render_file,
+    CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetProgram,
+    CanvasSetRenderOptions, DEFAULT_MAX_AXIS, DEFAULT_MAX_PIXELS, DEFAULT_MAX_SOURCE_BYTES,
+    RectifyRenderOptions, RenderLimits, RenderOptions, SamplingQuality, rectify_file,
+    render_canvas_set_file, render_file,
 };
 
 const MAX_SPEC_BYTES: usize = 1024 * 1024;
 const MAX_CLI_ERROR_CHARS: usize = 4096;
+
+#[cfg(not(any(feature = "full", feature = "comfy")))]
+compile_error!("worldbend-cli requires either the full or comfy carrier feature");
 
 #[derive(Debug, Parser)]
 #[command(
@@ -35,6 +47,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Compose scale, rotation, skew, translation, and flips over a saved mapping.
+    #[cfg(feature = "full")]
     Compose {
         #[arg(long)]
         spec: PathBuf,
@@ -76,6 +89,7 @@ enum Command {
         json: bool,
     },
     /// Solve and validate a homography from four explicit corners.
+    #[cfg(feature = "full")]
     Solve {
         /// Four points in strict TL TR BR BL order: "x,y x,y x,y x,y".
         #[arg(long)]
@@ -95,57 +109,172 @@ enum Command {
     },
     /// Inspect and re-solve an existing TransformSpec.
     Inspect {
+        /// Path to a worldbend.transform JSON document.
         #[arg(long)]
         spec: PathBuf,
+        /// Concrete destination size as WIDTHxHEIGHT for a normalized spec.
         #[arg(long)]
         target_size: Option<String>,
+        /// Accepted for explicit scripting; command output is always JSON.
         #[arg(long)]
         json: bool,
     },
     /// Render a raster source through a saved TransformSpec.
     Render {
+        /// PNG, JPEG, or WebP source path.
         #[arg(long)]
         source: PathBuf,
+        /// Path to a worldbend.transform JSON document.
         #[arg(long)]
         spec: PathBuf,
+        /// PNG output path.
         #[arg(long)]
         output: PathBuf,
+        /// Sampling quality used by the native renderer.
         #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
         quality: QualityArg,
+        /// Tight crops to transformed bounds; reference preserves the resolved destination frame.
         #[arg(long, value_enum, default_value_t = CanvasArg::Tight)]
         canvas: CanvasArg,
+        /// Concrete destination size as WIDTHxHEIGHT for a normalized spec.
         #[arg(long)]
         target_size: Option<String>,
+        /// Maximum permitted output width in pixels.
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        /// Maximum permitted output height in pixels.
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        /// Maximum permitted decoded source or output pixel count.
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        /// Maximum permitted encoded source bytes.
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        /// Atomically replace an existing regular PNG output file.
+        #[arg(long)]
+        overwrite: bool,
+        /// Execute the same preflight and render without publishing the output.
+        #[arg(long)]
+        dry_run: bool,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate and solve one explicit source quadrilateral into an output rectangle.
+    Rectify {
+        #[arg(long)]
+        spec: PathBuf,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render one explicit source quadrilateral into its declared output rectangle.
+    RectifyRender {
+        /// PNG, JPEG, or WebP source path.
+        #[arg(long)]
+        source: PathBuf,
+        /// Path to a worldbend.rectify JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// PNG output path.
+        #[arg(long)]
+        output: PathBuf,
+        /// Sampling quality used by the native renderer.
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        /// Maximum permitted output width in pixels.
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        /// Maximum permitted output height in pixels.
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        /// Maximum permitted decoded source or output pixel count.
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        /// Maximum permitted encoded source bytes.
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        /// Atomically replace an existing regular PNG output file.
+        #[arg(long)]
+        overwrite: bool,
+        /// Execute the same preflight and rectification without publishing the output.
+        #[arg(long)]
+        dry_run: bool,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate one ordered Canvas Set document without rendering it.
+    CanvasInspect {
+        #[arg(long)]
+        spec: PathBuf,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render one ordered Canvas Set or replay one resolved Canvas Set plan.
+    CanvasRender {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long, required_unless_present = "plan", conflicts_with = "plan")]
+        spec: Option<PathBuf>,
+        #[arg(
+            long,
+            required_unless_present = "spec",
+            conflicts_with = "spec",
+            requires_all = ["sampling", "outside_fill"]
+        )]
+        plan: Option<PathBuf>,
+        #[arg(long)]
+        output_directory: PathBuf,
+        /// Primary-image sampling quality. Accepted only with --spec.
+        #[arg(long, value_enum)]
+        quality: Option<QualityArg>,
+        /// Replay sampling. Required with --plan and rejected with --spec.
+        #[arg(long, value_enum, requires = "plan")]
+        sampling: Option<ReplaySamplingArg>,
+        /// JSON file containing an explicit transparent or srgb8 color background.
+        #[arg(long, requires = "plan")]
+        outside_fill: Option<PathBuf>,
         #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
         max_width: u32,
         #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
         max_height: u32,
-        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        #[arg(long, default_value_t = MAX_CANVAS_PIXELS)]
         max_pixels: u64,
+        #[arg(long, default_value_t = MAX_CANVAS_SET_PIXELS)]
+        max_cumulative_pixels: u64,
         #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
         max_source_bytes: u64,
         #[arg(long)]
-        overwrite: bool,
-        #[arg(long)]
         dry_run: bool,
+        /// Accepted for explicit scripting; command output is always JSON.
         #[arg(long)]
         json: bool,
     },
     /// Emit a live-element CSS matrix3d transform.
+    #[cfg(feature = "full")]
     Css {
+        /// Path to a projective worldbend.transform JSON document.
         #[arg(long)]
         spec: PathBuf,
+        /// Untransformed element border-box size as WIDTHxHEIGHT in CSS pixels.
         #[arg(long)]
         element_size: String,
+        /// Concrete destination container size as WIDTHxHEIGHT; required for normalized specs.
         #[arg(long)]
         container_size: Option<String>,
+        /// Accepted for explicit scripting; command output is always JSON.
         #[arg(long)]
         json: bool,
     },
     /// Emit canonical core JSON Schemas for drift checks and integrations.
+    #[cfg(feature = "full")]
     Schema,
 }
 
+#[cfg(feature = "full")]
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum SpaceArg {
     Pixel,
@@ -165,6 +294,13 @@ enum CanvasArg {
     Reference,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ReplaySamplingArg {
+    Linear,
+    Nearest,
+}
+
+#[cfg(feature = "full")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum WarpArg {
     Arc,
@@ -179,6 +315,7 @@ enum WarpArg {
     Twist,
 }
 
+#[cfg(feature = "full")]
 impl From<WarpArg> for WarpPreset {
     fn from(value: WarpArg) -> Self {
         match value {
@@ -209,6 +346,7 @@ struct Success<T: Serialize> {
 /// normalized output, mesh, CSS, and structured-error contracts available to
 /// the TypeScript generator without a second handwritten semantic model.
 #[allow(dead_code)]
+#[cfg(feature = "full")]
 #[derive(JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct WebContract {
@@ -216,6 +354,12 @@ struct WebContract {
     transform_recipe_input: TransformRecipe,
     affine_composition_output: AffineComposition,
     solve_output: SolveOutput,
+    rectify_spec_input: RectifySpec,
+    rectify_plan_output: RectifyPlan,
+    canvas_spec_input: CanvasSpec,
+    canvas_set_spec_input: CanvasSetSpec,
+    canvas_plan_output: CanvasPlan,
+    canvas_set_plan_output: CanvasSetPlan,
     warp_mesh_output: WarpMesh,
     css_transform_output: CssTransform,
     transform_error: TransformError,
@@ -256,6 +400,7 @@ fn main() -> ExitCode {
 
 fn run(command: Command) -> Result<Value, TransformError> {
     match command {
+        #[cfg(feature = "full")]
         Command::Compose {
             spec,
             target_size,
@@ -306,6 +451,7 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 result,
             })
         }
+        #[cfg(feature = "full")]
         Command::Solve {
             quad,
             space,
@@ -395,6 +541,144 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 result,
             })
         }
+        Command::Rectify { spec, json: _ } => {
+            let spec = read_rectify_spec(&spec)?;
+            let result = rectify_plane(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "rectify",
+                result,
+            })
+        }
+        Command::RectifyRender {
+            source,
+            spec,
+            output,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec = read_rectify_spec(&spec)?;
+            let options = RectifyRenderOptions {
+                quality: quality.into(),
+                limits: RenderLimits {
+                    max_width,
+                    max_height,
+                    max_pixels,
+                    max_source_bytes,
+                },
+            };
+            let result = rectify_file(&source, &spec, &output, options, overwrite, dry_run)?;
+            to_value(Success {
+                ok: true,
+                operation: "rectifyRender",
+                result,
+            })
+        }
+        Command::CanvasInspect { spec, json: _ } => {
+            let spec: CanvasSetSpec = read_json_file(&spec, "CanvasSetSpec")?;
+            spec.validate()?;
+            to_value(Success {
+                ok: true,
+                operation: "canvasInspect",
+                result: spec,
+            })
+        }
+        Command::CanvasRender {
+            source,
+            spec,
+            plan,
+            output_directory,
+            quality,
+            sampling,
+            outside_fill,
+            max_width,
+            max_height,
+            max_pixels,
+            max_cumulative_pixels,
+            max_source_bytes,
+            dry_run,
+            json: _,
+        } => {
+            let options = CanvasSetRenderOptions {
+                quality: quality.unwrap_or(QualityArg::Standard).into(),
+                limits: RenderLimits {
+                    max_width,
+                    max_height,
+                    max_pixels,
+                    max_source_bytes,
+                },
+                max_cumulative_pixels,
+            };
+            let result = match (spec, plan) {
+                (Some(spec_path), None) => {
+                    if sampling.is_some() || outside_fill.is_some() {
+                        return Err(TransformError::new(
+                            ErrorCode::Schema,
+                            "--sampling and --outside-fill are accepted only with --plan",
+                        ));
+                    }
+                    let spec: CanvasSetSpec = read_json_file(&spec_path, "CanvasSetSpec")?;
+                    render_canvas_set_file(
+                        &source,
+                        CanvasSetProgram::Spec(&spec),
+                        &output_directory,
+                        options,
+                        dry_run,
+                    )?
+                }
+                (None, Some(plan_path)) => {
+                    if quality.is_some() {
+                        return Err(TransformError::new(
+                            ErrorCode::Schema,
+                            "--quality is accepted only with --spec",
+                        ));
+                    }
+                    let plan: CanvasSetPlan = read_json_file(&plan_path, "CanvasSetPlan")?;
+                    let sampling = sampling.ok_or_else(|| {
+                        TransformError::new(ErrorCode::Schema, "--sampling is required with --plan")
+                    })?;
+                    let outside_fill = outside_fill.ok_or_else(|| {
+                        TransformError::new(
+                            ErrorCode::Schema,
+                            "--outside-fill is required with --plan",
+                        )
+                    })?;
+                    let outside_fill: CanvasBackground =
+                        read_json_file(&outside_fill, "CanvasBackground")?;
+                    render_canvas_set_file(
+                        &source,
+                        CanvasSetProgram::Plan {
+                            plan: &plan,
+                            replay: CanvasReplayOptions {
+                                sampling: sampling.into(),
+                                outside_fill: background_rgba(outside_fill),
+                            },
+                        },
+                        &output_directory,
+                        options,
+                        dry_run,
+                    )?
+                }
+                _ => {
+                    return Err(TransformError::new(
+                        ErrorCode::Schema,
+                        "canvas-render requires exactly one --spec or --plan",
+                    ));
+                }
+            };
+            to_value(Success {
+                ok: true,
+                operation: "canvasRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
         Command::Css {
             spec,
             element_size,
@@ -413,6 +697,7 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 result,
             })
         }
+        #[cfg(feature = "full")]
         Command::Schema => Ok(json!({
             "ok": true,
             "operation": "schema",
@@ -421,8 +706,19 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "transformRecipe": schema_for!(TransformRecipe),
                 "affineComposition": schema_for!(worldbend_core::AffineComposition),
                 "solveOutput": schema_for!(worldbend_core::SolveOutput),
+                "rectifySpec": schema_for!(RectifySpec),
+                "rectifyPlan": schema_for!(RectifyPlan),
+                "canvasSpec": schema_for!(CanvasSpec),
+                "canvasSetSpec": schema_for!(CanvasSetSpec),
+                "canvasPlan": schema_for!(CanvasPlan),
+                "canvasSetPlan": schema_for!(CanvasSetPlan),
+                "canvasReplayOptions": schema_for!(CanvasReplayOptions),
+                "canvasSetRenderOptions": schema_for!(CanvasSetRenderOptions),
+                "canvasSetFileRenderResult": schema_for!(worldbend_render::CanvasSetFileRenderResult),
                 "renderOptions": schema_for!(RenderOptions),
                 "fileRenderResult": schema_for!(worldbend_render::FileRenderResult),
+                "rectifyRenderOptions": schema_for!(RectifyRenderOptions),
+                "rectifyFileRenderResult": schema_for!(worldbend_render::RectifyFileRenderResult),
                 "cssTransform": schema_for!(CssTransform),
                 "transformError": schema_for!(TransformError),
                 "webContract": schema_for!(WebContract)
@@ -431,6 +727,7 @@ fn run(command: Command) -> Result<Value, TransformError> {
     }
 }
 
+#[cfg(feature = "full")]
 fn parse_quad(value: &str) -> Result<Quad, TransformError> {
     let values = value
         .split_whitespace()
@@ -472,6 +769,7 @@ fn parse_size(value: &str, field: &str) -> Result<Size, TransformError> {
     Size::new(width, height).validate(field)
 }
 
+#[cfg(feature = "full")]
 fn parse_point(value: &str, field: &str) -> Result<Point, TransformError> {
     let mut coordinates = value.split(',');
     let x = coordinates.next().and_then(|part| part.parse::<f64>().ok());
@@ -490,10 +788,21 @@ fn parse_optional_size(value: Option<String>, field: &str) -> Result<Option<Size
 }
 
 fn read_spec(path: &PathBuf) -> Result<TransformSpec, TransformError> {
+    read_json_file(path, "TransformSpec")
+}
+
+fn read_rectify_spec(path: &PathBuf) -> Result<RectifySpec, TransformError> {
+    read_json_file(path, "RectifySpec")
+}
+
+fn read_json_file<T: serde::de::DeserializeOwned>(
+    path: &PathBuf,
+    kind: &str,
+) -> Result<T, TransformError> {
     let file = fs::File::open(path).map_err(|error| {
         TransformError::new(
-            ErrorCode::Schema,
-            format!("failed to read spec {}: {error}", path.display()),
+            ErrorCode::Render,
+            format!("failed to open {kind} file {}: {error}", path.display()),
         )
     })?;
     let mut bytes = Vec::new();
@@ -501,14 +810,14 @@ fn read_spec(path: &PathBuf) -> Result<TransformSpec, TransformError> {
         .read_to_end(&mut bytes)
         .map_err(|error| {
             TransformError::new(
-                ErrorCode::Schema,
-                format!("failed to read spec {}: {error}", path.display()),
+                ErrorCode::Render,
+                format!("failed to read {kind} file {}: {error}", path.display()),
             )
         })?;
     if bytes.len() > MAX_SPEC_BYTES {
         return Err(TransformError::new(
             ErrorCode::Schema,
-            "TransformSpec exceeds the input byte limit",
+            format!("{kind} exceeds the input byte limit"),
         )
         .with_details(json!({ "maximum": MAX_SPEC_BYTES })));
     }
@@ -522,6 +831,35 @@ fn read_spec(path: &PathBuf) -> Result<TransformSpec, TransformError> {
             ),
         )
     })
+}
+
+impl From<QualityArg> for SamplingQuality {
+    fn from(value: QualityArg) -> Self {
+        match value {
+            QualityArg::Preview => Self::Preview,
+            QualityArg::Standard => Self::Standard,
+            QualityArg::High => Self::High,
+        }
+    }
+}
+
+impl From<ReplaySamplingArg> for CanvasReplaySampling {
+    fn from(value: ReplaySamplingArg) -> Self {
+        match value {
+            ReplaySamplingArg::Linear => Self::Linear,
+            ReplaySamplingArg::Nearest => Self::Nearest,
+        }
+    }
+}
+
+fn background_rgba(background: CanvasBackground) -> [u8; 4] {
+    match background {
+        CanvasBackground::Transparent {} => [0, 0, 0, 0],
+        CanvasBackground::Color {
+            space: Srgb8Space::Srgb8,
+            rgba,
+        } => rgba,
+    }
 }
 
 fn to_value(value: impl Serialize) -> Result<Value, TransformError> {
@@ -559,7 +897,7 @@ fn finish_write(result: io::Result<()>, intended_exit: ExitCode) -> ExitCode {
         Ok(()) => intended_exit,
         Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("projective: failed to write stdout: {error}");
+            eprintln!("worldbend: failed to write stdout: {error}");
             ExitCode::from(6)
         }
     }
@@ -575,7 +913,11 @@ fn exit_code(code: ErrorCode) -> u8 {
         | ErrorCode::EdgeTooShort
         | ErrorCode::HomographySingular
         | ErrorCode::HomographyHorizonCrossing
-        | ErrorCode::Reprojection => 3,
+        | ErrorCode::Reprojection
+        | ErrorCode::CropBounds
+        | ErrorCode::TrimEmpty
+        | ErrorCode::RasterShapeMismatch
+        | ErrorCode::OutputCollision => 3,
         ErrorCode::UnsupportedMedia => 4,
         ErrorCode::OutputLimit
         | ErrorCode::PathOutsideRoot
@@ -593,8 +935,14 @@ fn exit_code(code: ErrorCode) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{DynamicImage, Rgba, RgbaImage};
+    use worldbend_core::{
+        CANVAS_SET_SCHEMA, CANVAS_VERSION, CanvasOperation, CanvasVariant, NormalizedAnchor,
+        PixelSize,
+    };
 
     #[test]
+    #[cfg(feature = "full")]
     fn parses_quad_in_strict_order() {
         let quad = parse_quad("0,0 2,0 2,1 0,1").unwrap();
         assert_eq!(quad.tr, Point::new(2.0, 0.0));
@@ -602,6 +950,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "full")]
     fn rejects_extra_quad_point() {
         assert_eq!(
             parse_quad("0,0 1,0 1,1 0,1 2,2").unwrap_err().code,
@@ -618,6 +967,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "full")]
     fn parses_transform_point_pairs() {
         assert_eq!(
             parse_point("1.25,-8", "scale").unwrap(),
@@ -630,6 +980,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "full")]
     fn warp_amount_requires_a_warp_preset() {
         let error = Cli::try_parse_from([
             "worldbend",
@@ -672,6 +1023,157 @@ mod tests {
         ])
         .unwrap_err();
         assert_eq!(conflict.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn canvas_cli_union_requires_replay_behavior_only_for_plans() {
+        Cli::try_parse_from([
+            "worldbend",
+            "canvas-render",
+            "--source",
+            "source.png",
+            "--spec",
+            "set.json",
+            "--output-directory",
+            "outputs",
+        ])
+        .unwrap();
+
+        let error = Cli::try_parse_from([
+            "worldbend",
+            "canvas-render",
+            "--source",
+            "source.png",
+            "--plan",
+            "plan.json",
+            "--output-directory",
+            "outputs",
+        ])
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+
+        Cli::try_parse_from([
+            "worldbend",
+            "canvas-render",
+            "--source",
+            "source.png",
+            "--plan",
+            "plan.json",
+            "--sampling",
+            "nearest",
+            "--outside-fill",
+            "fill.json",
+            "--output-directory",
+            "outputs",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn canvas_inspect_rejects_source_independent_invalid_operations() {
+        let root = tempfile::tempdir().unwrap();
+        let spec_path = root.path().join("invalid.json");
+        let invalid = CanvasSetSpec {
+            schema: CANVAS_SET_SCHEMA.to_owned(),
+            version: CANVAS_VERSION.to_owned(),
+            variants: vec![CanvasVariant {
+                id: "bad".to_owned(),
+                operation: CanvasOperation::Contain {
+                    output: PixelSize::new(10, 10),
+                    anchor: NormalizedAnchor { x: -0.1, y: 0.5 },
+                    background: CanvasBackground::Transparent {},
+                },
+            }],
+        };
+        fs::write(&spec_path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        let error = run(Command::CanvasInspect {
+            spec: spec_path,
+            json: true,
+        })
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Schema);
+    }
+
+    #[test]
+    fn canvas_cli_renders_and_replays_the_returned_ordered_plan() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source.png");
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 1, Rgba([12, 34, 56, 255])))
+            .save(&source)
+            .unwrap();
+        let spec = CanvasSetSpec {
+            schema: CANVAS_SET_SCHEMA.to_owned(),
+            version: CANVAS_VERSION.to_owned(),
+            variants: vec![
+                CanvasVariant {
+                    id: "square".to_owned(),
+                    operation: CanvasOperation::Contain {
+                        output: PixelSize::new(2, 2),
+                        anchor: NormalizedAnchor { x: 0.5, y: 0.5 },
+                        background: CanvasBackground::Transparent {},
+                    },
+                },
+                CanvasVariant {
+                    id: "wide".to_owned(),
+                    operation: CanvasOperation::Stretch {
+                        output: PixelSize::new(3, 1),
+                    },
+                },
+            ],
+        };
+        let spec_path = root.path().join("set.json");
+        fs::write(&spec_path, serde_json::to_vec(&spec).unwrap()).unwrap();
+        let output = root.path().join("outputs");
+        let value = run(Command::CanvasRender {
+            source: source.clone(),
+            spec: Some(spec_path),
+            plan: None,
+            output_directory: output.clone(),
+            quality: None,
+            sampling: None,
+            outside_fill: None,
+            max_width: DEFAULT_MAX_AXIS,
+            max_height: DEFAULT_MAX_AXIS,
+            max_pixels: DEFAULT_MAX_PIXELS,
+            max_cumulative_pixels: MAX_CANVAS_SET_PIXELS,
+            max_source_bytes: DEFAULT_MAX_SOURCE_BYTES,
+            dry_run: false,
+            json: true,
+        })
+        .unwrap();
+        assert_eq!(value["operation"], "canvasRender");
+        assert_eq!(value["result"]["status"], "written");
+        assert_eq!(value["result"]["items"][0]["id"], "square");
+        assert_eq!(value["result"]["items"][1]["id"], "wide");
+        assert!(output.join("square.png").is_file());
+        assert!(output.join("wide.png").is_file());
+        let original_plan = value["result"]["plan"].clone();
+
+        let plan_path = root.path().join("plan.json");
+        fs::write(&plan_path, serde_json::to_vec(&original_plan).unwrap()).unwrap();
+        let fill_path = root.path().join("fill.json");
+        fs::write(&fill_path, br#"{"kind":"transparent"}"#).unwrap();
+        let replay = root.path().join("replay");
+        let value = run(Command::CanvasRender {
+            source,
+            spec: None,
+            plan: Some(plan_path),
+            output_directory: replay.clone(),
+            quality: None,
+            sampling: Some(ReplaySamplingArg::Nearest),
+            outside_fill: Some(fill_path),
+            max_width: DEFAULT_MAX_AXIS,
+            max_height: DEFAULT_MAX_AXIS,
+            max_pixels: DEFAULT_MAX_PIXELS,
+            max_cumulative_pixels: MAX_CANVAS_SET_PIXELS,
+            max_source_bytes: DEFAULT_MAX_SOURCE_BYTES,
+            dry_run: false,
+            json: true,
+        })
+        .unwrap();
+        assert_eq!(value["result"]["plan"], original_plan);
+        assert_eq!(value["result"]["items"][0]["id"], "square");
+        assert!(replay.join("square.png").is_file());
     }
 
     #[test]

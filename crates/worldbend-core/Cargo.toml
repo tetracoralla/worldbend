@@ -6,6 +6,10 @@ rust-version.workspace = true
 publish = false
 description = "Canonical projective plane-mapping model, solver, validation, and diagnostics"
 
+[features]
+default = ["css"]
+css = []
+
 [dependencies]
 nalgebra.workspace = true
 schemars.workspace = true

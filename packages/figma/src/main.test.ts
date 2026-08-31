@@ -513,7 +513,9 @@ describe("Figma selection generations", () => {
       y: 20,
       absoluteBoundingBox: { x: 10, y: 20, width: 100, height: 80 },
       resize: vi.fn(),
-      getSharedPluginData: vi.fn(() => JSON.stringify(identitySpec())),
+      getSharedPluginData: vi.fn((_namespace: string, key: string) =>
+        key === "transform" ? JSON.stringify(identitySpec()) : "",
+      ),
       setSharedPluginData: vi.fn(),
       getPluginData: vi.fn(() => ""),
       setPluginData: vi.fn(),

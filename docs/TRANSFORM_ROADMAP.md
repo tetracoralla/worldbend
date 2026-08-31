@@ -78,6 +78,14 @@ These require different operation objects, validation, rendering, and recovery.
 They may later share the product shell, but they must not silently overload the
 homography or affine contract.
 
+Ecosystem reach is an adapter strategy, not a reason to multiply product
+models. Figma is the human plane-authoring and source-replacement surface;
+Agent hosts compose, validate, and execute explicit intent at low context cost;
+ComfyUI applies the same saved plane inside image-generation workflows. A
+capability enters all compatible carriers only after its operation object and
+core semantics exist. No carrier is allowed to reconstruct another carrier's
+UI gestures or maintain a private transform implementation.
+
 ## Current productized slice
 
 The current slice adds a deterministic affine-composition operation over an
@@ -235,9 +243,74 @@ discovery tool first. If the operation catalog later grows beyond a compact set
 of stable tasks, revisit a `search / describe / run / batch` catalog instead of
 adding one MCP tool per preset.
 
+### ComfyUI execution segment (2026-08-30)
+
+The first ComfyUI V3 adapter is implemented as a local, headless-compatible
+node pack. `Worldbend Transform Spec` validates reusable JSON through the
+native core. `Apply Worldbend Transform` applies the same spec to one IMAGE and
+optional MASK, returns the unchanged transform for source replacement, and
+keeps mask polarity, alpha, quality, canvas, and resource limits explicit. The
+adapter includes no matrix, Warp, or rasterization algorithm.
+
+This segment is intentionally narrower than a video product. Comfy batch size
+greater than one fails explicitly. Frame sequences move to P2 only after the
+batch/sequence contract defines order and correlation, partial failure,
+cumulative resource budgets, fairness, cancellation, and publication. The
+current local macOS/arm64 package validates the binary boundary and package
+inventory; Registry publication and multi-platform binaries are release work,
+not inferred from source compatibility.
+
+### Explicit planar rectification segment (2026-08-30)
+
+The next deterministic Photoshop-familiar slice is implemented as a separate
+`worldbend.rectify@0.1` operation. The caller supplies the source quad and
+integer output dimensions; the Rust core validates and solves source-to-output
+geometry, and the existing native sampler renders it. CLI and MCP expose
+`rectify` plus `rectify-render`; Web/WASM exposes the same plan; Figma supplies
+manual source handles and bounded output fields; ComfyUI supplies a reusable
+spec node and an apply node. None of those adapters detect edges, infer aspect
+ratio, estimate a camera, or duplicate homography math.
+
+Rectification remains distinct from TransformSpec because selecting a source
+sub-plane is not destination-only geometry and the projective continuation
+outside that selected plane may be invalid. Figma persists the RectifySpec
+under its own shared-data key so reopening a source/result pair does not
+pretend the operation was ordinary Distort. This segment does not add batch,
+video, lens correction, content-aware fill, or an Agent planner.
+
+The carrier foundation now permits broad deterministic graphics coverage
+without giving every install the whole source tree. The next implementation
+waves are ordered by shared production value and dependency, not by a promise
+to clone every Photoshop panel:
+
+1. Canvas and multi-output: Crop, Trim, Pad, Contain, Cover, anchors, declared
+   backgrounds, and synchronized IMAGE/MASK/control-map variants.
+2. Place and multi-plane mockup: forward placement, reverse extraction,
+   connected planes, shared edges, explicit grids, and planar measurement.
+3. Mesh and displacement: caller-authored grids/control points, displacement
+   maps/vector fields, and deterministic boundary/filter rules.
+4. Frame sequences: explicit keyframes and externally supplied per-frame
+   matrices only after order, correlation, partial failure, cumulative budget,
+   fairness, cancellation, and publication are versioned.
+5. Lens/projection, compositing, vector preservation, tiling/atlases, and
+   replayable liquify strokes as independent later contracts.
+
+Worldbend still does not decide what to crop, detect planes, infer depth,
+estimate optical flow, recognize joints, or choose creative edits. Those may
+arrive as explicit masks, lines, points, maps, tracks, or parameters from a
+human, Agent, model, or another workflow node. Each Worldbend operation remains
+an exact program over that input. A stable core feature is exposed only through
+compatible carriers; carrier symmetry is not a release requirement.
+
+The first wave begins only after the current carrier-profile foundation is
+green. It creates the first independent Figma workspace instead of adding more
+controls to Perspective, a compact headless contract instead of a proliferation
+of Agent tools, and Comfy nodes only for graph-native data flows. This is the
+next parallel implementation boundary recorded in `docs/CAMPAIGN_ANCHOR.md`.
+
 ## Promotion gates
 
-- P0 affine composition must match Rust, WASM/Web, Figma, CLI, and MCP.
+- P0 affine composition must match Rust, WASM/Web, Figma, ComfyUI, CLI, and MCP.
 - A transform followed by Distort, and Distort followed by a transform, must be
   exercised as one sequence without an intermediate rasterization.
 - Figma Apply and Replace must resize and reposition tight results atomically
@@ -245,6 +318,11 @@ adding one MCP tool per preset.
 - P1 flip cannot ship by silently reversing destination corner order; it needs
   explicit source-orientation data shared by human and Agent renderers.
 - Warp cannot ship as adapter-only math. A bounded mesh model and renderer must
-  be owned below Web/Figma/CLI/MCP.
+  be owned below Web/Figma/ComfyUI/CLI/MCP.
+- Rectification cannot ship as Agent-inferred corners or adapter-local reverse
+  perspective. Source corners and output dimensions are explicit contract
+  inputs, and every carrier consumes the core plan.
+- Comfy batch or video cannot ship as an implicit loop over the single-image
+  node; its sequence contract and cumulative limits must exist first.
 - Designer dogfood must test at least: screen placement, rotated poster, skewed
   label, repeated package face, arced logo, and source replacement.

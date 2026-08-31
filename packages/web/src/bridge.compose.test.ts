@@ -6,6 +6,7 @@ import {
   buildWarpMeshPreview,
   composeAffineTransform,
   emitCssTransform,
+  rectifyPlane,
   TransformError,
   solveTransform,
   solveTransformPreview,
@@ -40,6 +41,32 @@ function expectCloseToQuad(actual: Quad, expected: Quad): void {
 }
 
 describe("compose over the real WASM core", () => {
+  it("plans explicit plane rectification through the real core", async () => {
+    const sourceQuad = {
+      tl: { x: 0.1, y: 0.15 },
+      tr: { x: 0.9, y: 0.2 },
+      br: { x: 0.8, y: 0.9 },
+      bl: { x: 0.15, y: 0.8 },
+    };
+    const plan = await rectifyPlane({
+      schema: "worldbend.rectify",
+      version: "0.1",
+      source: { space: "normalized", quad: sourceQuad },
+      output: { width: 1200, height: 800 },
+    });
+    expect(plan.resolvedSourceQuad).toEqual(sourceQuad);
+    expect(plan.outputQuad).toEqual({
+      tl: { x: 0, y: 0 },
+      tr: { x: 1200, y: 0 },
+      br: { x: 1200, y: 800 },
+      bl: { x: 0, y: 800 },
+    });
+    expect(plan.diagnostics.reprojection.max).toBeLessThan(
+      plan.diagnostics.reprojection.limit,
+    );
+    expect(plan.outputSpec.schema).toBe("worldbend.transform");
+  });
+
   it("keeps the compact binary preview ABI equivalent to the JSON contract", async () => {
     const spec = normalizedSpec({
       tl: { x: -0.1, y: 0.05 },

@@ -20,6 +20,75 @@ export type Destination =
       quad: Quad1;
       space: "normalized";
     };
+export type CanvasBackground =
+  | {
+      kind: "transparent";
+    }
+  | {
+      kind: "color";
+      /**
+       * @minItems 4
+       * @maxItems 4
+       */
+      rgba: [number, number, number, number];
+      space: Srgb8Space;
+    };
+export type Srgb8Space = "srgb8";
+export type CanvasOperationKind = "crop" | "trim" | "pad" | "contain" | "cover" | "stretch";
+export type CanvasOperation =
+  | {
+      kind: "crop";
+      rect: PixelRect;
+    }
+  | {
+      alphaThreshold: number;
+      kind: "trim";
+    }
+  | {
+      background: CanvasBackground;
+      insets: CanvasInsets;
+      kind: "pad";
+    }
+  | {
+      anchor: NormalizedAnchor;
+      background: CanvasBackground;
+      kind: "contain";
+      output: {
+        height: number;
+        width: number;
+      };
+    }
+  | {
+      anchor: NormalizedAnchor;
+      background: CanvasBackground;
+      kind: "cover";
+      output: {
+        height: number;
+        width: number;
+      };
+    }
+  | {
+      kind: "stretch";
+      output: {
+        height: number;
+        width: number;
+      };
+    };
+/**
+ * Coordinate system for the explicitly selected plane in the source image.
+ * Pixel coordinates require the reference image size that authored them;
+ * normalized coordinates are reusable across source resolutions.
+ */
+export type SourcePlane =
+  | {
+      quad: Quad1;
+      reference: Size;
+      space: "pixel";
+    }
+  | {
+      quad: Quad1;
+      space: "normalized";
+    };
 export type CoordinateSpace = "pixel" | "normalized";
 export type ErrorCode =
   | "E_SCHEMA"
@@ -32,6 +101,10 @@ export type ErrorCode =
   | "E_HOMOGRAPHY_SINGULAR"
   | "E_HOMOGRAPHY_HORIZON_CROSSING"
   | "E_REPROJECTION"
+  | "E_CROP_BOUNDS"
+  | "E_TRIM_EMPTY"
+  | "E_RASTER_SHAPE_MISMATCH"
+  | "E_OUTPUT_COLLISION"
   | "E_UNSUPPORTED_MEDIA"
   | "E_OUTPUT_LIMIT"
   | "E_PATH_OUTSIDE_ROOT"
@@ -52,7 +125,13 @@ export type ErrorCode =
  */
 export interface WebContract {
   affineCompositionOutput: AffineComposition;
+  canvasPlanOutput: CanvasPlan;
+  canvasSetPlanOutput: CanvasSetPlan;
+  canvasSetSpecInput: CanvasSetSpec;
+  canvasSpecInput: CanvasSpec;
   cssTransformOutput: CssTransform;
+  rectifyPlanOutput: RectifyPlan;
+  rectifySpecInput: RectifySpec;
   solveOutput: SolveOutput;
   transformError: TransformError;
   transformRecipeInput: TransformRecipe;
@@ -171,6 +250,356 @@ export interface Quad1 {
   tl: Point;
   tr: Point;
 }
+export interface CanvasPlan {
+  background?: CanvasBackground | null;
+  operation: CanvasOperationKind;
+  outputSize: {
+    height: number;
+    width: number;
+  };
+  placement: CanvasPlacement;
+  scale: CanvasScale;
+  schema: "worldbend.canvas-plan";
+  sourceRect: PixelRect;
+  sourceSize: PixelSize;
+  version: "0.1";
+}
+export interface CanvasPlacement {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+export interface CanvasScale {
+  x: number;
+  y: number;
+}
+export interface PixelRect {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+export interface PixelSize {
+  height: number;
+  width: number;
+}
+export interface CanvasSetPlan {
+  schema: "worldbend.canvas-set-plan";
+  sourceSize: PixelSize;
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  variants:
+    | [CanvasVariantPlan]
+    | [CanvasVariantPlan, CanvasVariantPlan]
+    | [CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan]
+    | [CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan]
+    | [CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan]
+    | [CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan, CanvasVariantPlan]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ]
+    | [
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan,
+        CanvasVariantPlan
+      ];
+  version: "0.1";
+}
+export interface CanvasVariantPlan {
+  id: string;
+  plan: CanvasPlan;
+}
+export interface CanvasSetSpec {
+  schema: "worldbend.canvas-set";
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  variants:
+    | [CanvasVariant]
+    | [CanvasVariant, CanvasVariant]
+    | [CanvasVariant, CanvasVariant, CanvasVariant]
+    | [CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant]
+    | [CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant]
+    | [CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant]
+    | [CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant, CanvasVariant]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ]
+    | [
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant,
+        CanvasVariant
+      ];
+  version: "0.1";
+}
+export interface CanvasVariant {
+  id: string;
+  operation: CanvasOperation;
+}
+export interface CanvasInsets {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+}
+export interface NormalizedAnchor {
+  x: number;
+  y: number;
+}
+export interface CanvasSpec {
+  operation: CanvasOperation;
+  schema: "worldbend.canvas";
+  version: "0.1";
+}
 export interface CssTransform {
   height: string;
   /**
@@ -199,11 +628,19 @@ export interface CssTransform {
   transformOrigin: "0 0";
   width: string;
 }
-export interface SolveOutput {
-  diagnostics: SolveDiagnostics;
+export interface RectifyPlan {
+  diagnostics: RectifyDiagnostics;
   homography: Homography;
-  resolvedDestination: ResolvedDestination;
-  spec: TransformSpec1;
+  outputQuad: Quad1;
+  outputSpec: TransformSpec1;
+  resolvedSourceQuad: Quad1;
+  spec: RectifySpec;
+}
+export interface RectifyDiagnostics {
+  matrix: MatrixDiagnostics;
+  outputBounds: Bounds;
+  reprojection: ReprojectionDiagnostics;
+  sourceGeometry: GeometryDiagnostics;
 }
 export interface Homography {
   /**
@@ -217,16 +654,28 @@ export interface Homography {
    */
   matrix: [number, number, number, number, number, number, number, number, number];
 }
-export interface ResolvedDestination {
-  quad: Quad1;
-  reference: Size;
-  sourceSpace: CoordinateSpace;
-}
 export interface TransformSpec1 {
   content?: Content;
   destination: Destination;
   schema: "worldbend.transform";
   version: "0.1";
+}
+export interface RectifySpec {
+  output: PixelSize;
+  schema: "worldbend.rectify";
+  source: SourcePlane;
+  version: "0.1";
+}
+export interface SolveOutput {
+  diagnostics: SolveDiagnostics;
+  homography: Homography;
+  resolvedDestination: ResolvedDestination;
+  spec: TransformSpec1;
+}
+export interface ResolvedDestination {
+  quad: Quad1;
+  reference: Size;
+  sourceSpace: CoordinateSpace;
 }
 export interface TransformError {
   code: ErrorCode;

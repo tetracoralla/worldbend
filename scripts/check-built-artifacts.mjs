@@ -1,19 +1,29 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import {
+  assertByteBudget,
+  assertCarrierIsolation,
+  listRegularFiles,
+  loadCarrierProfiles,
+  sumFileBytes,
+} from "./carrier-profiles.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rootReal = await realpath(root);
+const carrierProfiles = await loadCarrierProfiles();
+const figmaProfile = carrierProfiles.carriers.figma;
+const agentPackageProfile = carrierProfiles.carriers.agent.package;
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const required = [
   "packages/web/dist/index.js",
   "packages/web/demo-dist/index.html",
   "packages/figma/dist/main.js",
   "packages/figma/dist/ui.html",
-  `plugins/worldbend/bin/worldbend${executableSuffix}`,
-  `plugins/worldbend/bin/worldbend-capability${executableSuffix}`,
-  `plugins/worldbend/bin/worldbend-mcp${executableSuffix}`,
-  `plugins/worldbend/bin/worldbend-transport-schema-probe${executableSuffix}`,
+  ...agentPackageProfile.requiredExecutables.map(
+    (name) => `plugins/worldbend/bin/${name}${executableSuffix}`,
+  ),
   "plugins/worldbend/capabilities/provider.json",
   "plugins/worldbend/capabilities/schemas/projective.inspect.input.schema.json",
   "plugins/worldbend/capabilities/schemas/projective.inspect.output.schema.json",
@@ -112,6 +122,7 @@ for (const controlId of [
   "pivot-grid",
   "position-x",
   "position-y",
+  "action-open-canvas",
 ]) {
   if (!ui.includes(`id="${controlId}"`)) {
     throw new Error(`Figma UI is missing Free Transform control ${controlId}`);
@@ -132,13 +143,32 @@ for (const iconId of [
     throw new Error(`Figma UI is missing tool-rendered product icon ${iconId}`);
   }
 }
-assertIdOrder(ui, [
-  "mode-transform",
-  "distort-free",
-  "distort-perspective",
-  "mode-warp",
-  "more-options",
-]);
+for (const canvasControlId of [
+  "canvas-workspace",
+  "canvas-back",
+  "canvas-add-variant",
+  "canvas-variants",
+  "canvas-preview",
+  "canvas-width",
+  "canvas-height",
+  "canvas-fit-contain",
+  "canvas-fit-cover",
+  "canvas-anchor-grid",
+  "canvas-background",
+  "canvas-background-color",
+  "canvas-remove-variant",
+  "canvas-reset",
+  "canvas-apply-new",
+  "canvas-apply",
+]) {
+  if (!ui.includes(`id="${canvasControlId}"`)) {
+    throw new Error(`Figma UI is missing Canvas workspace control ${canvasControlId}`);
+  }
+}
+if (!/<section\b[^>]*\bid="canvas-workspace"[^>]*\bhidden(?:\s|=|>)/.test(ui)) {
+  throw new Error("Figma Canvas must remain a hidden sibling workspace until explicitly opened");
+}
+assertIdOrder(ui, figmaProfile.workspace.modeControlIds);
 assertIdOrder(ui, [
   "scale-x-label",
   "scale-y-label",
@@ -178,10 +208,45 @@ if (!ui.includes("worldbend-editor__pivot")) {
   throw new Error("Figma UI is missing the movable transform reference point");
 }
 
-const workspacePackage = await readFile(path.join(root, "package.json"), "utf8");
-if (/\/Users\/|[A-Za-z]:\\\\Users\\/.test(workspacePackage)) {
+const workspacePackageText = await readFile(path.join(root, "package.json"), "utf8");
+if (/\/Users\/|[A-Za-z]:\\\\Users\\/.test(workspacePackageText)) {
   throw new Error("workspace scripts must not depend on a machine-specific user path");
 }
+
+const figmaRoot = path.join(root, "packages", "figma");
+const figmaRuntimeBytes = await sumFileBytes(
+  figmaRoot,
+  figmaProfile.package.runtimeEntries,
+);
+assertByteBudget(
+  figmaRuntimeBytes,
+  figmaProfile.package.maxRuntimeBytes,
+  "Figma runtime payload",
+);
+
+const workspacePackage = JSON.parse(workspacePackageText);
+const safeVersion = String(workspacePackage.version).replace(/[^0-9A-Za-z._-]/g, "-");
+const figmaPackageName = `worldbend-figma-${safeVersion}`;
+const figmaPackageRoot = path.join(root, "artifacts", "figma", figmaPackageName);
+const figmaArchive = path.join(root, "artifacts", "figma", `${figmaPackageName}.zip`);
+const figmaPackageFiles = await listRegularFiles(figmaPackageRoot);
+assertCarrierIsolation(figmaPackageFiles, figmaProfile.package, "Figma package");
+assertByteBudget(
+  await sumFileBytes(figmaPackageRoot, figmaPackageFiles),
+  figmaProfile.package.maxUnpackedBytes,
+  "Figma unpacked package",
+);
+assertByteBudget(
+  (await stat(figmaArchive)).size,
+  figmaProfile.package.maxArchiveBytes,
+  "Figma archive",
+);
+
+assertCarrierIsolation(
+  await listRegularFiles(path.join(root, "plugins", "worldbend")),
+  agentPackageProfile,
+  "Agent plugin",
+);
 
 console.log("Built artifact checks passed");
 

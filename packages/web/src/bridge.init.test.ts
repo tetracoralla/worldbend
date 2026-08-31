@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@worldbend/wasm", () => ({
   default: vi.fn(),
+  canvas_plan_json: vi.fn(),
+  canvas_set_plan_json: vi.fn(),
   solve_json: vi.fn(),
   css_json: vi.fn(),
 }));

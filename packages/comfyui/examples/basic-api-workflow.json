@@ -1,0 +1,44 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "input.png"
+    }
+  },
+  "2": {
+    "class_type": "Worldbend_TransformSpec",
+    "inputs": {
+      "spec_json": "{\n  \"schema\": \"worldbend.transform\",\n  \"version\": \"0.1\",\n  \"destination\": {\n    \"space\": \"normalized\",\n    \"quad\": {\n      \"tl\": { \"x\": 0.08, \"y\": 0.12 },\n      \"tr\": { \"x\": 0.92, \"y\": 0.04 },\n      \"br\": { \"x\": 0.86, \"y\": 0.94 },\n      \"bl\": { \"x\": 0.14, \"y\": 0.86 }\n    }\n  },\n  \"content\": { \"fit\": \"stretch\" }\n}",
+      "target_width": 0,
+      "target_height": 0
+    }
+  },
+  "3": {
+    "class_type": "Worldbend_ApplyTransform",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "mask": [
+        "1",
+        1
+      ],
+      "transform": [
+        "2",
+        0
+      ],
+      "quality": "standard",
+      "canvas": "reference"
+    }
+  },
+  "4": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "3",
+        0
+      ]
+    }
+  }
+}

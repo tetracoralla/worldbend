@@ -1,0 +1,71 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "primary.png"
+    }
+  },
+  "2": {
+    "class_type": "Worldbend_CanvasSetSpec",
+    "inputs": {
+      "spec_json": "{\n  \"schema\": \"worldbend.canvas-set\",\n  \"version\": \"0.1\",\n  \"variants\": [\n    {\n      \"id\": \"square\",\n      \"operation\": {\n        \"kind\": \"contain\",\n        \"output\": { \"width\": 1024, \"height\": 1024 },\n        \"anchor\": { \"x\": 0.5, \"y\": 0.5 },\n        \"background\": { \"kind\": \"transparent\" }\n      }\n    },\n    {\n      \"id\": \"portrait\",\n      \"operation\": {\n        \"kind\": \"cover\",\n        \"output\": { \"width\": 768, \"height\": 1024 },\n        \"anchor\": { \"x\": 0.5, \"y\": 0.5 },\n        \"background\": { \"kind\": \"transparent\" }\n      }\n    }\n  ]\n}"
+    }
+  },
+  "3": {
+    "class_type": "Worldbend_ApplyCanvasSet",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "mask": [
+        "1",
+        1
+      ],
+      "canvas_set": [
+        "2",
+        0
+      ],
+      "quality": "standard"
+    }
+  },
+  "4": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "3",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "control-map.png"
+    }
+  },
+  "6": {
+    "class_type": "Worldbend_ApplyCanvasPlan",
+    "inputs": {
+      "image": [
+        "5",
+        0
+      ],
+      "plan": [
+        "3",
+        2
+      ],
+      "sampling": "nearest",
+      "outside_fill_json": "{ \"kind\": \"color\", \"space\": \"srgb8\", \"rgba\": [0, 0, 0, 255] }"
+    }
+  },
+  "7": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "6",
+        0
+      ]
+    }
+  }
+}

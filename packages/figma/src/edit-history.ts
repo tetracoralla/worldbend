@@ -17,6 +17,7 @@ export interface EditHistoryEntry {
   gestureTranslation: Point;
   flip: { x: boolean; y: boolean };
   pivot: Point;
+  rectifyOutput?: { width: string; height: string };
   baseFrame: TransformFrame;
   activeFrame: TransformFrame;
 }

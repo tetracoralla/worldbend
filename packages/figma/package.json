@@ -7,7 +7,7 @@
     "build:ui": "vite build --config vite.config.ts --mode ui",
     "build:main": "vite build --config vite.config.ts --mode main",
     "build:entries": "pnpm build:ui && pnpm build:main",
-    "build": "pnpm --workspace-root build:wasm && pnpm --filter @worldbend/web build && pnpm build:entries",
+    "build": "pnpm --workspace-root build:web && pnpm --workspace-root build:figma:entries",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.ui.json --noEmit && tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },

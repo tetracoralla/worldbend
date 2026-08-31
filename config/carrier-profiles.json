@@ -1,0 +1,101 @@
+{
+  "schema": "worldbend.carrier-profiles",
+  "version": "0.1",
+  "features": [
+    "projective-plane",
+    "affine-composition",
+    "bounded-warp",
+    "planar-rectification",
+    "canvas-multi-output",
+    "native-raster",
+    "css-embedding"
+  ],
+  "carriers": {
+    "figma": {
+      "kind": "human-interactive",
+      "surfaceFeatureIds": [
+        "projective-plane",
+        "affine-composition",
+        "bounded-warp",
+        "planar-rectification",
+        "canvas-multi-output"
+      ],
+      "workspace": {
+        "id": "perspective",
+        "modeControlIds": [
+          "mode-transform",
+          "distort-free",
+          "distort-perspective",
+          "mode-warp",
+          "mode-rectify",
+          "more-options"
+        ],
+        "siblingWorkspaceIds": ["canvas"]
+      },
+      "package": {
+        "runtimeEntries": [
+          "manifest.json",
+          "dist/main.js",
+          "dist/ui.html"
+        ],
+        "maxRuntimeBytes": 655360,
+        "maxArchiveBytes": 524288,
+        "maxUnpackedBytes": 2097152,
+        "forbiddenSuffixes": [".py"],
+        "forbiddenPrefixes": ["bin/", "capabilities/", "skills/"]
+      }
+    },
+    "agent": {
+      "kind": "headless-agent",
+      "surfaceFeatureIds": [
+        "projective-plane",
+        "affine-composition",
+        "bounded-warp",
+        "planar-rectification",
+        "canvas-multi-output",
+        "native-raster",
+        "css-embedding"
+      ],
+      "package": {
+        "requiredExecutables": [
+          "worldbend",
+          "worldbend-capability",
+          "worldbend-mcp",
+          "worldbend-transport-schema-probe"
+        ],
+        "maxToolCatalogBytes": 81920,
+        "forbiddenSuffixes": [".html", ".css", ".py"],
+        "forbiddenPrefixes": ["figma/", "comfyui/"]
+      }
+    },
+    "comfyui": {
+      "kind": "workflow",
+      "surfaceFeatureIds": [
+        "projective-plane",
+        "affine-composition",
+        "bounded-warp",
+        "planar-rectification",
+        "canvas-multi-output",
+        "native-raster"
+      ],
+      "package": {
+        "sourceEntries": [
+          "__init__.py",
+          "_adapter.py",
+          "nodes.py",
+          "README.md"
+        ],
+        "exampleEntries": [
+          "examples/basic-api-workflow.json",
+          "examples/rectification-api-workflow.json",
+          "examples/canvas-api-workflow.json"
+        ],
+        "nativeExecutable": "worldbend",
+        "nativeCargoFeatures": ["comfy"],
+        "forbiddenSuffixes": [".html", ".css"],
+        "forbiddenPrefixes": ["capabilities/", "skills/", "figma/"],
+        "forbiddenBasenames": ["main.js", "ui.html", "provider.json"]
+      }
+    }
+  }
+}

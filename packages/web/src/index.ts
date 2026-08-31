@@ -1,5 +1,7 @@
 export * from "./attach";
 export * from "./bridge";
+export * from "./canvas-types";
+export * from "./canvas-renderer";
 export * from "./correction-grid";
 export * from "./editor";
 export * from "./editor-fit";

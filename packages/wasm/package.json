@@ -7,7 +7,11 @@
     ".": {
       "types": "./pkg/worldbend_wasm.d.ts",
       "import": "./pkg/worldbend_wasm.js"
+    },
+    "./figma": {
+      "types": "./pkg-figma/worldbend_wasm.d.ts",
+      "import": "./pkg-figma/worldbend_wasm.js"
     }
   },
-  "files": ["pkg"]
+  "files": ["pkg", "pkg-figma"]
 }

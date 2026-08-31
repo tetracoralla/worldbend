@@ -42,7 +42,7 @@
             "output": "sha256:a067a00c50bb0a0e711b1319ce4c3f4aff4ee3d811295a8bc2384206a1143a69"
           },
           "transportSchemaDigests": {
-            "input": "sha256:2906abe41fe851296279e98d8994fc487585504a8621ee8327aa34ee82cd48f5"
+            "input": "sha256:dd420bcb20f31ad86c720d1b4c616fe6ed25e9c9e2d68d3085d44d58c3b59ee3"
           },
           "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
         },
@@ -55,7 +55,7 @@
             "output": "sha256:4a4b9fa4c1c08ebc3c9350fb79c304039b62377d2d0123410944480dde0772ef"
           },
           "transportSchemaDigests": {
-            "input": "sha256:88e3ee873112f7dbaaee7a2062d46103760a9f18100650ef79c9c9479f642624"
+            "input": "sha256:13bb51ff35c55b58a5ea925f6229d4ce7a039402912c935ceab3eb40c1b20601"
           },
           "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false }
         }

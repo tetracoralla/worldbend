@@ -1773,6 +1773,7 @@ version = "0.1.0"
 dependencies = [
  "cap-fs-ext",
  "cap-primitives",
+ "libc",
  "serde_json",
  "sha2",
  "tempfile",
@@ -1785,6 +1786,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "image",
  "libc",
  "schemars",
  "serde",
@@ -1834,6 +1836,7 @@ name = "worldbend-render"
 version = "0.1.0"
 dependencies = [
  "image",
+ "libc",
  "rayon",
  "schemars",
  "serde",

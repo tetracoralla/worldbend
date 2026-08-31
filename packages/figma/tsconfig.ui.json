@@ -5,8 +5,9 @@
     "types": ["vite/client"],
     "paths": {
       "@worldbend/web": ["../web/src/index.ts"],
-      "@worldbend/web/types": ["../web/src/types.ts"]
+      "@worldbend/web/types": ["../web/src/types.ts"],
+      "@worldbend/wasm-bindings": ["../wasm/pkg-figma/worldbend_wasm.d.ts"]
     }
   },
-  "include": ["src/ui.ts", "src/messages.ts", "vite.config.ts"]
+  "include": ["src/ui.ts", "src/messages.ts", "src/figma-virtual.d.ts", "vite.config.ts"]
 }

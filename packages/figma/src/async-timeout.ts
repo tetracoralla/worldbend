@@ -1,7 +1,7 @@
 export async function withTimeout<T>(
   operation: Promise<T>,
   timeoutMs: number,
-  timeoutError: () => Error,
+  timeoutError: () => unknown,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {

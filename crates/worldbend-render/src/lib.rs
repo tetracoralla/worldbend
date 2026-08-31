@@ -4,10 +4,18 @@
 //! mapping, premultiplied-alpha filtering, output bounds, encoding, and safe
 //! file publication.
 
+mod canvas;
 mod file_io;
 
+pub use canvas::{
+    CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult, CanvasSetProgram,
+    CanvasSetRenderOptions, CanvasSetRenderStatus, CanvasSetRenderedItem, render_canvas_set_file,
+    render_canvas_set_to_directory, resolve_canvas_set_for_image,
+};
+
 pub use file_io::{
-    preflight_destination, publish_staged_file, render_file, render_file_with_source_sha256,
+    preflight_destination, publish_staged_file, rectify_file, rectify_file_with_source_sha256,
+    render_file, render_file_with_source_sha256,
 };
 
 use image::{
@@ -23,9 +31,10 @@ use std::{
     time::Instant,
 };
 use worldbend_core::{
-    Bounds, CoordinateSpace, ErrorCode, Homography, Point, Quad, Size, SolveDiagnostics,
-    TransformError, TransformResult, TransformSpec, WarpMesh, WarpVertex, build_warp_mesh, cross,
-    polygon_signed_area, solve_spec,
+    Bounds, CoordinateSpace, ErrorCode, Homography, PixelSize, Point, Quad, RectifyDiagnostics,
+    RectifyPlan, RectifySpec, Size, SolveDiagnostics, TransformError, TransformResult,
+    TransformSpec, WarpMesh, WarpVertex, build_warp_mesh, cross, polygon_signed_area,
+    rectify_plane, solve_spec,
 };
 
 #[cfg(test)]
@@ -129,6 +138,24 @@ impl Default for RenderOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RectifyRenderOptions {
+    #[serde(default)]
+    pub quality: SamplingQuality,
+    #[serde(default)]
+    pub limits: RenderLimits,
+}
+
+impl Default for RectifyRenderOptions {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimits::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct CanvasPlacement {
     pub origin: Point,
     #[schemars(schema_with = "positive_u32_output_schema")]
@@ -151,6 +178,18 @@ pub struct RenderDiagnostics {
     pub solve: SolveDiagnostics,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RectifyRenderDiagnostics {
+    #[schemars(schema_with = "positive_u32_output_schema")]
+    pub source_width: u32,
+    #[schemars(schema_with = "positive_u32_output_schema")]
+    pub source_height: u32,
+    pub output: PixelSize,
+    pub quality: SamplingQuality,
+    pub rectify: RectifyDiagnostics,
+}
+
 /// Wire-compatible status values for [`FileRenderResult`]; an enum instead of
 /// a free-form string so the variants are exhaustive at the type level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -166,6 +205,13 @@ pub struct RenderedImage {
     pub diagnostics: RenderDiagnostics,
 }
 
+#[derive(Debug)]
+pub struct RectifiedImage {
+    pub image: RgbaImage,
+    pub plan: RectifyPlan,
+    pub diagnostics: RectifyRenderDiagnostics,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct FileRenderResult {
@@ -176,6 +222,19 @@ pub struct FileRenderResult {
     pub bytes: u64,
     pub evidence: RenderEvidence,
     pub diagnostics: RenderDiagnostics,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RectifyFileRenderResult {
+    pub status: FileRenderStatus,
+    pub dry_run: bool,
+    pub output: String,
+    #[schemars(schema_with = "json_safe_u64_output_schema")]
+    pub bytes: u64,
+    pub evidence: RenderEvidence,
+    pub plan: RectifyPlan,
+    pub diagnostics: RectifyRenderDiagnostics,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -198,6 +257,12 @@ pub struct RenderEvidence {
 
 struct RenderExecution {
     rendered: RenderedImage,
+    solve_ms: f64,
+    render_ms: f64,
+}
+
+struct RectifyRenderExecution {
+    rendered: RectifiedImage,
     solve_ms: f64,
     render_ms: f64,
 }
@@ -364,6 +429,35 @@ pub fn render_image_with_cancel(
     Ok(render_rgba_image(source.to_rgba8(), spec, options, is_cancelled)?.rendered)
 }
 
+pub(crate) fn render_rgba_image_with_cancel(
+    source: &RgbaImage,
+    spec: &TransformSpec,
+    options: RenderOptions,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<RenderedImage> {
+    Ok(render_rgba_image(source.clone(), spec, options, is_cancelled)?.rendered)
+}
+
+pub fn rectify_image(
+    source: &DynamicImage,
+    spec: &RectifySpec,
+    options: RectifyRenderOptions,
+) -> TransformResult<RectifiedImage> {
+    rectify_image_with_cancel(source, spec, options, &|| false)
+}
+
+/// Deterministically flatten one explicit source quadrilateral into the
+/// declared output rectangle. Plane detection and output-size inference are
+/// deliberately outside this operation.
+pub fn rectify_image_with_cancel(
+    source: &DynamicImage,
+    spec: &RectifySpec,
+    options: RectifyRenderOptions,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<RectifiedImage> {
+    Ok(rectify_rgba_image(source.to_rgba8(), spec, options, is_cancelled)?.rendered)
+}
+
 fn cancelled_error() -> TransformError {
     TransformError::new(ErrorCode::Cancelled, "render was cancelled")
 }
@@ -414,7 +508,6 @@ fn render_rgba_image(
 
     let source_width = source.width();
     let source_height = source.height();
-    let render_started = Instant::now();
     let warp = WarpSampler::new(
         spec.content
             .warp
@@ -422,27 +515,120 @@ fn render_rgba_image(
             .map(|warp| build_warp_mesh(Some(warp)))
             .transpose()?,
     )?;
-    let use_mipmaps = options.quality != SamplingQuality::Preview
-        && (warp.is_active()
-            || mapping_requires_mipmaps(
-                &solved.homography,
-                solved.resolved_destination.quad,
+    let (output, render_ms) = render_pixels(
+        source,
+        &solved.homography,
+        solved.resolved_destination.quad,
+        placement,
+        warp,
+        options.quality,
+        is_cancelled,
+    )?;
+
+    Ok(RenderExecution {
+        rendered: RenderedImage {
+            image: output,
+            diagnostics: RenderDiagnostics {
                 source_width,
                 source_height,
-            )?);
+                placement,
+                destination_bounds: solved.diagnostics.bounds,
+                quality: options.quality,
+                canvas: options.canvas,
+                solve: solved.diagnostics,
+            },
+        },
+        solve_ms,
+        render_ms,
+    })
+}
+
+fn rectify_rgba_image(
+    source: RgbaImage,
+    spec: &RectifySpec,
+    options: RectifyRenderOptions,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<RectifyRenderExecution> {
+    validate_limits(options.limits)?;
+    validate_source_dimensions(source.width(), source.height(), options.limits)?;
+    let output_pixels = u64::from(spec.output.width) * u64::from(spec.output.height);
+    if spec.output.width > options.limits.max_width
+        || spec.output.height > options.limits.max_height
+        || output_pixels > options.limits.max_pixels
+    {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "rectification output exceeds configured limits",
+        )
+        .with_details(json!({
+            "width": spec.output.width,
+            "height": spec.output.height,
+            "pixels": output_pixels,
+            "limits": options.limits,
+        })));
+    }
+
+    let solve_started = Instant::now();
+    let plan = rectify_plane(spec)?;
+    let solve_ms = solve_started.elapsed().as_secs_f64() * 1000.0;
+    let placement = CanvasPlacement {
+        origin: Point::new(0.0, 0.0),
+        width: spec.output.width,
+        height: spec.output.height,
+    };
+    let source_width = source.width();
+    let source_height = source.height();
+    let warp = WarpSampler::new(None)?;
+    let (image, render_ms) = render_pixels(
+        source,
+        &plan.homography,
+        plan.output_quad,
+        placement,
+        warp,
+        options.quality,
+        is_cancelled,
+    )?;
+    let diagnostics = RectifyRenderDiagnostics {
+        source_width,
+        source_height,
+        output: spec.output,
+        quality: options.quality,
+        rectify: plan.diagnostics.clone(),
+    };
+    Ok(RectifyRenderExecution {
+        rendered: RectifiedImage {
+            image,
+            plan,
+            diagnostics,
+        },
+        solve_ms,
+        render_ms,
+    })
+}
+
+fn render_pixels(
+    source: RgbaImage,
+    homography: &Homography,
+    destination: Quad,
+    placement: CanvasPlacement,
+    warp: WarpSampler,
+    quality: SamplingQuality,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<(RgbaImage, f64)> {
+    let source_width = source.width();
+    let source_height = source.height();
+    let render_started = Instant::now();
+    let use_mipmaps = quality != SamplingQuality::Preview
+        && (warp.is_active()
+            || mapping_requires_mipmaps(homography, destination, source_width, source_height)?);
     // Cap the pyramid at the deepest level any pixel can request. The bound
     // below is a conservative upper envelope of the per-pixel footprint, so
     // the sampler's lod clamp can never engage differently than with a full
     // pyramid and the output stays byte-identical while skipping up to a
     // dozen full-image downsample passes on magnifying renders.
     let maximum_levels = if use_mipmaps {
-        let lod_bound = conservative_maximum_lod(
-            &solved.homography,
-            solved.resolved_destination.quad,
-            &warp,
-            source_width,
-            source_height,
-        );
+        let lod_bound =
+            conservative_maximum_lod(homography, destination, &warp, source_width, source_height);
         if lod_bound.is_finite() {
             (lod_bound.ceil() as usize).saturating_add(1)
         } else {
@@ -454,9 +640,9 @@ fn render_rgba_image(
     let source = MipPyramid::new(source, use_mipmaps, maximum_levels);
     let mut output = RgbaImage::new(placement.width, placement.height);
     let mapping = PixelMapping {
-        homography: &solved.homography,
+        homography,
         warp: &warp,
-        destination: solved.resolved_destination.quad,
+        destination,
         canvas_origin: placement.origin,
     };
     // Pixels whose unit square cannot overlap the destination quad's
@@ -466,7 +652,7 @@ fn render_rgba_image(
     // render_pixel maps the destination quad into canvas-local coordinates by
     // subtracting `canvas_origin + (x, y)`, so the canvas-space bbox of the
     // quad is `quad - origin`.
-    let destination_points = solved.resolved_destination.quad.points();
+    let destination_points = destination.points();
     let quad_min_x = destination_points
         .iter()
         .map(|p| p.x - placement.origin.x)
@@ -522,7 +708,7 @@ fn render_rgba_image(
                     &projector,
                     u32::try_from(x + column_start).expect("row width came from u32"),
                     u32::try_from(y).expect("image height came from u32"),
-                    options.quality,
+                    quality,
                 )?;
                 pixel_bytes.copy_from_slice(&pixel.0);
                 projector.advance_x();
@@ -530,23 +716,7 @@ fn render_rgba_image(
             Ok(())
         })?;
     let render_ms = render_started.elapsed().as_secs_f64() * 1000.0;
-
-    Ok(RenderExecution {
-        rendered: RenderedImage {
-            image: output,
-            diagnostics: RenderDiagnostics {
-                source_width,
-                source_height,
-                placement,
-                destination_bounds: solved.diagnostics.bounds,
-                quality: options.quality,
-                canvas: options.canvas,
-                solve: solved.diagnostics,
-            },
-        },
-        solve_ms,
-        render_ms,
-    })
+    Ok((output, render_ms))
 }
 
 fn validate_render_target(spec: &TransformSpec, target_size: Option<Size>) -> TransformResult<()> {
@@ -1575,6 +1745,57 @@ mod tests {
                 Point::new(0.0, f64::from(height)),
             ),
         )
+    }
+
+    #[test]
+    fn rectification_flattens_only_the_explicit_source_quad() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_fn(4, 4, |x, y| {
+            Rgba([(x * 60) as u8, (y * 60) as u8, 17, 255])
+        }));
+        let selected_right_half = Quad::new(
+            Point::new(0.5, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(1.0, 1.0),
+            Point::new(0.5, 1.0),
+        );
+        let spec = RectifySpec::normalized(selected_right_half, PixelSize::new(2, 4));
+        let rendered = rectify_image(
+            &source,
+            &spec,
+            RectifyRenderOptions {
+                quality: SamplingQuality::Preview,
+                ..RectifyRenderOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!((rendered.image.width(), rendered.image.height()), (2, 4));
+        assert_eq!(rendered.image.get_pixel(0, 0).0, [120, 0, 17, 255]);
+        assert_eq!(rendered.image.get_pixel(1, 3).0, [180, 180, 17, 255]);
+        assert_eq!(
+            rendered.plan.output_spec.destination.quad,
+            spec.output.quad()
+        );
+    }
+
+    #[test]
+    fn rectification_enforces_output_limits_before_allocation() {
+        let source = DynamicImage::new_rgba8(2, 2);
+        let spec = RectifySpec::normalized(Quad::unit(), PixelSize::new(11, 10));
+        let error = rectify_image(
+            &source,
+            &spec,
+            RectifyRenderOptions {
+                limits: RenderLimits {
+                    max_width: 10,
+                    max_height: 10,
+                    max_pixels: 100,
+                    max_source_bytes: 1024,
+                },
+                ..RectifyRenderOptions::default()
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::OutputLimit);
     }
 
     #[test]

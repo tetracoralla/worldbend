@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Worldbend</title>
     <link rel="icon" href="data:," />
+    <link rel="preload" href="./worldbend-demo-source.png" as="image" />
+    <link rel="preload" href="./plane.worldbend.json" as="fetch" crossorigin />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -15,11 +17,29 @@
         <input id="source" type="file" accept="image/png,image/jpeg,image/webp" hidden />
       </header>
       <p id="error" role="alert" hidden></p>
-      <section id="workspace" hidden>
-        <div id="editor"></div>
+      <section id="workspace" aria-label="Worldbend playground" hidden>
+        <div class="workspace-body">
+          <div id="editor" aria-label="Interactive transform preview"></div>
+          <aside class="outputs" aria-label="Current deterministic outputs">
+            <section class="output-panel">
+              <header><h2>TransformSpec</h2><button id="copy-spec" type="button">Copy JSON</button></header>
+              <pre id="spec-output" tabindex="0"></pre>
+            </section>
+            <section class="output-panel">
+              <header><h2>CSS</h2><button id="copy-css" type="button">Copy CSS</button></header>
+              <pre id="css-output" tabindex="0"></pre>
+            </section>
+          </aside>
+        </div>
         <footer>
           <button id="reset" type="button">Reset</button>
-          <button id="copy-css" type="button">Copy CSS</button>
+          <div class="zoom-controls" role="group" aria-label="Preview zoom">
+            <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+            <button id="zoom-fit" type="button">Fit</button>
+            <button id="zoom-actual" type="button">100%</button>
+            <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+            <output id="zoom-level" aria-live="polite">100%</output>
+          </div>
           <button id="download" class="primary" type="button">Download PNG</button>
         </footer>
       </section>

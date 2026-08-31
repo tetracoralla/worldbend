@@ -1,6 +1,7 @@
 use super::{
-    FileRenderResult, FileRenderStatus, RenderEvidence, RenderLimits, RenderOptions, RenderedImage,
-    decode_reader_with_limits, render_rgba_image, validate_limits, validate_render_target,
+    FileRenderResult, FileRenderStatus, RectifyFileRenderResult, RectifyRenderOptions,
+    RenderEvidence, RenderLimits, RenderOptions, decode_reader_with_limits, rectify_rgba_image,
+    render_rgba_image, validate_limits, validate_render_target,
 };
 use image::{
     DynamicImage, ExtendedColorType, ImageEncoder, ImageReader,
@@ -13,9 +14,9 @@ use std::{
     io::{Read, Write},
     path::Path,
 };
-use worldbend_core::{ErrorCode, TransformError, TransformResult, TransformSpec};
+use worldbend_core::{ErrorCode, RectifySpec, TransformError, TransformResult, TransformSpec};
 
-fn decode_file_with_limits(
+pub(crate) fn decode_file_with_limits(
     source: &Path,
     limits: RenderLimits,
     known_source_sha256: Option<&str>,
@@ -97,12 +98,12 @@ fn decode_file_with_limits(
     Ok((image, source_sha256, warnings))
 }
 
-fn write_png(rendered: &RenderedImage, writer: impl Write) -> TransformResult<()> {
+pub(crate) fn write_png(image: &image::RgbaImage, writer: impl Write) -> TransformResult<()> {
     PngEncoder::new_with_quality(writer, CompressionType::Fast, FilterType::Adaptive)
         .write_image(
-            rendered.image.as_raw(),
-            rendered.image.width(),
-            rendered.image.height(),
+            image.as_raw(),
+            image.width(),
+            image.height(),
             ExtendedColorType::Rgba8,
         )
         .map_err(|error| {
@@ -210,7 +211,7 @@ fn render_file_internal(
     let execution = render_rgba_image(source_image.into_rgba8(), spec, options, &|| false)?;
     let encode_started = std::time::Instant::now();
     let mut evidence = EvidenceWriter::new(temporary.as_file_mut());
-    write_png(&execution.rendered, &mut evidence)?;
+    write_png(&execution.rendered.image, &mut evidence)?;
     evidence.flush().map_err(|error| {
         TransformError::new(ErrorCode::Render, "failed to flush temporary output file")
             .with_details(json!({ "reason": error.to_string() }))
@@ -251,6 +252,109 @@ fn render_file_internal(
             total_ms,
             warnings,
         },
+        diagnostics: execution.rendered.diagnostics,
+    })
+}
+
+pub fn rectify_file(
+    source: &Path,
+    spec: &RectifySpec,
+    output: &Path,
+    options: RectifyRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+) -> TransformResult<RectifyFileRenderResult> {
+    rectify_file_internal(source, None, spec, output, options, overwrite, dry_run)
+}
+
+pub fn rectify_file_with_source_sha256(
+    source: &Path,
+    source_sha256: &str,
+    spec: &RectifySpec,
+    output: &Path,
+    options: RectifyRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+) -> TransformResult<RectifyFileRenderResult> {
+    validate_claimed_source_sha256(source_sha256)?;
+    rectify_file_internal(
+        source,
+        Some(source_sha256),
+        spec,
+        output,
+        options,
+        overwrite,
+        dry_run,
+    )
+}
+
+fn rectify_file_internal(
+    source: &Path,
+    known_source_sha256: Option<&str>,
+    spec: &RectifySpec,
+    output: &Path,
+    options: RectifyRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+) -> TransformResult<RectifyFileRenderResult> {
+    let total_started = std::time::Instant::now();
+    spec.validate_header()?;
+    validate_limits(options.limits)?;
+    preflight_destination(output, overwrite)?;
+    let parent = output_parent(output);
+    let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| {
+        TransformError::new(ErrorCode::Render, "output directory is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let decode_started = std::time::Instant::now();
+    let (source_image, source_sha256, warnings) =
+        decode_file_with_limits(source, options.limits, known_source_sha256)?;
+    let decode_ms = decode_started.elapsed().as_secs_f64() * 1000.0;
+    let execution = rectify_rgba_image(source_image.into_rgba8(), spec, options, &|| false)?;
+    let encode_started = std::time::Instant::now();
+    let mut evidence = EvidenceWriter::new(temporary.as_file_mut());
+    write_png(&execution.rendered.image, &mut evidence)?;
+    evidence.flush().map_err(|error| {
+        TransformError::new(ErrorCode::Render, "failed to flush temporary output file")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let (bytes, output_sha256) = evidence.finish();
+    let encode_ms = encode_started.elapsed().as_secs_f64() * 1000.0;
+    temporary.as_file_mut().sync_all().map_err(|error| {
+        TransformError::new(ErrorCode::Render, "failed to sync temporary output file")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+
+    if !dry_run {
+        persist_temporary(temporary, output, overwrite)?;
+    }
+
+    let output_width = execution.rendered.image.width();
+    let output_height = execution.rendered.image.height();
+    let total_ms = total_started.elapsed().as_secs_f64() * 1000.0;
+    Ok(RectifyFileRenderResult {
+        status: if dry_run {
+            FileRenderStatus::Ready
+        } else {
+            FileRenderStatus::Written
+        },
+        dry_run,
+        output: output.display().to_string(),
+        bytes,
+        evidence: RenderEvidence {
+            source_sha256,
+            output_sha256,
+            output_width,
+            output_height,
+            output_format: "png".to_owned(),
+            solve_ms: execution.solve_ms,
+            decode_ms,
+            render_ms: execution.render_ms,
+            encode_ms,
+            total_ms,
+            warnings,
+        },
+        plan: execution.rendered.plan,
         diagnostics: execution.rendered.diagnostics,
     })
 }
@@ -300,7 +404,10 @@ pub fn preflight_destination(output: &Path, overwrite: bool) -> TransformResult<
             if !overwrite {
                 return Err(TransformError::new(
                     ErrorCode::DestinationExists,
-                    format!("destination already exists: {}", output.display()),
+                    format!(
+                        "destination already exists: {}; pass --overwrite to replace it or choose a new output path",
+                        output.display()
+                    ),
                 ));
             }
         }

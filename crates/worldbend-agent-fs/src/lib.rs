@@ -6,7 +6,8 @@
 
 use cap_fs_ext::{FollowSymlinks, OpenOptions, OpenOptionsFollowExt, ambient_authority};
 use cap_primitives::fs::{
-    hard_link, open, open_ambient_dir, open_dir_nofollow, remove_file, rename, stat,
+    DirOptions, create_dir, hard_link, open, open_ambient_dir, open_dir_nofollow, remove_dir,
+    remove_dir_all, remove_file, rename, stat,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -17,9 +18,10 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
-use worldbend_core::{ErrorCode, TransformError, TransformResult};
+use worldbend_core::{ErrorCode, MAX_CANVAS_VARIANTS, TransformError, TransformResult};
 
 static NEXT_STAGING_FILE: AtomicU64 = AtomicU64::new(1);
+static NEXT_STAGING_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
 pub struct WorkspaceRoot {
@@ -31,6 +33,20 @@ pub struct OutputTarget {
     parent: File,
     name: OsString,
     overwrite: bool,
+}
+
+#[derive(Debug)]
+pub struct DirectoryOutputTarget {
+    parent: File,
+    name: OsString,
+}
+
+#[derive(Debug)]
+pub struct StagedDirectoryCommit {
+    parent: File,
+    staged_name: OsString,
+    final_name: OsString,
+    committed: bool,
 }
 
 impl WorkspaceRoot {
@@ -103,7 +119,7 @@ impl WorkspaceRoot {
                 if !overwrite {
                     return Err(TransformError::new(
                         ErrorCode::DestinationExists,
-                        "destination already exists",
+                        "destination already exists; set overwrite to true to replace it or choose a new output path",
                     ));
                 }
             }
@@ -128,6 +144,43 @@ impl WorkspaceRoot {
             name,
             overwrite,
         })
+    }
+
+    /// Acquire one not-yet-existing output directory under the descriptor
+    /// grant. The returned target can copy a controller-private directory into
+    /// a same-parent hidden directory, then expose one synchronous no-replace
+    /// commit after response and cancellation preflight.
+    pub fn prepare_output_directory(
+        &self,
+        relative: &str,
+    ) -> TransformResult<DirectoryOutputTarget> {
+        let components = validate_relative_path(relative)?;
+        let (parent, name) = self.open_parent(&components)?;
+        match stat(&parent, Path::new(&name), FollowSymlinks::No) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(path_symlink(components.len() - 1));
+            }
+            Ok(_) => {
+                return Err(TransformError::new(
+                    ErrorCode::DestinationExists,
+                    "Canvas output directory already exists; choose a new outputDirectory because Canvas Set publication does not overwrite or merge",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "failed to inspect Canvas output directory",
+                )
+                .with_details(json!({ "reason": error.to_string() })));
+            }
+        }
+
+        let probe = create_staging_directory(&parent)?;
+        remove_dir(&parent, Path::new(&probe)).map_err(render_io(
+            "failed to remove Canvas output preflight directory",
+        ))?;
+        Ok(DirectoryOutputTarget { parent, name })
     }
 
     fn open_parent(&self, components: &[OsString]) -> TransformResult<(File, OsString)> {
@@ -280,6 +333,183 @@ impl OutputTarget {
             let _ = remove_file(&self.parent, Path::new(&temporary_name));
         }
         publish
+    }
+}
+
+impl DirectoryOutputTarget {
+    /// Copy a complete controller-private, flat Canvas output set into a
+    /// hidden directory beside the final destination. This may be performed in
+    /// a blocking task. The returned handle owns cleanup until `commit`.
+    pub fn stage_from(self, source_directory: &Path) -> TransformResult<StagedDirectoryCommit> {
+        self.stage_from_with_cancel(source_directory, &|| false)
+    }
+
+    /// Cancellable form of [`Self::stage_from`]. The predicate is polled
+    /// before each file, between bounded copy chunks, and before filesystem
+    /// sync. Cancellation removes the same-parent hidden directory before the
+    /// method returns; the final commit remains a separate synchronous step.
+    pub fn stage_from_with_cancel(
+        self,
+        source_directory: &Path,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedDirectoryCommit> {
+        let metadata = fs::symlink_metadata(source_directory).map_err(render_io(
+            "Canvas private staging directory is not accessible",
+        ))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(TransformError::new(
+                ErrorCode::Render,
+                "Canvas private staging must be a real directory",
+            ));
+        }
+        let staged_name = create_staging_directory(&self.parent)?;
+        let staged_directory = match open_dir_nofollow(&self.parent, Path::new(&staged_name)) {
+            Ok(directory) => directory,
+            Err(error) => {
+                let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+                return Err(render_io(
+                    "failed to open same-parent Canvas staging directory",
+                )(error));
+            }
+        };
+        let staged = (|| -> TransformResult<()> {
+            let mut file_count = 0_usize;
+            for entry in fs::read_dir(source_directory)
+                .map_err(render_io("failed to inspect Canvas private staging"))?
+            {
+                check_cancelled(is_cancelled)?;
+                file_count += 1;
+                if file_count > MAX_CANVAS_VARIANTS {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "Canvas staged output contains too many files",
+                    ));
+                }
+                let entry = entry.map_err(render_io("failed to inspect Canvas staged entry"))?;
+                let file_type = entry
+                    .file_type()
+                    .map_err(render_io("failed to inspect Canvas staged entry type"))?;
+                if file_type.is_symlink() || !file_type.is_file() {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "Canvas staged output must contain only regular files",
+                    ));
+                }
+                let name = entry.file_name();
+                if !Path::new(&name)
+                    .extension()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+                {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "Canvas staged output files must use .png",
+                    ));
+                }
+                let mut source = File::open(entry.path())
+                    .map_err(render_io("failed to open Canvas staged output"))?;
+                let mut options = OpenOptions::new();
+                options
+                    .write(true)
+                    .create_new(true)
+                    .follow(FollowSymlinks::No);
+                let mut destination = open(&staged_directory, Path::new(&name), &options).map_err(
+                    render_io("failed to create same-parent Canvas staged output"),
+                )?;
+                copy_with_cancel(&mut source, &mut destination, is_cancelled)?;
+                check_cancelled(is_cancelled)?;
+                destination
+                    .flush()
+                    .map_err(render_io("failed to flush Canvas staged output"))?;
+                destination
+                    .sync_all()
+                    .map_err(render_io("failed to sync Canvas staged output"))?;
+            }
+            if file_count == 0 {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "Canvas staged output must contain at least one PNG",
+                ));
+            }
+            check_cancelled(is_cancelled)?;
+            staged_directory
+                .sync_all()
+                .map_err(render_io("failed to sync Canvas staging directory"))?;
+            Ok(())
+        })();
+        if let Err(error) = staged {
+            let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+            return Err(error);
+        }
+        Ok(StagedDirectoryCommit {
+            parent: self.parent,
+            staged_name,
+            final_name: self.name,
+            committed: false,
+        })
+    }
+}
+
+fn copy_with_cancel(
+    source: &mut File,
+    destination: &mut File,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        check_cancelled(is_cancelled)?;
+        let count = source
+            .read(&mut buffer)
+            .map_err(render_io("failed to read Canvas staged output"))?;
+        if count == 0 {
+            return Ok(());
+        }
+        destination
+            .write_all(&buffer[..count])
+            .map_err(render_io("failed to copy Canvas staged output"))?;
+    }
+}
+
+fn check_cancelled(is_cancelled: &(dyn Fn() -> bool + Sync)) -> TransformResult<()> {
+    if is_cancelled() {
+        Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas staging copy was cancelled",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+impl StagedDirectoryCommit {
+    /// Commit the complete output set with one same-parent atomic no-replace
+    /// directory rename. No asynchronous work occurs after this call begins.
+    pub fn commit(mut self) -> TransformResult<()> {
+        atomic_rename_directory_noreplace(&self.parent, &self.staged_name, &self.final_name)
+            .map_err(|error| {
+                let code = if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::DirectoryNotEmpty
+                ) {
+                    ErrorCode::DestinationExists
+                } else {
+                    ErrorCode::Render
+                };
+                TransformError::new(code, "failed to atomically commit Canvas output directory")
+                    .with_details(json!({ "reason": error.to_string() }))
+            })?;
+        self.committed = true;
+        let _ = self.parent.sync_all();
+        Ok(())
+    }
+}
+
+impl Drop for StagedDirectoryCommit {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = remove_dir_all(&self.parent, Path::new(&self.staged_name));
+            let _ = self.parent.sync_all();
+        }
     }
 }
 
@@ -462,6 +692,99 @@ fn create_staging_file(parent: &File) -> TransformResult<(OsString, File)> {
     ))
 }
 
+fn create_staging_directory(parent: &File) -> TransformResult<OsString> {
+    for _ in 0..32 {
+        let sequence = NEXT_STAGING_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let name = OsString::from(format!(
+            ".worldbend-canvas-{}-{sequence}.tmp",
+            std::process::id()
+        ));
+        match create_dir(parent, Path::new(&name), &DirOptions::new()) {
+            Ok(()) => return Ok(name),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "output directory is not writable",
+                )
+                .with_details(json!({ "reason": error.to_string() })));
+            }
+        }
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        "could not allocate a unique Canvas staging directory",
+    ))
+}
+
+#[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple"))]
+fn atomic_rename_directory_noreplace(
+    parent: &File,
+    old_name: &OsStr,
+    new_name: &OsStr,
+) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::{fd::AsRawFd, unix::ffi::OsStrExt};
+
+    let old_name = CString::new(old_name.as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid old name"))?;
+    let new_name = CString::new(new_name.as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid new name"))?;
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let status = unsafe {
+        libc::renameat2(
+            parent.as_raw_fd(),
+            old_name.as_ptr(),
+            parent.as_raw_fd(),
+            new_name.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    #[cfg(target_vendor = "apple")]
+    let status = unsafe {
+        libc::renameatx_np(
+            parent.as_raw_fd(),
+            old_name.as_ptr(),
+            parent.as_raw_fd(),
+            new_name.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn atomic_rename_directory_noreplace(
+    parent: &File,
+    old_name: &OsStr,
+    new_name: &OsStr,
+) -> std::io::Result<()> {
+    // `std::fs::rename` on Windows fails when the destination directory
+    // exists; cap-primitives resolves both names from the held parent handle.
+    rename(parent, Path::new(old_name), parent, Path::new(new_name))
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_vendor = "apple",
+    windows
+)))]
+fn atomic_rename_directory_noreplace(
+    _parent: &File,
+    _old_name: &OsStr,
+    _new_name: &OsStr,
+) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic no-replace directory rename is unavailable on this platform",
+    ))
+}
+
 fn render_io(message: &'static str) -> impl FnOnce(std::io::Error) -> TransformError {
     move |error| {
         TransformError::new(ErrorCode::Render, message)
@@ -472,6 +795,7 @@ fn render_io(message: &'static str) -> impl FnOnce(std::io::Error) -> TransformE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
 
     #[test]
     fn rejects_absolute_parent_uri_and_cross_platform_prefixes() {
@@ -504,6 +828,77 @@ mod tests {
         workspace
             .prepare_output("assets/output.png", false)
             .unwrap();
+    }
+
+    #[test]
+    fn canvas_directory_commit_is_atomic_and_no_replace() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("story.png"), b"story").unwrap();
+        fs::write(private.path().join("square.png"), b"square").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        workspace
+            .prepare_output_directory("outputs/complete")
+            .unwrap()
+            .stage_from(private.path())
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert_eq!(
+            fs::read(root.path().join("outputs/complete/story.png")).unwrap(),
+            b"story"
+        );
+
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("new.png"), b"new").unwrap();
+        let target = workspace.prepare_output_directory("outputs/raced").unwrap();
+        let commit = target.stage_from(private.path()).unwrap();
+        fs::create_dir(root.path().join("outputs/raced")).unwrap();
+        fs::write(root.path().join("outputs/raced/owner.txt"), b"owner").unwrap();
+        assert_eq!(
+            commit.commit().unwrap_err().code,
+            ErrorCode::DestinationExists
+        );
+        assert_eq!(
+            fs::read(root.path().join("outputs/raced/owner.txt")).unwrap(),
+            b"owner"
+        );
+        assert!(!root.path().join("outputs/raced/new.png").exists());
+    }
+
+    #[test]
+    fn dropping_canvas_commit_cleans_same_parent_staging() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("one.png"), b"one").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let commit = workspace
+            .prepare_output_directory("outputs/final")
+            .unwrap()
+            .stage_from(private.path())
+            .unwrap();
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .any(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+        drop(commit);
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+        assert!(!root.path().join("outputs/final").exists());
     }
 
     #[test]
@@ -556,6 +951,33 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn held_canvas_output_parent_survives_path_replacement_without_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let target = workspace.prepare_output_directory("outputs/final").unwrap();
+        fs::rename(
+            root.path().join("outputs"),
+            root.path().join("held-outputs"),
+        )
+        .unwrap();
+        symlink(outside.path(), root.path().join("outputs")).unwrap();
+
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("one.png"), b"one").unwrap();
+        target.stage_from(private.path()).unwrap().commit().unwrap();
+        assert_eq!(
+            fs::read(root.path().join("held-outputs/final/one.png")).unwrap(),
+            b"one"
+        );
+        assert!(!outside.path().join("final").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn rejects_symlink_ancestors_and_final_entries() {
         use std::os::unix::fs::symlink;
 
@@ -579,6 +1001,35 @@ mod tests {
                 .unwrap_err()
                 .code,
             ErrorCode::PathSymlink
+        );
+    }
+
+    #[test]
+    fn cancellation_during_canvas_copy_removes_same_parent_staging() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("large.png"), vec![7_u8; 512 * 1024]).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let calls = AtomicUsize::new(0);
+        let error = workspace
+            .prepare_output_directory("outputs/final")
+            .unwrap()
+            .stage_from_with_cancel(private.path(), &|| {
+                calls.fetch_add(1, Ordering::SeqCst) >= 3
+            })
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(!root.path().join("outputs/final").exists());
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
         );
     }
 }

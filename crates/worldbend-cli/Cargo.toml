@@ -6,6 +6,11 @@ rust-version.workspace = true
 publish = false
 description = "Structured CLI adapter for Worldbend"
 
+[features]
+default = ["full"]
+full = ["worldbend-core/css"]
+comfy = []
+
 [[bin]]
 name = "worldbend"
 path = "src/main.rs"
@@ -23,7 +28,7 @@ anyhow.workspace = true
 clap.workspace = true
 libc.workspace = true
 worldbend-agent-fs = { path = "../worldbend-agent-fs" }
-worldbend-core = { path = "../worldbend-core" }
+worldbend-core = { path = "../worldbend-core", default-features = false }
 worldbend-render = { path = "../worldbend-render" }
 schemars.workspace = true
 serde.workspace = true
@@ -31,3 +36,4 @@ serde_json.workspace = true
 tempfile.workspace = true
 
 [dev-dependencies]
+image.workspace = true

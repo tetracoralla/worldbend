@@ -9,7 +9,8 @@ description = "Descriptor-scoped workspace filesystem authority for Worldbend Ag
 [dependencies]
 cap-fs-ext.workspace = true
 cap-primitives.workspace = true
-worldbend-core = { path = "../worldbend-core" }
+libc.workspace = true
+worldbend-core = { path = "../worldbend-core", default-features = false }
 serde_json.workspace = true
 sha2.workspace = true
 

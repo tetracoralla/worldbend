@@ -126,8 +126,26 @@ fn solve_with_source_corners(
     reference_diagonal: f64,
 ) -> TransformResult<(Homography, SolveDiagnostics)> {
     let geometry = validate_quad(quad)?;
-    let source = source_corners;
-    let destination = quad.points();
+    let (homography, matrix, reprojection) =
+        solve_projective_mapping(source_corners, quad.points(), reference_diagonal)?;
+    let diagnostics = SolveDiagnostics {
+        geometry,
+        matrix,
+        reprojection,
+        bounds: Bounds::from_quad(*quad),
+    };
+    Ok((homography, diagnostics))
+}
+
+/// Solve one explicit four-point projective mapping. Callers own the semantic
+/// validation of the source and destination quads before entering here. The
+/// denominator check is performed over the supplied source quadrilateral, not
+/// over an unrelated unit-square extension.
+pub(crate) fn solve_projective_mapping(
+    source: [Point; 4],
+    destination: [Point; 4],
+    reference_diagonal: f64,
+) -> TransformResult<(Homography, MatrixDiagnostics, ReprojectionDiagnostics)> {
     let (source_normalization, source_points) = normalize_points(source)?;
     let (destination_normalization, destination_points) = normalize_points(destination)?;
 
@@ -284,19 +302,17 @@ fn solve_with_source_corners(
         matrix: matrix_array,
         inverse: inverse_array,
     };
-    let bounds = Bounds::from_quad(*quad);
-    let reprojection = reprojection_diagnostics(&homography, *quad, source, reference_diagonal)?;
-    let diagnostics = SolveDiagnostics {
-        geometry,
-        matrix: MatrixDiagnostics {
+    let reprojection =
+        reprojection_diagnostics(&homography, destination, source, reference_diagonal)?;
+    Ok((
+        homography,
+        MatrixDiagnostics {
             determinant,
             invertible: true,
             min_abs_w,
         },
         reprojection,
-        bounds,
-    };
-    Ok((homography, diagnostics))
+    ))
 }
 
 pub fn transform_point(homography: &Homography, point: Point) -> TransformResult<Point> {
@@ -422,12 +438,12 @@ fn matrix_to_array(matrix: &Matrix3<f64>) -> [f64; 9] {
 
 fn reprojection_diagnostics(
     homography: &Homography,
-    destination: Quad,
+    destination: [Point; 4],
     source_corners: [Point; 4],
     reference_diagonal: f64,
 ) -> TransformResult<ReprojectionDiagnostics> {
     let source = source_corners;
-    let expected = destination.points();
+    let expected = destination;
     let names = ["tl", "tr", "br", "bl"];
     let mut results = Vec::with_capacity(4);
     for index in 0..4 {

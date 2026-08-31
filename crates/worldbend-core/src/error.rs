@@ -27,6 +27,14 @@ pub enum ErrorCode {
     HomographyHorizonCrossing,
     #[serde(rename = "E_REPROJECTION")]
     Reprojection,
+    #[serde(rename = "E_CROP_BOUNDS")]
+    CropBounds,
+    #[serde(rename = "E_TRIM_EMPTY")]
+    TrimEmpty,
+    #[serde(rename = "E_RASTER_SHAPE_MISMATCH")]
+    RasterShapeMismatch,
+    #[serde(rename = "E_OUTPUT_COLLISION")]
+    OutputCollision,
     #[serde(rename = "E_UNSUPPORTED_MEDIA")]
     UnsupportedMedia,
     #[serde(rename = "E_OUTPUT_LIMIT")]
@@ -64,6 +72,10 @@ impl ErrorCode {
             Self::HomographySingular => "E_HOMOGRAPHY_SINGULAR",
             Self::HomographyHorizonCrossing => "E_HOMOGRAPHY_HORIZON_CROSSING",
             Self::Reprojection => "E_REPROJECTION",
+            Self::CropBounds => "E_CROP_BOUNDS",
+            Self::TrimEmpty => "E_TRIM_EMPTY",
+            Self::RasterShapeMismatch => "E_RASTER_SHAPE_MISMATCH",
+            Self::OutputCollision => "E_OUTPUT_COLLISION",
             Self::UnsupportedMedia => "E_UNSUPPORTED_MEDIA",
             Self::OutputLimit => "E_OUTPUT_LIMIT",
             Self::PathOutsideRoot => "E_PATH_OUTSIDE_ROOT",
@@ -126,5 +138,18 @@ mod tests {
             serde_json::to_string(&ErrorCode::Cancelled).unwrap(),
             r#""E_CANCELLED""#
         );
+    }
+
+    #[test]
+    fn canvas_failures_have_stable_wire_codes() {
+        for (code, wire) in [
+            (ErrorCode::CropBounds, "E_CROP_BOUNDS"),
+            (ErrorCode::TrimEmpty, "E_TRIM_EMPTY"),
+            (ErrorCode::RasterShapeMismatch, "E_RASTER_SHAPE_MISMATCH"),
+            (ErrorCode::OutputCollision, "E_OUTPUT_COLLISION"),
+        ] {
+            assert_eq!(code.as_str(), wire);
+            assert_eq!(serde_json::to_string(&code).unwrap(), format!("\"{wire}\""));
+        }
     }
 }

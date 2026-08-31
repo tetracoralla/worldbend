@@ -20,7 +20,21 @@ const input = path.join(
   "release",
   "worldbend_wasm.wasm",
 );
-const output = path.join(root, "packages", "wasm", "pkg");
+const profileArgument = process.argv.find((argument) => argument.startsWith("--profile="));
+const unknownArguments = process.argv.slice(2).filter((argument) => argument !== profileArgument);
+if (unknownArguments.length > 0) {
+  throw new Error(`Unknown build-wasm arguments: ${unknownArguments.join(", ")}`);
+}
+const profile = profileArgument?.slice("--profile=".length) ?? "full";
+if (!new Set(["full", "figma"]).has(profile)) {
+  throw new Error(`Unknown WASM carrier profile: ${profile}`);
+}
+const output = path.join(
+  root,
+  "packages",
+  "wasm",
+  profile === "figma" ? "pkg-figma" : "pkg",
+);
 
 try {
   await access(bindgen);
@@ -28,7 +42,7 @@ try {
   throw new Error("Missing repo-local wasm-bindgen. Run `pnpm bootstrap:wasm` once.");
 }
 
-await run("cargo", [
+const cargoArguments = [
   "build",
   "-p",
   "worldbend-wasm",
@@ -36,7 +50,9 @@ await run("cargo", [
   "--locked",
   "--target",
   "wasm32-unknown-unknown",
-]);
+];
+if (profile === "figma") cargoArguments.push("--no-default-features");
+await run("cargo", cargoArguments);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await run(bindgen, [

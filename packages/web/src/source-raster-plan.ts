@@ -24,7 +24,7 @@ const unitVertices: readonly WarpVertex[] = [
  * Geometry remains core-owned: this only plans an adapter export resolution.
  */
 export function estimateSourceRasterSize(
-  solved: SolveOutput,
+  solved: Pick<SolveOutput, "homography">,
   spec: TransformSpec,
   maximumAxis: number,
   warpMesh?: WarpMesh,

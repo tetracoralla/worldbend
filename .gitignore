@@ -5,6 +5,7 @@ dist/
 packages/*/dist/
 packages/*/demo-dist/
 packages/wasm/pkg/
+packages/wasm/pkg-figma/
 plugins/worldbend/bin/
 .tools/
 .playwright-cli/

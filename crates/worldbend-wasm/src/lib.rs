@@ -2,9 +2,12 @@
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+#[cfg(feature = "css")]
+use worldbend_core::emit_css_transform;
 use worldbend_core::{
-    Size, TransformError, TransformRecipe, TransformSpec, WarpSpec, build_warp_mesh,
-    compose_affine, emit_css_transform, solve_spec,
+    CanvasSetSpec, CanvasSpec, PixelSize, RectifySpec, Size, TransformError, TransformRecipe,
+    TransformSpec, WarpSpec, build_warp_mesh, compose_affine, plan_canvas, plan_canvas_set,
+    rectify_plane, solve_spec,
 };
 
 #[wasm_bindgen]
@@ -80,6 +83,39 @@ pub fn compose_json(
 }
 
 #[wasm_bindgen]
+pub fn rectify_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_rectify_spec(spec_json)?;
+    serialize_result(rectify_plane(&spec))
+}
+
+#[wasm_bindgen]
+pub fn canvas_plan_json(
+    spec_json: &str,
+    source_width: u32,
+    source_height: u32,
+) -> Result<String, JsValue> {
+    let spec = parse_canvas_spec(spec_json)?;
+    serialize_result(plan_canvas(
+        &spec,
+        PixelSize::new(source_width, source_height),
+    ))
+}
+
+#[wasm_bindgen]
+pub fn canvas_set_plan_json(
+    spec_json: &str,
+    source_width: u32,
+    source_height: u32,
+) -> Result<String, JsValue> {
+    let spec = parse_canvas_set_spec(spec_json)?;
+    serialize_result(plan_canvas_set(
+        &spec,
+        PixelSize::new(source_width, source_height),
+    ))
+}
+
+#[wasm_bindgen]
+#[cfg(feature = "css")]
 pub fn css_json(
     spec_json: &str,
     element_width: f64,
@@ -94,6 +130,24 @@ pub fn css_json(
         Size::new(element_width, element_height),
         destination,
     ))
+}
+
+/// Figma uses the shared Web bridge but has no CSS-emission product route.
+/// Retain the generated ABI entry so that bridge imports remain stable while
+/// excluding the CSS implementation from the Figma carrier build.
+#[wasm_bindgen]
+#[cfg(not(feature = "css"))]
+pub fn css_json(
+    _spec_json: &str,
+    _element_width: f64,
+    _element_height: f64,
+    _destination_width: Option<f64>,
+    _destination_height: Option<f64>,
+) -> Result<String, JsValue> {
+    Err(error_js(TransformError::new(
+        worldbend_core::ErrorCode::Schema,
+        "CSS embedding is not included in this carrier build",
+    )))
 }
 
 /// Serialized core-owned mesh for the WarpSpec. Takes the warp directly: the
@@ -139,6 +193,33 @@ fn parse_spec(value: &str) -> Result<TransformSpec, JsValue> {
         error_js(TransformError::new(
             worldbend_core::ErrorCode::Schema,
             format!("invalid TransformSpec JSON: {error}"),
+        ))
+    })
+}
+
+fn parse_rectify_spec(value: &str) -> Result<RectifySpec, JsValue> {
+    serde_json::from_str(value).map_err(|error| {
+        error_js(TransformError::new(
+            worldbend_core::ErrorCode::Schema,
+            format!("invalid RectifySpec JSON: {error}"),
+        ))
+    })
+}
+
+fn parse_canvas_spec(value: &str) -> Result<CanvasSpec, JsValue> {
+    serde_json::from_str(value).map_err(|error| {
+        error_js(TransformError::new(
+            worldbend_core::ErrorCode::Schema,
+            format!("invalid CanvasSpec JSON: {error}"),
+        ))
+    })
+}
+
+fn parse_canvas_set_spec(value: &str) -> Result<CanvasSetSpec, JsValue> {
+    serde_json::from_str(value).map_err(|error| {
+        error_js(TransformError::new(
+            worldbend_core::ErrorCode::Schema,
+            format!("invalid CanvasSetSpec JSON: {error}"),
         ))
     })
 }

@@ -196,6 +196,30 @@ async function createEditorWithSource(callbacks: {
 }
 
 describe("PerspectiveEditor interaction pipeline", () => {
+  it("validates a source selection while previewing the untouched source frame", async () => {
+    const editor = await createEditorWithSource({});
+    const selection = normalizedSpec({
+      tl: { x: 0.1, y: 0.15 },
+      tr: { x: 0.9, y: 0.05 },
+      br: { x: 0.8, y: 0.9 },
+      bl: { x: 0.2, y: 0.85 },
+    });
+    solveTransform.mockClear();
+    const renderer = editor["renderer"] as unknown as {
+      render: ReturnType<typeof vi.fn>;
+    };
+    renderer.render.mockClear();
+
+    editor.setSourceSelectionMode(true);
+    await editor.setSpec(selection, { width: 200, height: 100 });
+
+    expect(solveTransform).toHaveBeenCalledTimes(2);
+    expect(solveTransform.mock.calls[0]?.[0]).toEqual(selection);
+    expect(solveTransform.mock.calls[1]?.[0]).toEqual(normalizedSpec(unitQuad()));
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    expect(editor.captureSpec()).toEqual(selection);
+  });
+
   it("invalidates a late spec render before restoring a known frame", async () => {
     const editor = await createEditorWithSource({});
     const fallback = normalizedSpec(unitQuad());

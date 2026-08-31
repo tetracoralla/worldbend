@@ -65,6 +65,7 @@ function parseTransformValue(text: string): number {
 interface ControlPair {
   numberInput: HTMLInputElement;
   slider: HTMLInputElement;
+  unit?: string;
 }
 
 export interface TransformControls {
@@ -216,6 +217,8 @@ export function createTransformControls(refs: {
     const maximum = Number(slider.max);
     const value = Number(slider.value);
     slider.style.setProperty("--range-progress", `${sliderProgress(value, minimum, maximum)}%`);
+    const pair = pairs.find((candidate) => candidate.slider === slider);
+    slider.setAttribute("aria-valuetext", `${slider.value}${pair?.unit ?? ""}`);
   }
 
   return {
@@ -257,5 +260,5 @@ export function createTransformControls(refs: {
 function displayValue(value: string): string {
   const number = Number(value);
   if (!Number.isFinite(number)) return value;
-  return String(Math.round(number * 10) / 10);
+  return number.toString();
 }

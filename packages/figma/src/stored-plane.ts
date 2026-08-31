@@ -1,7 +1,8 @@
-import type { TransformSpec } from "@worldbend/web/types";
+import type { RectifySpecInput, TransformSpec } from "@worldbend/web/types";
 
 export const SHARED_NAMESPACE = "worldbend";
 export const SHARED_TRANSFORM_KEY = "transform";
+export const SHARED_RECTIFY_KEY = "rectification";
 export const RENDER_WIDTH_KEY = "worldbend.renderWidth";
 export const RENDER_HEIGHT_KEY = "worldbend.renderHeight";
 export const MAX_FIGMA_IMAGE_AXIS = 4096;
@@ -14,6 +15,49 @@ export function parseOwnedTransformSpec(value: string): TransformSpec | undefine
   } catch {
     return undefined;
   }
+}
+
+export function parseOwnedRectifySpec(value: string): RectifySpecInput | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isOwnedRectifySpec(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Figma authors reusable source points only in normalized coordinates. */
+export function isOwnedRectifySpec(value: unknown): value is RectifySpecInput {
+  if (!isRecord(value) || !hasExactKeys(value, ["schema", "version", "source", "output"])) {
+    return false;
+  }
+  if (value["schema"] !== "worldbend.rectify" || value["version"] !== "0.1") {
+    return false;
+  }
+  const source = value["source"];
+  if (
+    !isRecord(source) ||
+    !hasExactKeys(source, ["space", "quad"]) ||
+    source["space"] !== "normalized"
+  ) {
+    return false;
+  }
+  const quad = source["quad"];
+  if (
+    !isRecord(quad) ||
+    !hasExactKeys(quad, ["tl", "tr", "br", "bl"]) ||
+    !["tl", "tr", "br", "bl"].every((corner) => isNormalizedPoint(quad[corner]))
+  ) {
+    return false;
+  }
+  const output = value["output"];
+  return (
+    isRecord(output) &&
+    hasExactKeys(output, ["width", "height"]) &&
+    isFigmaImageAxis(output["width"]) &&
+    isFigmaImageAxis(output["height"])
+  );
 }
 
 export function isOwnedTransformSpec(value: unknown): value is TransformSpec {

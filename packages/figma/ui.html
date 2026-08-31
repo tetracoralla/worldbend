@@ -46,13 +46,53 @@
       #controls { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
       #controls[hidden] { display: none; }
       #controls[data-loading="true"] #control-dock, #controls[data-loading="true"] #action-dock { opacity: .55; }
+      #canvas-workspace { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--figma-color-bg-secondary, #f3f3f3); }
+      #canvas-workspace[hidden] { display: none; }
+      .canvas-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--figma-color-border, rgb(0 0 0 / 12%)); background: var(--figma-color-bg, #fff); }
+      .canvas-back { min-width: 32px; min-height: 32px; padding: 5px 9px; }
+      .canvas-heading { min-width: 0; }
+      .canvas-heading h1, .canvas-heading p { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .canvas-heading h1 { font-size: 13px; font-weight: 600; }
+      .canvas-heading p { color: var(--figma-color-text-secondary, #777); font-size: 10px; }
+      .canvas-variants { display: flex; flex: none; gap: 5px; min-height: 42px; overflow-x: auto; padding: 7px 18px; border-bottom: 1px solid var(--figma-color-border, #e5e5e5); background: var(--figma-color-bg, #fff); }
+      .canvas-variants button { min-width: max-content; border-color: transparent; color: var(--figma-color-text-secondary, #777); font-variant-numeric: tabular-nums; }
+      .canvas-variants button[aria-selected="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); font-weight: 600; }
+      .canvas-body { display: grid; grid-template-columns: minmax(0, 1fr) 172px; min-width: 0; min-height: 0; flex: 1; }
+      .canvas-preview { display: grid; min-width: 0; min-height: 0; overflow: hidden; padding: 20px; place-items: center; background: linear-gradient(45deg, rgb(0 0 0 / 5%) 25%, transparent 25%, transparent 75%, rgb(0 0 0 / 5%) 75%), linear-gradient(45deg, rgb(0 0 0 / 5%) 25%, transparent 25%, transparent 75%, rgb(0 0 0 / 5%) 75%); background-position: 0 0, 8px 8px; background-size: 16px 16px; }
+      .canvas-preview-raster { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; box-shadow: 0 2px 12px rgb(0 0 0 / 16%); }
+      .canvas-inspector { min-width: 0; overflow: auto; padding: 14px; border-left: 1px solid var(--figma-color-border, #e5e5e5); background: var(--figma-color-bg, #fff); }
+      .canvas-size-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .canvas-size-row label, .canvas-field { display: grid; gap: 5px; margin-bottom: 12px; color: var(--figma-color-text-secondary, #777); }
+      .canvas-size-row input, .canvas-field select { width: 100%; height: 32px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 6px; padding: 5px 7px; color: var(--figma-color-text, #1e1e1e); background: var(--figma-color-bg, #fff); font: inherit; }
+      .canvas-size-row input { font-variant-numeric: tabular-nums; text-align: right; }
+      .canvas-size-row input:invalid { border-color: var(--figma-color-border-danger-strong, #f24822); }
+      .canvas-segment { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 12px; }
+      .canvas-segment button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .canvas-anchor-grid { display: grid; grid-template-columns: repeat(3, 26px); grid-template-rows: repeat(3, 26px); gap: 4px; }
+      .canvas-anchor-grid button { width: 26px; height: 26px; padding: 0; border-color: transparent; }
+      .canvas-anchor-grid button::after { content: ""; display: block; width: 6px; height: 6px; margin: auto; border-radius: 50%; background: var(--figma-color-icon-secondary, #999); }
+      .canvas-anchor-grid button[aria-pressed="true"] { background: var(--figma-color-bg-selected, #e8f3ff); }
+      .canvas-anchor-grid button[aria-pressed="true"]::after { background: var(--figma-color-border-brand-strong, #0d99ff); }
+      .canvas-color { width: 100%; height: 32px; margin: -6px 0 12px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 6px; padding: 3px; background: transparent; }
+      .canvas-remove { width: 100%; color: var(--figma-color-text-danger, #d32f2f); }
+      .canvas-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 12%)); background: var(--figma-color-bg, #fff); }
+      .canvas-footer-actions { display: flex; gap: 8px; }
+      #canvas-error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; margin: 0; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
       #mode-switch { display: flex; align-items: center; gap: 4px; }
       #distort-kind { display: contents; }
+      #distort-kind[hidden] { display: none; }
       .mode-button { min-height: 32px; border-color: transparent; border-radius: 0; padding: 6px 9px; color: var(--figma-color-text-secondary, #777); background: transparent; font-size: 12px; white-space: nowrap; }
       .mode-button[aria-pressed="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); box-shadow: none; font-weight: 600; }
       #action-dock { position: relative; z-index: 20; width: 100%; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 12%)); background: var(--figma-color-bg, #fff); }
       #action-dock button { min-height: 36px; padding: 7px 14px; font-size: 12px; white-space: nowrap; }
       #apply { padding-inline: 18px; font-weight: 600; }
+      #status { min-width: 0; flex: 1; overflow: hidden; margin: 0; color: var(--figma-color-text-secondary, #777); font-size: 11px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+      #status:empty { display: none; }
+      #error { display: flex; align-items: center; gap: 8px; }
+      #error-text { min-width: 0; flex: 1; }
+      #error-dismiss { flex: none; width: 24px; height: 24px; padding: 0; border-color: transparent; background: transparent; font-size: 16px; line-height: 1; }
+      #error[hidden] { display: none; }
+      .menu-shortcuts { margin: 4px 10px 8px; color: var(--figma-color-text-tertiary, #999); font-size: 10px; line-height: 1.45; }
       #context-controls { margin-top: 10px; border-top: 1px solid var(--figma-color-border, #e5e5e5); padding: 12px 4px 4px; }
       #controls[data-editor-mode="distort"] #context-controls { display: none; }
       #transform-options { position: relative; }
@@ -65,6 +105,9 @@
       .distort-kind-button[aria-pressed="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); box-shadow: none; font-weight: 600; }
       #warp-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       #warp-options[hidden] { display: none; }
+      #rectify-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      #rectify-options[hidden] { display: none; }
+      .rectify-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 34px; }
       .warp-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) 72px; gap: 8px; align-items: center; min-height: 34px; }
       #warp-preset { grid-column: 2 / -1; width: 100%; height: 32px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 6px; padding: 4px 8px; color: inherit; background: var(--figma-color-bg, #fff); font: inherit; }
       #warp-preset:focus { border-color: var(--figma-color-border-brand-strong, #0d99ff); outline: none; }
@@ -105,7 +148,7 @@
       .transform-icon-button:is(:hover, :focus-visible) .action-tooltip { opacity: 1; transform: translate(-50%, 0); }
       .transform-icon-button:last-child .action-tooltip { right: 0; left: auto; transform: translate(0, -2px); }
       .transform-icon-button:last-child:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
-      #error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; max-height: 72px; margin: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); pointer-events: none; }
+      #error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; max-height: 72px; margin: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
       #editor { position: relative; min-width: 0; min-height: 0; flex: 1; padding: 20px; background: var(--figma-color-bg-secondary, #f3f3f3); overflow: hidden; }
       .worldbend-editor { position: relative; width: fit-content; max-width: 100%; max-height: 100%; }
       .worldbend-editor:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 3px; }
@@ -161,12 +204,17 @@
                 <button id="distort-perspective" class="distort-kind-button" type="button" aria-pressed="false">Perspective</button>
               </span>
               <button id="mode-warp" class="mode-button" type="button" aria-pressed="false">Warp</button>
+              <button id="mode-rectify" class="mode-button" type="button" aria-pressed="false">Correct</button>
             </div>
             <button id="more-options" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More options">
               <span class="ui-icon" data-icon-id="icon-park:more" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="24" r="3" fill="currentColor"/><circle cx="24" cy="24" r="3" fill="currentColor"/><circle cx="36" cy="24" r="3" fill="currentColor"/></svg></span>
             </button>
             <div id="settings-popover" role="menu" aria-label="More options" hidden>
+              <button id="action-open-canvas" class="menu-option" type="button" role="menuitem">Canvas variants…</button>
               <button id="action-apply-copy" class="menu-option" type="button" role="menuitem">Apply as New Image</button>
+              <button id="action-undo" class="menu-option" type="button" role="menuitem">Undo edit</button>
+              <button id="action-redo" class="menu-option" type="button" role="menuitem">Redo edit</button>
+              <p id="shortcut-help" class="menu-shortcuts">Shift switches Distort · Space pans · ⌘/Ctrl 0 fits · ⌘/Ctrl 1 shows 100%</p>
               <p id="settings-title" class="menu-section-title">Language</p>
               <button class="menu-option" type="button" role="menuitemradio" data-locale="system" aria-checked="true">
                 <span id="locale-system">Automatic</span>
@@ -179,6 +227,16 @@
           </div>
         </div>
         <div id="context-controls">
+          <div id="rectify-options" hidden>
+            <label class="rectify-row" for="rectify-width">
+              <span id="rectify-width-label" class="transform-label">Width</span>
+              <input id="rectify-width" class="transform-number" type="number" min="1" max="4096" step="1" value="1024" inputmode="numeric" aria-labelledby="rectify-width-label">
+            </label>
+            <label class="rectify-row" for="rectify-height">
+              <span id="rectify-height-label" class="transform-label">Height</span>
+              <input id="rectify-height" class="transform-number" type="number" min="1" max="4096" step="1" value="1024" inputmode="numeric" aria-labelledby="rectify-height-label">
+            </label>
+          </div>
           <div id="warp-options" hidden>
             <div class="warp-row">
               <label id="warp-preset-label" class="transform-label" for="warp-preset">Preset</label>
@@ -281,12 +339,13 @@
       <div id="editor"></div>
       <footer id="action-dock">
         <button id="reset" type="button">Reset</button>
+        <p id="status" role="status" aria-live="polite"></p>
         <button id="apply" class="primary" type="button" disabled>Apply as image</button>
       </footer>
-      <p id="error" role="alert" hidden></p>
-      <p id="status" class="sr-only" role="status" aria-live="polite"></p>
+      <div id="error" role="alert" hidden><span id="error-text"></span><button id="error-dismiss" type="button" aria-label="Dismiss error">×</button></div>
       <output id="zoom-level" class="sr-only" aria-live="polite">100%</output>
     </section>
+    <section id="canvas-workspace" aria-label="Canvas variants" hidden></section>
     <script type="module" src="/src/ui.ts"></script>
   </body>
 </html>

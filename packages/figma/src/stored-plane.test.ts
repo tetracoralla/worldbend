@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { TransformSpec } from "@worldbend/web/types";
+import type { RectifySpecInput, TransformSpec } from "@worldbend/web/types";
 import { isUiToMainMessage } from "./messages";
-import { isOwnedTransformSpec, parseOwnedTransformSpec } from "./stored-plane";
+import {
+  isOwnedRectifySpec,
+  isOwnedTransformSpec,
+  parseOwnedRectifySpec,
+  parseOwnedTransformSpec,
+} from "./stored-plane";
 
 const spec: TransformSpec = {
   schema: "worldbend.transform",
@@ -16,6 +21,16 @@ const spec: TransformSpec = {
     },
   },
   content: { fit: "stretch" },
+};
+
+const rectification: RectifySpecInput = {
+  schema: "worldbend.rectify",
+  version: "0.1",
+  source: {
+    space: "normalized",
+    quad: spec.destination.quad,
+  },
+  output: { width: 1440, height: 900 },
 };
 
 describe("shared Figma transform data", () => {
@@ -60,6 +75,30 @@ describe("shared Figma transform data", () => {
   });
 });
 
+describe("shared Figma rectification data", () => {
+  it("round-trips one normalized source plane with explicit bounded output", () => {
+    expect(parseOwnedRectifySpec(JSON.stringify(rectification))).toEqual(rectification);
+    expect(isOwnedRectifySpec(rectification)).toBe(true);
+  });
+
+  it("rejects pixel source coordinates, missing output, and Figma-oversized output", () => {
+    expect(
+      isOwnedRectifySpec({
+        ...rectification,
+        source: {
+          space: "pixel",
+          reference: { width: 100, height: 100 },
+          quad: rectification.source.quad,
+        },
+      }),
+    ).toBe(false);
+    expect(isOwnedRectifySpec({ ...rectification, output: undefined })).toBe(false);
+    expect(
+      isOwnedRectifySpec({ ...rectification, output: { width: 4097, height: 900 } }),
+    ).toBe(false);
+  });
+});
+
 describe("UI message guard", () => {
   const validApply = {
     type: "apply",
@@ -82,6 +121,22 @@ describe("UI message guard", () => {
         payload: { ...validApply.payload, duplicate: true },
       }),
     ).toBe(true);
+    expect(
+      isUiToMainMessage({
+        ...validApply,
+        payload: {
+          ...validApply.payload,
+          spec: undefined,
+          rectification,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isUiToMainMessage({
+        ...validApply,
+        payload: { ...validApply.payload, rectification },
+      }),
+    ).toBe(false);
     expect(
       isUiToMainMessage({
         ...validApply,

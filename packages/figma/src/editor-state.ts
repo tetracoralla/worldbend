@@ -6,7 +6,7 @@
 import type { DistortInteractionMode } from "@worldbend/web";
 
 export type Phase = "idle" | "loading" | "ready" | "resetting" | "applying" | "applied";
-export type EditorMode = "transform" | "distort" | "warp";
+export type EditorMode = "transform" | "distort" | "warp" | "rectify";
 export type DistortMode = DistortInteractionMode;
 
 /**

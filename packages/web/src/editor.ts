@@ -144,6 +144,10 @@ export class PerspectiveEditor {
   private transformPivot: { x: number; y: number } = { x: 0.5, y: 0.5 };
   private interactionMode: EditorInteractionMode = "distort";
   private distortMode: DistortInteractionMode = "free";
+  // A rectification carrier uses the same four handles to select a source
+  // plane. The source pixels stay visually unwarped while the selected quad
+  // is validated; only the eventual RectifyPlan changes sampling.
+  private sourceSelectionMode = false;
   private overlayVisible = true;
   private correctionGridAvailable = false;
   private correctionGridVisible = false;
@@ -286,6 +290,19 @@ export class PerspectiveEditor {
     this.distortMode = mode;
     this.element.dataset.distortMode = mode;
     this.updateOverlay();
+  }
+
+  /** Show the untouched source while the four handles select a source plane. */
+  setSourceSelectionMode(enabled: boolean): void {
+    this.assertAvailable();
+    if (this.sourceSelectionMode === enabled) return;
+    this.cancelDrag();
+    this.cancelGesture();
+    this.sourceSelectionMode = enabled;
+    this.element.dataset.sourceSelection = String(enabled);
+    this.correctionGridAvailable = false;
+    this.setCorrectionGridVisibility(false);
+    if (this.source) this.scheduleFrame();
   }
 
   async setSource(
@@ -1376,11 +1393,27 @@ export class PerspectiveEditor {
     if (!this.source || !this.previewSource || this.disposed) return false;
     try {
       const snapshot = this.capturePreviewSpec();
-      const solved = await solveTransformPreview(snapshot, this.previewSize);
-      const warpMesh = await this.resolveWarpMesh(snapshot);
+      // Source-plane selection still validates the live quadrilateral through
+      // the Rust-owned geometry contract, but previews the original pixels in
+      // their reference frame. No adapter-side inverse or homography is built.
+      if (this.sourceSelectionMode) {
+        await solveTransformPreview(snapshot, this.previewSize);
+      }
+      const renderSpec = this.sourceSelectionMode
+        ? this.captureSourceFramePreviewSpec()
+        : snapshot;
+      const solved = await solveTransformPreview(renderSpec, this.previewSize);
+      const warpMesh = this.sourceSelectionMode
+        ? undefined
+        : await this.resolveWarpMesh(snapshot);
       if (generation !== this.renderGeneration || this.disposed) return false;
       this.renderer.render(this.previewSource, solved, warpMesh);
-      this.updateCorrectionGrid(solved, warpMesh);
+      if (this.sourceSelectionMode) {
+        this.correctionGridAvailable = false;
+        this.setCorrectionGridVisibility(false);
+      } else {
+        this.updateCorrectionGrid(solved, warpMesh);
+      }
       this.lastRenderError = undefined;
       this.setValidity(true);
       return true;
@@ -1516,6 +1549,19 @@ export class PerspectiveEditor {
       this.orientation,
       this.warp,
     );
+  }
+
+  private captureSourceFramePreviewSpec(): TransformSpec {
+    const toWorkspace = (point: Point): Point => ({
+      x: (point.x - this.workspaceOrigin.x) / this.workspaceSize.width,
+      y: (point.y - this.workspaceOrigin.y) / this.workspaceSize.height,
+    });
+    return normalizedSpec({
+      tl: toWorkspace({ x: 0, y: 0 }),
+      tr: toWorkspace({ x: 1, y: 0 }),
+      br: toWorkspace({ x: 1, y: 1 }),
+      bl: toWorkspace({ x: 0, y: 1 }),
+    });
   }
 }
 

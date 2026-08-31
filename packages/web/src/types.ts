@@ -1,6 +1,8 @@
 import type {
   AffineComposition as GeneratedAffineComposition,
   Content as GeneratedContent,
+  RectifyPlan as GeneratedRectifyPlan,
+  RectifySpec as GeneratedRectifySpec,
   TransformError as GeneratedTransformError,
   TransformSpec as GeneratedTransformSpec,
   Quad,
@@ -11,13 +13,28 @@ import type {
 } from "./generated/core-contract";
 
 export type {
+  CanvasAnchor,
+  CanvasBackground,
+  CanvasOperation,
+  CanvasPixelRect,
+  CanvasPixelSize,
+  CanvasPlan,
+  CanvasSetPlan,
+  CanvasSetSpecInput,
+  CanvasSpecInput,
+} from "./canvas-types";
+
+export type {
   Bounds,
   CssTransform,
   Destination,
   ErrorCode,
   Homography,
   Point,
+  PixelSize,
   Quad,
+  RectifyDiagnostics,
+  SourcePlane,
   Size,
   SourceOrientation,
   WarpMesh,
@@ -28,6 +45,12 @@ export type {
 
 /** Exact Rust deserialization surface, including serde defaults and nulls. */
 export type TransformSpecInput = GeneratedTransformSpec;
+
+/** Exact Rust deserialization surface for explicit planar rectification. */
+export type RectifySpecInput = GeneratedRectifySpec;
+
+/** Deterministic core plan for mapping the selected source quad to the output rectangle. */
+export type RectifyPlan = GeneratedRectifyPlan;
 
 /** Canonical Rust serialization omits a missing warp instead of emitting null. */
 export type TransformContent = Omit<GeneratedContent, "warp"> & {

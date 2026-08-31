@@ -52,6 +52,51 @@ controls, handles, and curves are not part of v0.1.
 
 Unknown fields are rejected at every Agent-authored boundary.
 
+## Explicit planar rectification data
+
+Rectification is a separate operation contract, not an optional
+`TransformSpec` field:
+
+```json
+{
+  "schema": "worldbend.rectify",
+  "version": "0.1",
+  "source": {
+    "space": "normalized",
+    "quad": {
+      "tl": { "x": 0.12, "y": 0.16 },
+      "tr": { "x": 0.88, "y": 0.08 },
+      "br": { "x": 0.82, "y": 0.92 },
+      "bl": { "x": 0.18, "y": 0.84 }
+    }
+  },
+  "output": { "width": 1200, "height": 800 }
+}
+```
+
+The source quad is strict `TL -> TR -> BR -> BL`. Normalized source data omits
+`reference`; pixel source data requires the positive reference size in which
+the points were authored. Output width and height are positive integers and
+are never inferred from edge lengths, pixels, vanishing points, EXIF, or a
+camera model. The plan maps that explicit source quad to the complete output
+rectangle, reports the resolved source quad, homography and diagnostics, and
+returns an identity output TransformSpec. Rasterization uses the same native
+inverse sampler, premultiplied-alpha filtering, limits, and atomic publication
+as ordinary render. Extending the mapping outside the selected source quad is
+not part of the rectification promise.
+
+## Explicit Canvas and multi-output data
+
+`worldbend.canvas@0.1` and `worldbend.canvas-set@0.1` are independent from
+`TransformSpec` and `RectifySpec`. They encode exact Crop, alpha-threshold
+Trim, Pad, Contain, Cover, or Stretch work over one oriented raster. An ordered
+Canvas Set contains 1..16 safe unique variant IDs; every variant reads the same
+original input and the set has one success or one failure. The core returns a
+resolved plan whose source rectangles and placements can be replayed on a
+same-sized 8-bit raster without re-running content-dependent Trim. Exact
+operation equations, backgrounds, carrier ceilings, directory commit, and
+exclusions are owned by `docs/CANVAS_CONTRACT.md`.
+
 ## Stable errors
 
 | Code | Meaning |
@@ -68,6 +113,10 @@ Unknown fields are rejected at every Agent-authored boundary.
 | `E_REPROJECTION` | solved matrix cannot reproduce the controls |
 | `E_UNSUPPORTED_MEDIA` | unsupported or undecodable raster input |
 | `E_OUTPUT_LIMIT` | requested raster exceeds configured bounds |
+| `E_CROP_BOUNDS` | explicit Canvas Crop is empty, overflowing, or outside the source |
+| `E_TRIM_EMPTY` | Canvas Trim found no alpha above its explicit threshold |
+| `E_RASTER_SHAPE_MISMATCH` | a raster does not match the dimensions recorded by a resolved Canvas Plan |
+| `E_OUTPUT_COLLISION` | Canvas variant IDs or derived output names collide |
 | `E_PATH_OUTSIDE_ROOT` | MCP path is outside its granted workspace |
 | `E_PATH_SYMLINK` | MCP path traversal encountered a symlink |
 | `E_DESTINATION_EXISTS` | output exists without overwrite authority |
@@ -206,7 +255,8 @@ visual acceptance.
 ## Agent transport
 
 The MCP surface is exactly `worldbend.compose`, `worldbend.solve`,
-`worldbend.inspect`, `worldbend.render`, and `worldbend.css`. Each ordinary
+`worldbend.inspect`, `worldbend.render`, `worldbend.rectify`,
+`worldbend.rectify_render`, `worldbend.canvas_render`, and `worldbend.css`. Each ordinary
 task routes directly to one tool. Published JSON Schemas and runtime parsing
 enforce the same canonical
 unions, constants, positive sizes, unknown-field rejection, and server resource
@@ -240,6 +290,16 @@ authorized pathname after acquisition cannot redirect either read or write.
 Linux uses process resource limits, macOS combines the worker CPU limit with
 supervisor RSS enforcement, and Windows assigns each worker to a kill-on-close
 Job Object with process-memory and process-CPU limits.
+
+`worldbend.canvas_render` admits one ordered Canvas Set as one render call. Its
+source and output-directory parent use the same descriptor authority. The
+destination directory must not exist. Every `${variantId}.png` is rendered and
+preflighted in a hidden sibling directory; after the last cancellation and
+response-budget check, one same-filesystem directory rename is the commit
+point. Failure before that point leaves no destination directory. v0.1 has no
+overwrite, merge, arbitrary per-item path, or partial-success mode. The Agent
+projection narrows the set to 32 Mi output pixels cumulatively and rejects a
+complete encoded set above 128 MiB before publication.
 
 The seven integer fields in a successful `worldbend.render` result use only
 portable JSON Schema integer bounds, not implementation-specific `uint32` or
@@ -276,7 +336,129 @@ rejected before execution. A successful profile result uses `status: "ok"`;
 `dry_run` carries the write/no-write distinction. The provider profile remains
 experimental and does not establish cross-provider substitutability by itself.
 
+## ComfyUI V3 adapter
+
+The experimental local node pack exposes exactly four server-side V3 nodes.
+`Worldbend_TransformSpec` and `Worldbend_ApplyTransform` form the transform
+pair. The first accepts
+strict JSON, rejects duplicate keys and non-finite JSON constants, calls native
+`worldbend inspect`, and emits the custom `WORLDBEND_TRANSFORM` runtime value.
+The second accepts that value, one Comfy `IMAGE`, and an optional `MASK`; calls
+native `worldbend render`; and returns `IMAGE`, `MASK`, and the unchanged
+transform. Python owns tensor validation, private temporary PNG/spec staging,
+process lifetime, and conversion only. It must not solve a matrix, expand a
+Warp preset, sample a transformed pixel, or derive diagnostics.
+
+The v0 tensor boundary is `IMAGE [1,H,W,3]` and optional `MASK [1,H,W]`, with
+finite values in `[0,1]`. It rejects every other batch size before rendering.
+The MASK convention follows Comfy `LoadImage`: mask `1` means fully
+transparent, so native source alpha is `1-mask`; returned alpha is converted
+back to `1-alpha`. Fully transparent output pixels do not promise preservation
+of hidden RGB because core filtering is premultiplied-alpha. Tensor exchange
+uses an 8-bit RGBA PNG boundary, so 8-bit quantization is part of this adapter's
+current output contract rather than hidden precision.
+
+If both target dimensions are zero, a normalized spec validates at a temporary
+unit scale and binds to the incoming IMAGE dimensions at Apply. A pixel spec
+keeps its own reference. Two positive target dimensions override either route;
+one zero and one positive is `E_SCHEMA`. Source, target, and output are capped
+at 8192 pixels per axis and 32 Mi pixels. The native encoded-source ceiling is
+64 MiB. The adapter forwards `preview`, `standard`, or `high` and `tight` or
+`reference` directly to the core renderer.
+
+The executable is either the regular bundled `bin/worldbend` or an absolute
+development path supplied by `WORLDBEND_CLI`; PATH lookup, shell execution, and
+runtime package installation are not used. One native call has a 120-second
+adapter deadline. While the child runs, Comfy cancellation is polled; timeout,
+cancellation, or another exception kills and drains the process before private
+temporary state is released. Native structured errors retain their stable
+codes. Adapter preflight uses the existing `E_SCHEMA`,
+`E_NON_FINITE_COORDINATE`, `E_OUTPUT_LIMIT`, `E_TIMEOUT`, `E_RENDER`, and
+`E_INTERNAL` meanings; Comfy currently surfaces them as bounded node
+exceptions rather than a separate result envelope.
+
+`Worldbend_RectificationSpec` and `Worldbend_ApplyRectification` form the
+rectification pair. The first validates strict `worldbend.rectify@0.1` JSON
+through native `worldbend rectify`; the second calls native
+`worldbend rectify-render` with one IMAGE and optional MASK. The custom
+`WORLDBEND_RECTIFICATION` value is returned unchanged for reuse. Python does
+not detect the plane, infer output dimensions, solve the homography, or sample
+pixels.
+
+`Worldbend_CanvasSetSpec`, `Worldbend_ApplyCanvasSet`, and
+`Worldbend_ApplyCanvasPlan` form the Canvas route. The first validates one
+strict ordered set. The second resolves and applies it to one IMAGE and
+optional MASK, returning heterogeneous IMAGE/MASK lists plus the resolved
+plan. The third replays that plan on a same-sized 8-bit control raster and
+never re-runs Trim. Different output sizes are Comfy list values, not an IMAGE
+tensor batch. The Canvas route narrows cumulative output to 16 Mi pixels and
+retains the existing `B = 1` input rule.
+
+These Comfy routes do not yet have the MCP worker's independent 768 MiB process
+ceiling or admitted queue. The existing transform/rectification route uses a
+32 Mi-pixel ceiling and Canvas uses a 16 Mi-pixel cumulative ceiling; their
+one-image boundary, deadline, and child cleanup bound the current experimental
+slice but are not a claim of equivalent isolation. Public input IMAGE batch and video support remain
+closed until item correlation/order, partial failure and atomicity, cumulative
+resource budget, fairness, cancellation, and publication semantics are
+explicitly versioned. The generated local package is not a Comfy Registry
+release and does not establish a Registry publisher identity or
+multi-platform binary claim.
+
+## Carrier build and package isolation
+
+`config/carrier-profiles.json` owns the current carrier surface inventory and
+package limits. The configuration is closed and consumed by build, package,
+runtime-smoke, and built-artifact checks. It is not descriptive metadata that
+may drift independently from those paths.
+
+The Figma carrier uses the shared bridge with a `worldbend-wasm` build that
+disables the CSS core feature. The ABI keeps a closed `css_json` function so
+the shared TypeScript import remains stable, but that function returns
+`E_SCHEMA` and no Figma route may call it. The full Web and Agent builds retain
+CSS. Figma packages must contain only their declared manifest/main/UI runtime
+plus release documentation and dependency inventory; Agent or Comfy files are
+package failures.
+
+The Agent carrier packages the declared native executables, Capability
+projection, Product Skill, and legal inventory. HTML, CSS, Python, Figma, or
+Comfy interface material is a package failure. The live eight-tool catalog
+must remain at or below the profile's 81,920-byte ceiling.
+
+The Comfy carrier builds `worldbend` with the `comfy` feature and no default
+CLI features. Its executable command surface is exactly `inspect`, `render`,
+`rectify`, `rectify-render`, `canvas-inspect`, and `canvas-render`; presence of
+`compose`, `solve`, `css`, or `schema` in the staged help surface is a package
+failure. The package contains
+only its declared Python sources, examples, reduced native executable, package
+manifest, and dependency inventory. Figma, Agent, MCP, Skill, or Capability
+material is a package failure.
+
+The current Figma runtime-entry, archive, and unpacked ceilings are 655,360,
+524,288, and 2,097,152 bytes respectively. They are deterministic package
+growth boundaries, not claims about interaction latency or visual quality.
+An intentional budget change requires a current measurement and cannot be
+smuggled into the same checker merely to make an unrelated build green.
+
+The Figma `perspective` workspace retains the checked operation order
+Transform, Free, Perspective, Warp, Correct, More. `canvas` is its first
+sibling workspace and owns separate draft, history, controls, messages, and
+runtime resources; entering and returning cannot mutate Perspective semantic
+state. The self-contained Figma release may still inline those modules into
+one HTML file; package inlining does not authorize a single ever-growing
+control surface.
+
 ## Figma reuse
+
+Figma exposes manual correction as a fourth operation. The displayed source
+stays unwarped while the four handles author the normalized source quad, and
+two bounded integer fields author the output size. Apply calls the WASM
+`rectify` core, gives its matrix to the existing WebGL renderer, and stores the
+exact RectifySpec under a distinct shared-data key. A rectification result is
+therefore never mislabeled as a destination-only TransformSpec when the user
+later selects the original source and result together. Figma still owns only
+selection, presentation, image export, replacement, and undo state; it does
+not own rectification mathematics.
 
 The 600 x 720 human panel is canvas-first. Its selected source name is the only
 in-panel identity heading. Object identity, operation choice, and the active
@@ -291,7 +473,8 @@ Warp parameters remain visible while their operation is active so a designer
 can tune continuous values without reopening a popover.
 More follows Warp at the right edge of the operation choices and uses the same
 quiet control language; its popover is reserved for secondary session and
-language actions rather than hiding active-operation commands.
+language actions plus entry into a sibling task workspace. It never hides an
+active Perspective operation or turns that operation into a nested mode.
 Navigation into a replacing parameter surface uses a right-facing enter arrow;
 down arrows are reserved for dropdown or disclosure behavior. Product icons
 come from the configured project icon authority and retain its returned SVG

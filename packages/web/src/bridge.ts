@@ -1,15 +1,27 @@
 import initWasm, {
+  canvas_plan_json as canvasPlanJson,
+  canvas_set_plan_json as canvasSetPlanJson,
   compose_json as composeJson,
   css_json as cssJson,
+  rectify_json as rectifyJson,
   solve_json as solveJson,
   solve_preview_f64 as solvePreviewF64,
   warp_mesh_f64 as warpMeshF64,
   warp_mesh_json as warpMeshJson,
 } from "@worldbend/wasm";
 import type {
+  CanvasPlan,
+  CanvasPixelSize,
+  CanvasSetPlan,
+  CanvasSetSpecInput,
+  CanvasSpecInput,
+} from "./canvas-types";
+import type {
   AffineComposition,
   CssTransform,
   ErrorCode,
+  RectifyPlan,
+  RectifySpecInput,
   TransformErrorData,
   TransformSpecInput,
   PreviewSolveOutput,
@@ -75,6 +87,35 @@ export async function solveTransform(
       targetSize?.width,
       targetSize?.height,
     ),
+  );
+}
+
+export async function rectifyPlane(spec: RectifySpecInput): Promise<RectifyPlan> {
+  await initializeWorldbend();
+  return invoke<RectifyPlan>(() => rectifyJson(JSON.stringify(spec)));
+}
+
+/** Resolve Canvas geometry exclusively through the canonical Rust core. */
+export async function planCanvas(
+  spec: CanvasSpecInput,
+  sourceSize: CanvasPixelSize,
+): Promise<CanvasPlan> {
+  await initializeWorldbend();
+  assertSourcePixelSize(sourceSize);
+  return invoke<CanvasPlan>(() =>
+    canvasPlanJson(JSON.stringify(spec), sourceSize.width, sourceSize.height),
+  );
+}
+
+/** Resolve every ordered variant from the same original source raster. */
+export async function planCanvasSet(
+  spec: CanvasSetSpecInput,
+  sourceSize: CanvasPixelSize,
+): Promise<CanvasSetPlan> {
+  await initializeWorldbend();
+  assertSourcePixelSize(sourceSize);
+  return invoke<CanvasSetPlan>(() =>
+    canvasSetPlanJson(JSON.stringify(spec), sourceSize.width, sourceSize.height),
   );
 }
 
@@ -171,6 +212,22 @@ function invoke<T>(operation: () => string): T {
     return JSON.parse(operation()) as T;
   } catch (error) {
     throwBridgeError(error);
+  }
+}
+
+function assertSourcePixelSize(size: CanvasPixelSize): void {
+  if (
+    !Number.isSafeInteger(size.width) ||
+    !Number.isSafeInteger(size.height) ||
+    size.width < 1 ||
+    size.height < 1 ||
+    size.width > 0xffff_ffff ||
+    size.height > 0xffff_ffff
+  ) {
+    throw new TransformError({
+      code: "E_SCHEMA",
+      message: "Canvas source dimensions must be positive unsigned 32-bit integers",
+    });
   }
 }
 

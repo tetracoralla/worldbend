@@ -348,7 +348,7 @@ validateAdapterOutput('render', overwritten.result)
     // also asserts the server never emits a malformed line of its own.
     client.sendRaw('{definitely not json\n')
     const afterGarbage = await client.request('tools/list', {})
-    assert.equal(afterGarbage.result.tools.length, 5)
+    assert.equal(afterGarbage.result.tools.length, 8)
     assert.equal(client.invalidLines, 0)
   } finally {
     client.close()

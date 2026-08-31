@@ -22,6 +22,7 @@ export async function writeDeterministicZip({
   sourceRoot,
   rootName,
   entries,
+  executableEntries = [],
   timestamp = defaultArchiveTimestamp,
 }) {
   assertSafeArchivePath(rootName, "ZIP root name");
@@ -30,13 +31,26 @@ export async function writeDeterministicZip({
   if (sortedEntries.length !== entries.length) {
     throw new Error("ZIP entries must be unique");
   }
+  const executableSet = new Set(executableEntries);
+  if (executableSet.size !== executableEntries.length) {
+    throw new Error("Executable ZIP entries must be unique");
+  }
+  for (const entry of executableSet) {
+    assertSafeArchivePath(entry, "executable ZIP entry");
+    if (!sortedEntries.includes(entry)) {
+      throw new Error(`Executable ZIP entry is not in the inventory: ${entry}`);
+    }
+  }
 
   const archiveEntries = {};
   for (const entry of sortedEntries) {
     assertSafeArchivePath(entry, "ZIP entry");
-    archiveEntries[`${rootName}/${entry}`] = await readFile(
+    const bytes = await readFile(
       path.join(sourceRoot, ...entry.split("/")),
     );
+    archiveEntries[`${rootName}/${entry}`] = executableSet.has(entry)
+      ? [bytes, { os: 3, attrs: 0o755 << 16 }]
+      : bytes;
   }
 
   const archiveBytes = zipSync(archiveEntries, {

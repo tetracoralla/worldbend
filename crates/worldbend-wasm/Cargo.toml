@@ -6,11 +6,15 @@ rust-version.workspace = true
 publish = false
 description = "WASM geometry bridge for Worldbend web and Figma adapters"
 
+[features]
+default = ["css"]
+css = ["worldbend-core/css"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-worldbend-core = { path = "../worldbend-core" }
+worldbend-core = { path = "../worldbend-core", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 wasm-bindgen.workspace = true

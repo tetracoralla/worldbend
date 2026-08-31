@@ -5,8 +5,11 @@ import {
   estimateSourceRasterSize,
   formatZoomPercent,
   identityTransformRecipe,
+  normalizedSpec,
   PerspectiveEditor,
+  rectifyPlane,
   solveTransform,
+  unitQuad,
   awaitImageDecoded,
   type AffineComposition,
   type PerspectiveCorner,
@@ -20,6 +23,8 @@ import {
   type WarpPreset,
   type PreviewViewportHandle,
   type PreviewSolveOutput,
+  type RectifyPlan,
+  type RectifySpecInput,
   type WarpMesh,
 } from "@worldbend/web";
 import type { MainToUiMessage, SourcePayload, UiToMainMessage } from "./messages";
@@ -91,14 +96,23 @@ import {
 } from "./i18n";
 import { parseWarpControls, warpAmountPercent, WARP_PRESETS } from "./warp-controls";
 import { sliderProgress } from "./slider-domain";
+import {
+  createProductWorkspaceRouter,
+  type ProductWorkspaceRouter,
+} from "./product-workspace";
+import { createCanvasWorkspace } from "./canvas-workspace";
+import type { CanvasWorkspaceCopy } from "./canvas-workspace-view";
 
 const TRANSFORM_PREVIEW_TIMEOUT_MS = 5_000;
 const SOURCE_RASTER_TIMEOUT_MS = 10_000;
 
 const editorMount = required<HTMLDivElement>("editor");
+const canvasWorkspaceRoot = required<HTMLElement>("canvas-workspace");
 const selectionState = required<HTMLParagraphElement>("selection-state");
 const sourceName = required<HTMLElement>("source-name");
-const errorMessage = required<HTMLParagraphElement>("error");
+const errorMessage = required<HTMLElement>("error");
+const errorText = required<HTMLSpanElement>("error-text");
+const errorDismiss = required<HTMLButtonElement>("error-dismiss");
 const statusMessage = required<HTMLParagraphElement>("status");
 const controls = required<HTMLElement>("controls");
 const applyButton = required<HTMLButtonElement>("apply");
@@ -106,11 +120,17 @@ const resetButton = required<HTMLButtonElement>("reset");
 const modeSwitch = required<HTMLDivElement>("mode-switch");
 const modeTransformButton = required<HTMLButtonElement>("mode-transform");
 const modeWarpButton = required<HTMLButtonElement>("mode-warp");
+const modeRectifyButton = required<HTMLButtonElement>("mode-rectify");
 const distortKind = required<HTMLDivElement>("distort-kind");
 const distortFreeButton = required<HTMLButtonElement>("distort-free");
 const distortPerspectiveButton = required<HTMLButtonElement>("distort-perspective");
 const transformOptions = required<HTMLDivElement>("transform-options");
 const warpOptions = required<HTMLDivElement>("warp-options");
+const rectifyOptions = required<HTMLDivElement>("rectify-options");
+const rectifyWidthLabel = required<HTMLSpanElement>("rectify-width-label");
+const rectifyHeightLabel = required<HTMLSpanElement>("rectify-height-label");
+const rectifyWidthInput = required<HTMLInputElement>("rectify-width");
+const rectifyHeightInput = required<HTMLInputElement>("rectify-height");
 const warpPresetLabel = required<HTMLLabelElement>("warp-preset-label");
 const warpPresetSelect = required<HTMLSelectElement>("warp-preset");
 const warpAmountLabel = required<HTMLSpanElement>("warp-amount-label");
@@ -125,6 +145,10 @@ const actionFlipY = required<HTMLButtonElement>("action-flip-y");
 const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
+const actionOpenCanvas = required<HTMLButtonElement>("action-open-canvas");
+const actionUndo = required<HTMLButtonElement>("action-undo");
+const actionRedo = required<HTMLButtonElement>("action-redo");
+const shortcutHelp = required<HTMLParagraphElement>("shortcut-help");
 const placementToggle = required<HTMLButtonElement>("placement-toggle");
 const placementPanel = required<HTMLDivElement>("advanced-placement");
 const placementClose = required<HTMLButtonElement>("placement-close");
@@ -169,6 +193,11 @@ let distortMode: DistortMode = "free";
 let initialFrame: TransformFrame | undefined;
 let baseFrame: TransformFrame | undefined;
 let activeFrame: TransformFrame | undefined;
+let rectifyParent:
+  | { initialFrame: TransformFrame; entry: EditHistoryEntry }
+  | undefined;
+let rectifyInputsValid = true;
+let rectifyInitialOutput = { width: "1024", height: "1024" };
 let placementCanonical = { x: "0", y: "0" };
 let composeGeneration = 0;
 let composeInFlight = false;
@@ -286,23 +315,65 @@ const localeView: OptionsMenuView = createLocaleView({
   },
 });
 
+let productWorkspace!: ProductWorkspaceRouter;
+const canvasWorkspace = createCanvasWorkspace({
+  root: canvasWorkspaceRoot,
+  copy: canvasWorkspaceCopy,
+  onBack() {
+    productWorkspace.returnToPerspective();
+  },
+  post,
+  requestSourceRaster,
+  decodeImage: imageFromBytes,
+  formatError(error) {
+    return translate(activeLocale, messageFromError(error, "unexpectedError"));
+  },
+});
+productWorkspace = createProductWorkspaceRouter({
+  onEnterCanvas() {
+    controls.hidden = true;
+    controls.inert = true;
+    canvasWorkspace.enter();
+  },
+  onReturnToPerspective() {
+    canvasWorkspace.leave();
+    controls.inert = false;
+    controls.hidden = !current;
+    selectionState.hidden = Boolean(current);
+    renderMode();
+    renderState();
+    queueMicrotask(() => moreOptionsButton.focus());
+  },
+});
 const pivotPicker: PivotPicker = createPivotPicker({
   container: pivotGrid,
   onSelect(pivot) {
     void selectPivot(pivot);
   },
 });
+// Paint a usable system-locale UI immediately. The main side may replace this
+// with the persisted preference, but a delayed preference read must never
+// leave the plugin hidden behind the i18n readiness guard.
+applyLocale(localePreference, activeLocale);
+canvasWorkspace.updateLocale();
 
-function control(id: string): { numberInput: HTMLInputElement; slider: HTMLInputElement } {
+function control(id: string): {
+  numberInput: HTMLInputElement;
+  slider: HTMLInputElement;
+  unit?: string;
+} {
+  const unit = document.getElementById(`${id}-unit`)?.textContent ?? undefined;
   return {
     numberInput: required<HTMLInputElement>(id),
     slider: required<HTMLInputElement>(`${id}-slider`),
+    ...(unit ? { unit } : {}),
   };
 }
 
 window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) => {
   const message = event.data.pluginMessage;
   if (!message) return;
+  if (canvasWorkspace.handleMainMessage(message)) return;
   if (message.type === "source-raster" || message.type === "source-raster-error") {
     const pending = pendingSourceRasterRequests.get(message.requestId);
     if (!pending || pending.generation !== message.generation) return;
@@ -314,6 +385,7 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
   }
   if (message.type === "locale") {
     applyLocale(message.preference, message.locale);
+    canvasWorkspace.updateLocale();
   }
   if (message.type === "preference-error") showError(message.message);
   if (message.type === "selection-loading") {
@@ -346,6 +418,7 @@ resetButton.addEventListener("click", () => void resetPerspective());
 applyButton.addEventListener("click", () => void applyPerspective());
 modeTransformButton.addEventListener("click", () => void switchEditorMode("transform"));
 modeWarpButton.addEventListener("click", () => void switchEditorMode("warp"));
+modeRectifyButton.addEventListener("click", () => void switchEditorMode("rectify"));
 distortFreeButton.addEventListener("click", () => void selectDistortMode("free"));
 distortPerspectiveButton.addEventListener("click", () => void selectDistortMode("perspective"));
 // Route the preset through the same latest-wins coalescer as the amount
@@ -367,11 +440,29 @@ warpAmountInput.addEventListener("input", () => {
   }
 });
 warpAmountInput.addEventListener("change", () => requestWarpPreview(true));
+for (const input of [rectifyWidthInput, rectifyHeightInput]) {
+  input.addEventListener("input", () => {
+    rectifyInputsValid = readRectifyOutput() !== undefined;
+    input.setAttribute("aria-invalid", String(!input.validity.valid));
+    if (rectifyInputsValid) clearError();
+    renderState();
+  });
+  input.addEventListener("change", () => {
+    const output = readRectifyOutput();
+    rectifyInputsValid = output !== undefined;
+    if (!output) showError(userMessage("invalidRectify"));
+    renderState();
+  });
+}
 actionFlipX.addEventListener("click", () => void toggleRecipeFlip("x"));
 actionFlipY.addEventListener("click", () => void toggleRecipeFlip("y"));
 actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
 actionApplyCopy.addEventListener("click", () => void applyPerspective(true));
+actionOpenCanvas.addEventListener("click", () => productWorkspace.enterCanvas());
+actionUndo.addEventListener("click", () => void stepHistory("undo"));
+actionRedo.addEventListener("click", () => void stepHistory("redo"));
+errorDismiss.addEventListener("click", clearError);
 placementToggle.addEventListener("click", togglePlacementPanel);
 placementClose.addEventListener("click", () => closePlacementPanel({ restoreFocus: true }));
 document.addEventListener("pointerdown", closePlacementPanelOutside);
@@ -419,8 +510,8 @@ function createEditor(): PerspectiveEditor | undefined {
         // state and must survive per-frame change notifications; returning to
         // valid clears it via onValidityChange instead.
         if (valid) clearError();
-        if (editorMode === "distort" && activeFrame && editor) {
-          distortFrameDirty = true;
+        if ((editorMode === "distort" || editorMode === "rectify") && activeFrame && editor) {
+          if (editorMode === "distort") distortFrameDirty = true;
           transformInputsValid = true;
           activeFrame = { ...activeFrame, spec: editor.captureSpec() };
           viewport?.handleCanvasResized();
@@ -450,6 +541,7 @@ function createEditor(): PerspectiveEditor | undefined {
 
 function beginSelectionLoad(generation: number, nodeIds: readonly string[]): void {
   if (!Number.isSafeInteger(generation) || generation < activeGeneration) return;
+  canvasWorkspace.selectionLoading();
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
   cancelSourceRasterRequests(userMessage("selectionChanged"));
@@ -476,6 +568,7 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
   valid = false;
   phase = "loading";
   history = undefined;
+  rectifyParent = undefined;
   deferredHistoryCommit.clear();
   transformGestureSession.cancel();
   lastCompose = undefined;
@@ -508,21 +601,38 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
   try {
     const image = await imageFromBytes(payload.bytes);
     if (generation !== activeGeneration) return;
-    const nextInitial = frameFromSource(payload);
+    const payloadFrame = frameFromSource(payload);
+    const nextInitial = payload.rectification
+      ? {
+          ...payloadFrame,
+          spec: normalizedSpec(structuredClone(payload.rectification.source.quad)),
+          renderWidth: image.naturalWidth,
+          renderHeight: image.naturalHeight,
+        }
+      : payloadFrame;
     const nextActive =
       refreshing && initialFrame && activeFrame
-        ? rebaseTransformFrame(initialFrame, nextInitial, activeFrame)
+        ? editorMode === "rectify"
+          ? {
+              ...cloneFrame(activeFrame),
+              renderWidth: image.naturalWidth,
+              renderHeight: image.naturalHeight,
+              placement: { ...nextInitial.placement },
+            }
+          : rebaseTransformFrame(initialFrame, nextInitial, activeFrame)
         : nextInitial;
     if (!refreshing) {
-      editorMode = "distort";
+      editorMode = payload.rectification ? "rectify" : "distort";
       distortMode = "free";
+      rectifyParent = undefined;
     }
+    editor.setSourceSelectionMode(editorMode === "rectify");
     const loaded = await withTimeout(
       editor.setSource(image, nextActive.spec, {
         targetSize: { width: nextActive.renderWidth, height: nextActive.renderHeight },
       }),
       TRANSFORM_PREVIEW_TIMEOUT_MS,
-      () => new Error("The selected layer timed out while preparing its preview"),
+      () => userMessage("transformPreviewTimedOut"),
     );
     if (generation !== activeGeneration) return;
     // A false return means the spec failed structural or geometric validation
@@ -541,9 +651,22 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     // live for the entire editing session.
     const { bytes: _decodedBytes, ...activeSource } = payload;
     current = activeSource;
+    canvasWorkspace.setSource({ ...activeSource, selectionGeneration: generation }, image);
     initialFrame = cloneFrame(nextInitial);
     baseFrame = cloneFrame(nextActive);
     activeFrame = cloneFrame(nextActive);
+    if (payload.rectification) {
+      rectifyWidthInput.value = String(payload.rectification.output.width);
+      rectifyHeightInput.value = String(payload.rectification.output.height);
+    } else if (!refreshing) {
+      rectifyWidthInput.value = String(nextInitial.renderWidth);
+      rectifyHeightInput.value = String(nextInitial.renderHeight);
+    }
+    rectifyInputsValid = readRectifyOutput() !== undefined;
+    rectifyInitialOutput = {
+      width: rectifyWidthInput.value,
+      height: rectifyHeightInput.value,
+    };
     syncWarpControls(nextActive.spec.content.warp);
     resetTransformInputs();
     gestureTranslation = { x: 0, y: 0 };
@@ -559,7 +682,8 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     sourceName.textContent = payload.sourceName;
     sourceName.title = payload.sourceName;
     selectionState.hidden = true;
-    controls.hidden = false;
+    if (payload.canvas) productWorkspace.enterCanvas();
+    controls.hidden = productWorkspace.current() === "canvas";
     delete controls.dataset.loading;
     syncViewportScene();
     viewport?.fit();
@@ -595,10 +719,12 @@ function showSelectionError(generation: number, message: UserMessage): void {
   undoRouted = false;
   refreshInFlight = false;
   current = undefined;
+  canvasWorkspace.clearSource(translate(activeLocale, message));
   initialFrame = undefined;
   baseFrame = undefined;
   activeFrame = undefined;
   history = undefined;
+  rectifyParent = undefined;
   deferredHistoryCommit.clear();
   transformGestureSession.cancel();
   lastCompose = undefined;
@@ -643,6 +769,11 @@ async function restoreLoadedState(discardHistory: boolean): Promise<void> {
   try {
     baseFrame = cloneFrame(initialFrame);
     activeFrame = cloneFrame(initialFrame);
+    if (editorMode === "rectify") {
+      rectifyWidthInput.value = rectifyInitialOutput.width;
+      rectifyHeightInput.value = rectifyInitialOutput.height;
+      rectifyInputsValid = readRectifyOutput() !== undefined;
+    }
     resetTransformInputs();
     await withTimeout(
       editor.setSpec(initialFrame.spec, {
@@ -650,7 +781,7 @@ async function restoreLoadedState(discardHistory: boolean): Promise<void> {
         height: initialFrame.renderHeight,
       }),
       TRANSFORM_PREVIEW_TIMEOUT_MS,
-      () => new Error("The reset preview timed out while rendering"),
+      () => userMessage("transformPreviewTimedOut"),
     );
     if (phase !== "resetting") return;
     phase = "ready";
@@ -663,7 +794,14 @@ async function restoreLoadedState(discardHistory: boolean): Promise<void> {
     }
     // Escape discards the whole session. The visible Reset action remains a
     // normal recoverable edit so an accidental click can be undone.
-    if (discardHistory && history && baseFrame && activeFrame) {
+    if (editorMode === "rectify") {
+      // Rectification is a replacing child workspace. Its Reset boundary must
+      // not insert source-selection entries into the parent's transform undo
+      // stack; a loaded rectification already owns its one baseline entry.
+      if (!rectifyParent && history && baseFrame && activeFrame) {
+        history.resetToBaseline(currentHistoryEntry());
+      }
+    } else if (discardHistory && history && baseFrame && activeFrame) {
       history.resetToBaseline(currentHistoryEntry());
     } else {
       commitHistoryNow();
@@ -695,6 +833,14 @@ async function switchEditorMode(nextMode: EditorMode): Promise<void> {
   ) {
     return;
   }
+  if (nextMode === "rectify") {
+    await enterRectifyMode();
+    return;
+  }
+  if (editorMode === "rectify") {
+    await leaveRectifyMode(nextMode);
+    return;
+  }
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
   composeGeneration += 1;
@@ -722,6 +868,99 @@ async function switchEditorMode(nextMode: EditorMode): Promise<void> {
   } else {
     commitHistoryNow();
   }
+}
+
+async function enterRectifyMode(): Promise<void> {
+  if (!editor || !initialFrame || !activeFrame || !baseFrame) return;
+  const sourceSize = editor.getSourceRasterSize();
+  if (!sourceSize) return;
+  cancelTransformGesturePreview();
+  distortEndFrames.cancel();
+  composeGeneration += 1;
+  deferredHistoryCommit.clear();
+  activeFrame = { ...activeFrame, spec: editor.captureSpec() };
+  baseFrame = cloneFrame(activeFrame);
+  rectifyParent = {
+    initialFrame: cloneFrame(initialFrame),
+    entry: currentHistoryEntry(),
+  };
+  rectifyWidthInput.value = String(activeFrame.renderWidth);
+  rectifyHeightInput.value = String(activeFrame.renderHeight);
+  rectifyInitialOutput = {
+    width: rectifyWidthInput.value,
+    height: rectifyHeightInput.value,
+  };
+  rectifyInputsValid = true;
+  const selectionFrame: TransformFrame = {
+    spec: normalizedSpec(unitQuad()),
+    renderWidth: Math.max(1, Math.round(sourceSize.width)),
+    renderHeight: Math.max(1, Math.round(sourceSize.height)),
+    placement: { ...activeFrame.placement },
+  };
+  initialFrame = cloneFrame(selectionFrame);
+  baseFrame = cloneFrame(selectionFrame);
+  activeFrame = cloneFrame(selectionFrame);
+  editorMode = "rectify";
+  distortFrameDirty = false;
+  transformGestureSession.cancel();
+  lastCompose = undefined;
+  clearError();
+  setStatus();
+  editor.setSourceSelectionMode(true);
+  renderMode();
+  renderState();
+  try {
+    const loaded = await withTimeout(
+      editor.setSpec(selectionFrame.spec, {
+        width: selectionFrame.renderWidth,
+        height: selectionFrame.renderHeight,
+      }),
+      TRANSFORM_PREVIEW_TIMEOUT_MS,
+      () => userMessage("transformPreviewTimedOut"),
+    );
+    if (!loaded) throw new Error("The correction preview could not be rendered");
+    syncViewportScene();
+    viewport?.fit();
+  } catch (error) {
+    showError(error);
+  }
+  renderState();
+}
+
+async function leaveRectifyMode(nextMode: Exclude<EditorMode, "rectify">): Promise<void> {
+  if (!editor || !rectifyParent) return;
+  const parent = rectifyParent;
+  rectifyParent = undefined;
+  initialFrame = cloneFrame(parent.initialFrame);
+  editorMode = parent.entry.mode;
+  distortMode = parent.entry.distortMode;
+  distortFrameDirty = parent.entry.distortFrameDirty;
+  baseFrame = cloneFrame(parent.entry.baseFrame);
+  activeFrame = cloneFrame(parent.entry.activeFrame);
+  gestureTranslation = { ...parent.entry.gestureTranslation };
+  recipeFlip = { ...parent.entry.flip };
+  recipePivot = { ...parent.entry.pivot };
+  transformControls.setValues(parent.entry.values);
+  editor.setSourceSelectionMode(false);
+  clearError();
+  renderMode();
+  renderState();
+  try {
+    await withTimeout(
+      editor.setSpec(activeFrame.spec, {
+        width: activeFrame.renderWidth,
+        height: activeFrame.renderHeight,
+      }),
+      TRANSFORM_PREVIEW_TIMEOUT_MS,
+      () => userMessage("transformPreviewTimedOut"),
+    );
+    syncViewportScene();
+    viewport?.handleCanvasResized();
+    if (nextMode !== editorMode) await switchEditorMode(nextMode);
+  } catch (error) {
+    showError(error);
+  }
+  renderState();
 }
 
 async function selectDistortMode(nextMode: DistortMode): Promise<void> {
@@ -785,7 +1024,6 @@ async function updateWarpPreview(
     const loaded = await setEditorSpecWithRecovery(
       nextFrame,
       fallbackFrame,
-      "The Warp preview timed out while rendering",
     );
     if (generation !== composeGeneration || editorMode !== "warp") return false;
     if (!loaded) throw new Error("The Warp preset could not be previewed");
@@ -840,12 +1078,12 @@ function updateWarpRangeVisual(): void {
     "--range-progress",
     `${sliderProgress(value, minimum, maximum)}%`,
   );
+  warpAmountSlider.setAttribute("aria-valuetext", `${warpAmountSlider.value}%`);
 }
 
 async function setEditorSpecWithRecovery(
   nextFrame: TransformFrame,
   fallbackFrame: TransformFrame,
-  timeoutMessage: string,
 ): Promise<boolean> {
   const targetEditor = editor;
   if (!targetEditor) throw new Error("The perspective editor is unavailable");
@@ -856,7 +1094,7 @@ async function setEditorSpecWithRecovery(
         height: nextFrame.renderHeight,
       }),
       TRANSFORM_PREVIEW_TIMEOUT_MS,
-      () => new Error(timeoutMessage),
+      () => userMessage("transformPreviewTimedOut"),
     );
   } catch (error) {
     try {
@@ -924,14 +1162,13 @@ async function updateTransformPreview(
         height: base.renderHeight,
       }),
       TRANSFORM_PREVIEW_TIMEOUT_MS,
-      () => new Error("The transform preview timed out while composing geometry"),
+      () => userMessage("transformPreviewTimedOut"),
     );
     if (generation !== composeGeneration || editorMode !== "transform") return false;
     const nextFrame = frameFromComposition(base, composition);
     const loaded = await setEditorSpecWithRecovery(
       nextFrame,
       fallbackFrame,
-      "The transform preview timed out while rendering",
     );
     if (generation !== composeGeneration || editorMode !== "transform") return false;
     if (!loaded) throw new Error("The selected layer could not be previewed");
@@ -1088,6 +1325,7 @@ function preciseInputValue(value: number): string {
 
 function handleEditEnd(source: "distort" | "transform"): void {
   if (phase !== "ready" || !current || refreshInFlight) return;
+  if (editorMode === "rectify") return;
   if (source === "distort" && editorMode === "distort") {
     // Keep every corner in the stable source frame for the whole Distort
     // session. Tight reframing here would renormalize all four points after
@@ -1135,14 +1373,13 @@ async function finalizeDistortEdit(): Promise<boolean> {
         height: base.renderHeight,
       }),
       TRANSFORM_PREVIEW_TIMEOUT_MS,
-      () => new Error("The transform preview timed out while composing geometry"),
+      () => userMessage("transformPreviewTimedOut"),
     );
     if (generation !== composeGeneration || editorMode !== "distort") return false;
     const nextFrame = frameFromComposition(base, composition);
     const loaded = await setEditorSpecWithRecovery(
       nextFrame,
       base,
-      "The transform preview timed out while rendering",
     );
     if (generation !== composeGeneration || editorMode !== "distort") return false;
     if (!loaded) throw new Error("The selected layer could not be previewed");
@@ -1183,6 +1420,14 @@ function currentHistoryEntry(): EditHistoryEntry {
     gestureTranslation: { ...gestureTranslation },
     flip: { ...recipeFlip },
     pivot: { ...recipePivot },
+    ...(editorMode === "rectify"
+      ? {
+          rectifyOutput: {
+            width: rectifyWidthInput.value,
+            height: rectifyHeightInput.value,
+          },
+        }
+      : {}),
     baseFrame: cloneFrame(baseFrame),
     activeFrame: cloneFrame(activeFrame),
   };
@@ -1209,6 +1454,7 @@ function requestTransformHistoryCommit(): void {
 
 async function stepHistory(direction: "undo" | "redo"): Promise<void> {
   if (!history || !editor || phase !== "ready" || composeInFlight || refreshInFlight) return;
+  if (editorMode === "rectify") return;
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
   const entry = direction === "undo" ? history.undo() : history.redo();
@@ -1226,6 +1472,11 @@ async function stepHistory(direction: "undo" | "redo"): Promise<void> {
   gestureTranslation = { ...entry.gestureTranslation };
   recipeFlip = { ...entry.flip };
   recipePivot = { ...entry.pivot };
+  if (entry.rectifyOutput) {
+    rectifyWidthInput.value = entry.rectifyOutput.width;
+    rectifyHeightInput.value = entry.rectifyOutput.height;
+    rectifyInputsValid = readRectifyOutput() !== undefined;
+  }
   transformControls.setValues(entry.values);
   syncWarpControls(entry.activeFrame.spec.content.warp);
   clearError();
@@ -1239,7 +1490,7 @@ async function stepHistory(direction: "undo" | "redo"): Promise<void> {
         height: activeFrame.renderHeight,
       }),
       TRANSFORM_PREVIEW_TIMEOUT_MS,
-      () => new Error("The history preview timed out while rendering"),
+      () => userMessage("transformPreviewTimedOut"),
     );
     syncViewportScene();
     viewport?.handleCanvasResized();
@@ -1316,7 +1567,6 @@ async function applyTransformAgain(): Promise<void> {
     const loaded = await setEditorSpecWithRecovery(
       repeated,
       fallbackFrame,
-      "The transform preview timed out while rendering",
     );
     // A selection or generation change during the async work means the repeat
     // must not land on the newly loaded source.
@@ -1416,7 +1666,7 @@ function renderPlacementFields(): void {
 }
 
 function displayPlacementValue(value: number): string {
-  return String(Math.round(value * 10) / 10);
+  return Number(value).toString();
 }
 
 function renderTransformActionStates(): void {
@@ -1441,11 +1691,15 @@ function renderMode(): void {
   const transformSelected = editorMode === "transform";
   const distortSelected = editorMode === "distort";
   const warpSelected = editorMode === "warp";
+  const rectifySelected = editorMode === "rectify";
   modeTransformButton.setAttribute("aria-pressed", String(transformSelected));
   modeWarpButton.setAttribute("aria-pressed", String(warpSelected));
+  modeRectifyButton.setAttribute("aria-pressed", String(rectifySelected));
   controls.dataset.editorMode = editorMode;
   transformOptions.hidden = !transformSelected;
   warpOptions.hidden = !warpSelected;
+  rectifyOptions.hidden = !rectifySelected;
+  distortKind.hidden = !distortSelected;
   distortFreeButton.setAttribute(
     "aria-pressed",
     String(distortSelected && distortMode === "free"),
@@ -1455,10 +1709,29 @@ function renderMode(): void {
     String(distortSelected && distortMode === "perspective"),
   );
   editor?.setHandlesVisible(!warpSelected);
+  editor?.setSourceSelectionMode(rectifySelected);
   editor?.setInteractionMode(transformSelected ? "transform" : "distort");
   editor?.setDistortMode(distortMode);
   if (!transformSelected) closePlacementPanel();
   renderScaleLink();
+}
+
+function readRectifyOutput(): { width: number; height: number } | undefined {
+  const width = Number(rectifyWidthInput.value);
+  const height = Number(rectifyHeightInput.value);
+  if (
+    !rectifyWidthInput.validity.valid ||
+    !rectifyHeightInput.validity.valid ||
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > MAX_FIGMA_IMAGE_AXIS ||
+    height > MAX_FIGMA_IMAGE_AXIS
+  ) {
+    return undefined;
+  }
+  return { width, height };
 }
 
 function togglePlacementPanel(): void {
@@ -1534,6 +1807,10 @@ function syncViewportScene(): void {
 }
 
 async function applyPerspective(duplicate = false): Promise<void> {
+  if (editorMode === "rectify") {
+    await applyRectification(duplicate);
+    return;
+  }
   if (editorMode === "distort" && distortFrameDirty) {
     const finalized = await finalizeDistortEdit();
     if (!finalized) return;
@@ -1607,6 +1884,112 @@ async function applyPerspective(duplicate = false): Promise<void> {
     showError(error);
     renderState();
   }
+}
+
+async function applyRectification(duplicate = false): Promise<void> {
+  const output = readRectifyOutput();
+  if (
+    !editor ||
+    !current ||
+    !activeFrame ||
+    !valid ||
+    !output ||
+    composeInFlight ||
+    phase !== "ready" ||
+    refreshInFlight
+  ) {
+    if (!output) showError(userMessage("invalidRectify"));
+    return;
+  }
+  const source = current;
+  const generation = activeGeneration;
+  const rectification: RectifySpecInput = {
+    schema: "worldbend.rectify",
+    version: "0.1",
+    source: {
+      space: "normalized",
+      quad: structuredClone(editor.captureSpec().destination.quad),
+    },
+    output,
+  };
+  phase = "applying";
+  clearError();
+  setStatus(userMessage(!duplicate && source.targetNodeId ? "replacing" : "applying"));
+  renderState();
+  try {
+    const plan = await rectifyPlane(rectification);
+    const prepared = await prepareRectificationSourceRaster(source, plan);
+    const bytes = await editor.exportPng(
+      output.width,
+      output.height,
+      normalizedSpec(unitQuad()),
+      prepared.sourceOverride,
+      { solved: prepared.solved },
+    );
+    if (generation !== activeGeneration || phase !== "applying" || current !== source) return;
+    const placement = fittedRectificationPlacement(activeFrame.placement, output);
+    post({
+      type: "apply",
+      payload: {
+        generation,
+        bytes,
+        rectification,
+        sourceNodeId: source.sourceNodeId,
+        renderWidth: output.width,
+        renderHeight: output.height,
+        placement,
+        ...(source.targetNodeId ? { targetNodeId: source.targetNodeId } : {}),
+        ...(duplicate ? { duplicate: true } : {}),
+      },
+    });
+  } catch (error) {
+    if (generation !== activeGeneration) return;
+    phase = "ready";
+    showError(error);
+    renderState();
+  }
+}
+
+async function prepareRectificationSourceRaster(
+  source: ActiveSource,
+  plan: RectifyPlan,
+): Promise<{ sourceOverride?: HTMLImageElement; solved: PreviewSolveOutput }> {
+  if (!editor) throw new Error("The correction preview is unavailable");
+  const solved: PreviewSolveOutput = {
+    resolvedDestination: {
+      reference: {
+        width: plan.spec.output.width,
+        height: plan.spec.output.height,
+      },
+    },
+    homography: { matrix: plan.homography.matrix },
+  };
+  const desired = estimateSourceRasterSize(
+    plan,
+    normalizedSpec(unitQuad()),
+    MAX_FIGMA_IMAGE_AXIS,
+  );
+  const available = editor.getSourceRasterSize();
+  if (available && available.width >= desired.width && available.height >= desired.height) {
+    return { solved };
+  }
+  const bytes = await requestSourceRaster(source, desired);
+  return { sourceOverride: await imageFromBytes(bytes), solved };
+}
+
+function fittedRectificationPlacement(
+  source: TransformFrame["placement"],
+  output: { width: number; height: number },
+): TransformFrame["placement"] {
+  const scale = Math.min(source.width / output.width, source.height / output.height);
+  const width = output.width * scale;
+  const height = output.height * scale;
+  return {
+    x: source.x + (source.width - width) / 2,
+    y: source.y + (source.height - height) / 2,
+    width,
+    height,
+  };
 }
 
 async function prepareFinalSourceRaster(
@@ -1686,8 +2069,11 @@ function renderState(): void {
   for (const button of [actionFlipX, actionFlipY, actionRotateCw]) {
     button.disabled = !positionReady;
   }
-  actionApplyCopy.disabled = !menuReady;
+  actionApplyCopy.disabled =
+    !menuReady || (editorMode === "rectify" && !rectifyInputsValid);
   actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
+  actionUndo.disabled = !ready || !history?.canUndo();
+  actionRedo.disabled = !ready || !history?.canRedo();
   pivotPicker.setDisabled(!positionReady);
   placementToggle.disabled = !positionReady;
   positionXInput.disabled = !positionReady;
@@ -1697,17 +2083,26 @@ function renderState(): void {
   editor?.setDisabled(!ready || transformInitializing || blockingCompose || refreshInFlight);
   resetButton.disabled = !ready || blockingCompose || refreshInFlight;
   applyButton.disabled =
-    !ready || !valid || !transformInputsValid || blockingCompose || refreshInFlight;
-  modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight;
-  modeWarpButton.disabled = !ready || !valid || blockingCompose || refreshInFlight;
-  distortFreeButton.disabled = !ready || blockingCompose || refreshInFlight;
-  distortPerspectiveButton.disabled = !ready || blockingCompose || refreshInFlight;
+    !ready ||
+    !valid ||
+    !transformInputsValid ||
+    (editorMode === "rectify" && !rectifyInputsValid) ||
+    blockingCompose ||
+    refreshInFlight;
+  const rectificationOnly = editorMode === "rectify" && !rectifyParent;
+  modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
+  modeWarpButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
+  modeRectifyButton.disabled = !ready || !valid || blockingCompose || refreshInFlight;
+  distortFreeButton.disabled = !ready || editorMode !== "distort" || blockingCompose || refreshInFlight;
+  distortPerspectiveButton.disabled = !ready || editorMode !== "distort" || blockingCompose || refreshInFlight;
   transformControls.setDisabled(!ready || refreshInFlight || editorMode !== "transform");
   const warpDisabled = !ready || refreshInFlight || editorMode !== "warp";
   warpPresetSelect.disabled = warpDisabled;
   const warpAmountDisabled = warpDisabled || warpPresetSelect.value === "";
   warpAmountSlider.disabled = warpAmountDisabled;
   warpAmountInput.disabled = warpAmountDisabled;
+  rectifyWidthInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
+  rectifyHeightInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
   resetButton.textContent = translate(activeLocale, phase === "resetting" ? "resetting" : "reset");
   applyButton.textContent =
     phase === "applied"
@@ -1730,7 +2125,7 @@ function renderState(): void {
 function clearError(): void {
   visibleError = undefined;
   if (errorMessage.hidden) return;
-  errorMessage.textContent = "";
+  errorText.textContent = "";
   errorMessage.hidden = true;
 }
 
@@ -1741,7 +2136,7 @@ function showError(error: unknown): void {
     return;
   }
   visibleError = message;
-  errorMessage.textContent = translate(activeLocale, message);
+  errorText.textContent = translate(activeLocale, message);
   errorMessage.hidden = false;
   setStatus();
 }
@@ -1771,6 +2166,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localeView.applyCheckedState(preference);
   modeTransformButton.textContent = translate(locale, "modeTransform");
   modeWarpButton.textContent = translate(locale, "modeWarp");
+  modeRectifyButton.textContent = translate(locale, "modeRectify");
   distortFreeButton.textContent = translate(locale, "distortFree");
   distortPerspectiveButton.textContent = translate(locale, "distortPerspective");
   scaleXLabel.textContent = translate(locale, "scaleX");
@@ -1780,6 +2176,8 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   skewYLabel.textContent = translate(locale, "skewY");
   warpPresetLabel.textContent = translate(locale, "warpPreset");
   warpAmountLabel.textContent = translate(locale, "warpAmount");
+  rectifyWidthLabel.textContent = translate(locale, "rectifyWidth");
+  rectifyHeightLabel.textContent = translate(locale, "rectifyHeight");
   const noneOption = warpPresetSelect.querySelector<HTMLOptionElement>('option[value=""]');
   if (noneOption) noneOption.textContent = translate(locale, "warpNone");
   for (const preset of WARP_PRESETS) {
@@ -1791,7 +2189,12 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionFlipY, translate(locale, "flipVertical"));
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
   localizeIconAction(actionTransformAgain, translate(locale, "transformAgain"));
+  actionOpenCanvas.textContent = translate(locale, "openCanvas");
   actionApplyCopy.textContent = translate(locale, "applyAsCopy");
+  actionUndo.textContent = translate(locale, "undoEdit");
+  actionRedo.textContent = translate(locale, "redoEdit");
+  shortcutHelp.textContent = translate(locale, "shortcutHelp");
+  errorDismiss.setAttribute("aria-label", translate(locale, "dismissError"));
   placementLabel.textContent = translate(locale, "placement");
   placementClose.setAttribute("aria-label", translate(locale, "closePlacement"));
   pivotLabel.textContent = translate(locale, "referencePoint");
@@ -1803,10 +2206,50 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   editor?.setTransformSurfaceLabel(translate(locale, "transformSurfaceLabel"));
   editor?.setTransformPivotLabel(translate(locale, "transformPivotLabel"));
   renderSelectionMessage();
-  if (visibleError) errorMessage.textContent = translate(locale, visibleError);
+  if (visibleError) errorText.textContent = translate(locale, visibleError);
   if (visibleStatus) statusMessage.textContent = translate(locale, visibleStatus);
   renderMode();
   renderState();
+}
+
+function canvasWorkspaceCopy(): CanvasWorkspaceCopy {
+  return {
+    workspaceLabel: translate(activeLocale, "canvasTitle"),
+    previewLabel: translate(activeLocale, "canvasPreview"),
+    fitLabel: translate(activeLocale, "canvasFit"),
+    back: translate(activeLocale, "canvasBack"),
+    title: translate(activeLocale, "canvasTitle"),
+    addVariant: translate(activeLocale, "addCanvasVariant"),
+    removeVariant: translate(activeLocale, "removeCanvasVariant"),
+    width: translate(activeLocale, "rectifyWidth"),
+    height: translate(activeLocale, "rectifyHeight"),
+    contain: translate(activeLocale, "fitContain"),
+    cover: translate(activeLocale, "fitCover"),
+    anchor: translate(activeLocale, "canvasAnchor"),
+    background: translate(activeLocale, "canvasBackground"),
+    transparent: translate(activeLocale, "transparent"),
+    solid: translate(activeLocale, "solidColor"),
+    reset: translate(activeLocale, "reset"),
+    apply: translate(activeLocale, "apply"),
+    applyVariants: translate(activeLocale, "applyCanvasVariants"),
+    replace: translate(activeLocale, "replace"),
+    applyNew: translate(activeLocale, "applyAsCopy"),
+    planning: translate(activeLocale, "canvasPlanning"),
+    applying: translate(activeLocale, "applying"),
+    applied: translate(activeLocale, "canvasApplied"),
+    invalid: translate(activeLocale, "invalidCanvas"),
+    anchors: [
+      translate(activeLocale, "cornerTopLeft"),
+      translate(activeLocale, "pivotTop"),
+      translate(activeLocale, "cornerTopRight"),
+      translate(activeLocale, "pivotLeft"),
+      translate(activeLocale, "pivotCenter"),
+      translate(activeLocale, "pivotRight"),
+      translate(activeLocale, "cornerBottomLeft"),
+      translate(activeLocale, "pivotBottom"),
+      translate(activeLocale, "cornerBottomRight"),
+    ],
+  };
 }
 
 function localizeIconAction(button: HTMLButtonElement, label: string): void {
@@ -1827,7 +2270,11 @@ function localizedCornerLabel(
   };
   return translate(
     activeLocale,
-    userMessage(distortMode === "perspective" ? "cornerLabelPerspective" : "cornerLabelFree", {
+    userMessage(editorMode === "rectify"
+      ? "cornerLabel"
+      : distortMode === "perspective"
+        ? "cornerLabelPerspective"
+        : "cornerLabelFree", {
       corner: translate(activeLocale, cornerKeys[corner]),
       x: formatPercent(activeLocale, point.x),
       y: formatPercent(activeLocale, point.y),
@@ -1869,6 +2316,10 @@ function renderSelectionMessage(): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
+  if (productWorkspace.current() === "canvas") {
+    canvasWorkspace.handleKeydown(event);
+    return;
+  }
   // Popovers register first and prevent the keys they own. Do not reinterpret
   // their Escape/navigation keys as editor-wide cancel or zoom commands after
   // the popover has already closed itself.
@@ -1884,12 +2335,13 @@ function handleKeydown(event: KeyboardEvent): void {
     metaKey: event.metaKey,
     ctrlKey: event.ctrlKey,
   };
-  if (shouldUndoInPlugin({ ...shortcut, phase })) {
+  const targetEditsText = targetOwnsTextEditingKey(event.target);
+  if (!targetEditsText && shouldUndoInPlugin({ ...shortcut, phase })) {
     event.preventDefault();
     void stepHistory("undo");
     return;
   }
-  if (shouldRedoInPlugin({ ...shortcut, phase })) {
+  if (!targetEditsText && shouldRedoInPlugin({ ...shortcut, phase })) {
     event.preventDefault();
     void stepHistory("redo");
     return;
@@ -1917,7 +2369,7 @@ function handleKeydown(event: KeyboardEvent): void {
     key: event.key,
     metaKey: event.metaKey,
     ctrlKey: event.ctrlKey,
-    targetOwnsKey,
+    targetOwnsKey: targetEditsText,
   });
   if (zoomCommand) {
     event.preventDefault();
@@ -1950,10 +2402,12 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 function handleKeyUp(event: KeyboardEvent): void {
+  if (productWorkspace.current() === "canvas") return;
   if (event.key === " ") viewport?.setPanActive(false);
 }
 
 function releasePreviewPan(): void {
+  if (productWorkspace.current() === "canvas") return;
   viewport?.setPanActive(false);
 }
 
@@ -1961,6 +2415,13 @@ function targetOwnsSessionKey(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     Boolean(target.closest("input, textarea, select, button:not(.worldbend-editor__handle)"))
+  );
+}
+
+function targetOwnsTextEditingKey(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
   );
 }
 
@@ -2023,6 +2484,7 @@ window.addEventListener(
     cancelSourceRasterRequests(userMessage("selectionChanged"));
     viewport?.dispose();
     editor?.dispose();
+    canvasWorkspace.dispose();
     window.removeEventListener("blur", releasePreviewPan);
   },
   { once: true },

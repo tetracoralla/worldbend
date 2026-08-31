@@ -62,6 +62,23 @@ export async function writeFigmaLegalMaterial({ destination }) {
   });
 }
 
+export async function writeComfyLegalMaterial({ destination }) {
+  const target = await currentRustHostTarget();
+  const safeTarget = safeSegment(target);
+  await writeCargoLegalMaterial({
+    destination,
+    target,
+    rootPackageNames: ["worldbend-cli"],
+    artifactName: `Worldbend ComfyUI local node pack (${target})`,
+    documentName: `worldbend-comfyui-${safeTarget}`,
+    sbomFile: `worldbend-comfyui-${safeTarget}.spdx.json`,
+    noticeIntroduction:
+      `This ${target} ComfyUI local node pack bundles the native Worldbend CLI built from locked Rust crates.`,
+    noticeClosure:
+      `the locked ${target} non-dev Cargo dependency closure of \`worldbend-cli\``,
+  });
+}
+
 async function writeCargoLegalMaterial({
   destination,
   target,
@@ -285,6 +302,19 @@ function normalizeSpdx(license) {
 
 function comparePackage(left, right) {
   return left.name.localeCompare(right.name) || left.version.localeCompare(right.version);
+}
+
+async function currentRustHostTarget() {
+  const verboseVersion = await run("rustc", ["-vV"]);
+  const host = verboseVersion
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("host: "))
+    ?.slice("host: ".length)
+    .trim();
+  if (!host || !/^[A-Za-z0-9._-]+$/.test(host)) {
+    throw new Error(`Could not determine the current Rust host target: ${host}`);
+  }
+  return host;
 }
 
 function run(command, args) {

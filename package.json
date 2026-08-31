@@ -8,9 +8,11 @@
   "scripts": {
     "bootstrap:wasm": "cargo install wasm-bindgen-cli --version 0.2.127 --root .tools/wasm-bindgen && rustup target add wasm32-unknown-unknown",
     "build:wasm": "node scripts/build-wasm.mjs",
+    "build:wasm:figma": "node scripts/build-wasm.mjs --profile=figma",
     "build:web:package": "pnpm --filter @worldbend/web build",
     "build:web": "pnpm build:wasm && pnpm build:web:package",
-    "build:figma:entries": "pnpm --filter @worldbend/figma build:entries",
+    "build:figma:entries": "pnpm build:wasm:figma && pnpm --filter @worldbend/figma build:entries",
+    "carrier:figma-runtime-check": "node scripts/figma-wasm-profile-smoke.mjs",
     "build:figma": "pnpm --filter @worldbend/figma build",
     "package:figma-designer": "pnpm build:figma && pnpm package:figma-designer:from-build",
     "package:figma-designer:from-build": "node scripts/package-figma-designer.mjs",
@@ -24,6 +26,8 @@
     "runtime:smoke": "node scripts/mcp-runtime-smoke.mjs",
     "performance:probe": "pnpm build:wasm && node --expose-gc scripts/performance-load-probe.mjs",
     "performance:smoke": "node --expose-gc scripts/performance-load-probe.mjs --iterations=20 --warmup=5 --json",
+    "test:comfyui": "node scripts/test-comfyui.mjs",
+    "package:comfyui-local": "node scripts/package-comfyui-local.mjs",
     "capability:check": "node capabilities/check-provider.mjs",
     "contract:generate": "node scripts/generate-web-contract.mjs",
     "contract:check": "node scripts/generate-web-contract.mjs --check",
@@ -31,9 +35,10 @@
     "test:web": "pnpm build:wasm && pnpm --filter @worldbend/web test",
     "test:figma": "pnpm build:web && pnpm --filter @worldbend/figma test",
     "test:scripts": "node --test scripts/*.test.mjs",
+    "carrier:compile-check": "cargo check --locked -p worldbend-wasm --no-default-features && cargo check --locked -p worldbend-cli --bin worldbend --no-default-features --features comfy",
     "test:ui": "pnpm build:web && pnpm --filter @worldbend/web test && pnpm --filter @worldbend/figma test",
     "test": "cargo test --workspace && pnpm test:scripts && pnpm test:ui",
-    "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm contract:check && pnpm test:scripts && pnpm test:ui && pnpm performance:smoke && pnpm typecheck && pnpm build:figma:entries && pnpm package:figma-designer:from-build && pnpm plugin:stage && pnpm plugin:validate && pnpm runtime:smoke && pnpm capability:check && node scripts/check-built-artifacts.mjs"
+    "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm carrier:compile-check && pnpm contract:check && pnpm test:scripts && pnpm test:ui && pnpm performance:smoke && pnpm typecheck && pnpm build:figma:entries && pnpm carrier:figma-runtime-check && pnpm package:figma-designer:from-build && pnpm plugin:stage && pnpm plugin:validate && pnpm runtime:smoke && pnpm capability:check && node scripts/check-built-artifacts.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "1.134.0",

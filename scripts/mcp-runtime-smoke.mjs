@@ -15,7 +15,11 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { loadCarrierProfiles } from "./carrier-profiles.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const carrierProfiles = await loadCarrierProfiles();
+const maxToolCatalogBytes = carrierProfiles.carriers.agent.package.maxToolCatalogBytes;
 const REQUEST_TIMEOUT_MS = 30_000;
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const pluginRootArgument = process.argv.indexOf("--plugin-root");
@@ -37,6 +41,8 @@ let fixtureRoot;
 let stagingRoot;
 let pixelSpec;
 let normalizedSpec;
+let rectifySpec;
+let canvasSetSpec;
 let mcpComposeResult;
 let mcpFlippedComposeResult;
 let mcpWarpComposeResult;
@@ -74,6 +80,8 @@ async function main() {
 
     pixelSpec = makePixelSpec(64, 64);
     normalizedSpec = makeNormalizedSpec();
+    rectifySpec = makeRectifySpec(2, 2);
+    canvasSetSpec = makeCanvasSetSpec();
     await writeFile(
       path.join(fixtureRoot, "pixel.projective.json"),
       JSON.stringify(pixelSpec),
@@ -81,6 +89,10 @@ async function main() {
     await writeFile(
       path.join(fixtureRoot, "normalized.projective.json"),
       JSON.stringify(normalizedSpec),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "rectify.projective.json"),
+      JSON.stringify(rectifySpec),
     );
 
     client = new StdioClient(mcp, ["--root", fixtureRoot]);
@@ -90,12 +102,14 @@ async function main() {
     await checkSolveAndStructuredErrors(client);
     await checkEveryToolRejectsUnknownFields(client);
     await checkInspectAndCssNegatives(client);
+    await checkRectification(client);
+    await checkCanvasRendering(client);
     await checkRenderLifecycle(client);
     await checkCancellationAndRecovery(client);
     await checkBoundedConcurrency(client);
     checkCliAdapter();
     console.log(
-      `Built CLI/MCP runtime smoke passed (tools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms)`,
+      `Built CLI/MCP runtime smoke passed (tools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms)`,
     );
   } finally {
     if (client) await client.close();
@@ -120,6 +134,17 @@ async function checkEveryToolRejectsUnknownFields(activeClient) {
       { destination: pixelSpec.destination, unexpected: true },
     ],
     ["worldbend.inspect", { spec: pixelSpec, unexpected: true }],
+    ["worldbend.rectify", { spec: rectifySpec, unexpected: true }],
+    [
+      "worldbend.canvas_render",
+      {
+        source: "source.png",
+        outputDirectory: "out/unknown-canvas",
+        dryRun: true,
+        spec: canvasSetSpec,
+        unexpected: true,
+      },
+    ],
     [
       "worldbend.render",
       {
@@ -127,6 +152,16 @@ async function checkEveryToolRejectsUnknownFields(activeClient) {
         output: "out/unknown.png",
         dryRun: true,
         spec: pixelSpec,
+        unexpected: true,
+      },
+    ],
+    [
+      "worldbend.rectify_render",
+      {
+        source: "source.png",
+        output: "out/unknown-rectify.png",
+        dryRun: true,
+        spec: rectifySpec,
         unexpected: true,
       },
     ],
@@ -154,17 +189,22 @@ async function checkToolCatalog(activeClient) {
   assert.deepEqual(
     response.result.tools.map((tool) => tool.name).sort(),
     [
+      "worldbend.canvas_render",
       "worldbend.compose",
       "worldbend.css",
       "worldbend.inspect",
+      "worldbend.rectify",
+      "worldbend.rectify_render",
       "worldbend.render",
       "worldbend.solve",
     ],
   );
-  // Deliberate 48 KiB ceiling for the five-tool catalog: descriptions are
-  // kept terse, but the budget must not sit within a few bytes of the actual
-  // size or any wording tweak breaks the smoke.
-  assert(response.wireBytes <= 48 * 1024, `tools/list is ${response.wireBytes} bytes`);
+  // The profile owns the catalog ceiling so packaging and runtime checks cannot
+  // silently drift apart.
+  assert(
+    response.wireBytes <= maxToolCatalogBytes,
+    `tools/list is ${response.wireBytes} bytes; budget is ${maxToolCatalogBytes}`,
+  );
   metrics.toolsListBytes = response.wireBytes;
 
   const tools = new Map(response.result.tools.map((tool) => [tool.name, tool]));
@@ -190,6 +230,56 @@ async function checkToolCatalog(activeClient) {
   const size = tools.get("worldbend.inspect").inputSchema.$defs.Size;
   assert.equal(size.properties.width.exclusiveMinimum, 0);
   assert.equal(size.properties.height.exclusiveMinimum, 0);
+
+  const rectifyInput = tools.get("worldbend.rectify").inputSchema;
+  const sourcePlane = rectifyInput.$defs.SourcePlane;
+  assert.equal(sourcePlane.oneOf.length, 2);
+  const normalizedSource = sourcePlane.oneOf.find(
+    (variant) => variant.properties.space.const === "normalized",
+  );
+  assert.deepEqual(Object.keys(normalizedSource.properties).sort(), ["quad", "space"]);
+  assert.equal(normalizedSource.additionalProperties, false);
+  const pixelSize = rectifyInput.$defs.PixelSize;
+  assert.equal(pixelSize.properties.width.minimum, 1);
+  assert.equal(pixelSize.properties.height.minimum, 1);
+  const rectifyRenderInput = tools.get("worldbend.rectify_render").inputSchema;
+  assert.equal(rectifyRenderInput.properties.options.$ref.endsWith("RectifyRenderOptionsInput"), true);
+  assert.equal(JSON.stringify(rectifyRenderInput).includes('"canvas"'), false);
+  assert.equal(JSON.stringify(rectifyRenderInput).includes('"targetSize"'), false);
+
+  const canvasInput = tools.get("worldbend.canvas_render").inputSchema;
+  assert.deepEqual(canvasInput.oneOf[0].required, ["source", "outputDirectory", "spec"]);
+  assert.deepEqual(canvasInput.oneOf[0].not.anyOf, [
+    { required: ["plan"] },
+    { required: ["sampling"] },
+    { required: ["outsideFill"] },
+  ]);
+  assert.deepEqual(canvasInput.oneOf[1].required, [
+    "source",
+    "outputDirectory",
+    "plan",
+    "sampling",
+    "outsideFill",
+  ]);
+  assert.deepEqual(canvasInput.oneOf[1].not.anyOf, [
+    { required: ["spec"] },
+    { required: ["quality"] },
+  ]);
+  assert.equal(canvasInput.additionalProperties, false);
+  assert.equal(canvasInput.$defs.CanvasSetSpec.properties.variants.minItems, 1);
+  assert.equal(canvasInput.$defs.CanvasSetSpec.properties.variants.maxItems, 16);
+  assert.equal(canvasInput.$defs.CanvasVariant.properties.id.maxLength, 64);
+  assert.equal(
+    canvasInput.$defs.CanvasVariant.properties.id.pattern,
+    "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+  );
+  assert.equal(canvasInput.$defs.NormalizedAnchor.properties.x.minimum, 0);
+  assert.equal(canvasInput.$defs.NormalizedAnchor.properties.x.maximum, 1);
+  assert.equal(canvasInput.$defs.NormalizedAnchor.properties.y.minimum, 0);
+  assert.equal(canvasInput.$defs.NormalizedAnchor.properties.y.maximum, 1);
+  assert.equal(tools.get("worldbend.canvas_render").annotations.readOnlyHint, false);
+  assert.equal(tools.get("worldbend.canvas_render").annotations.destructiveHint, false);
+  assert.equal(tools.get("worldbend.canvas_render").annotations.idempotentHint, false);
 
   const renderLimits = tools.get("worldbend.render").inputSchema.$defs.RenderLimitsInput;
   assert.equal(renderLimits.properties.maxWidth.maximum, 8192);
@@ -373,7 +463,7 @@ async function checkSolveAndStructuredErrors(activeClient) {
   assert.equal(solved.result.isError, false);
   assert.equal(solved.result.structuredContent.ok, true);
   assert.equal(solved.result.structuredContent.result.spec.schema, "worldbend.transform");
-  assert.equal(solved.result.content[0].text, "Worldbend operation completed.");
+  assert.equal(solved.result.content[0].text, "Projective plane solved and validated.");
   assert(solved.wireBytes < 256 * 1024);
   metrics.solveResponseBytes = solved.wireBytes;
   mcpSolveResult = solved.result.structuredContent.result;
@@ -422,6 +512,141 @@ async function checkInspectAndCssNegatives(activeClient) {
     }),
     "E_SCHEMA",
   );
+}
+
+async function checkRectification(activeClient) {
+  const planned = await activeClient.callTool("worldbend.rectify", { spec: rectifySpec });
+  assert.equal(planned.result.isError, false);
+  const plan = planned.result.structuredContent.result;
+  assert.equal(plan.spec.schema, "worldbend.rectify");
+  assert.equal(plan.outputSpec.schema, "worldbend.transform");
+  assert.deepEqual(plan.outputQuad, {
+    tl: { x: 0, y: 0 },
+    tr: { x: 2, y: 0 },
+    br: { x: 2, y: 2 },
+    bl: { x: 0, y: 2 },
+  });
+
+  const dryRun = await activeClient.callTool("worldbend.rectify_render", {
+    source: "source.png",
+    output: "out/rectify-dry.png",
+    dryRun: true,
+    spec: rectifySpec,
+  });
+  assert.equal(dryRun.result.isError, false);
+  const dryRunResult = dryRun.result.structuredContent.result;
+  assert.equal(dryRunResult.status, "ready");
+  assert.equal(dryRunResult.dryRun, true);
+  assert.equal(dryRunResult.evidence.outputWidth, 2);
+  assert.equal(dryRunResult.evidence.outputHeight, 2);
+  assert.equal(await exists(path.join(fixtureRoot, "out", "rectify-dry.png")), false);
+
+  const written = await activeClient.callTool("worldbend.rectify_render", {
+    source: "source.png",
+    output: "out/rectified.png",
+    spec: rectifySpec,
+  });
+  assert.equal(written.result.isError, false);
+  assert.equal(written.result.structuredContent.result.status, "written");
+  const bytes = await readFile(path.join(fixtureRoot, "out", "rectified.png"));
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(written.result.structuredContent.result.evidence.outputSha256, sha256(bytes));
+  assert.equal(
+    dryRunResult.evidence.outputSha256,
+    written.result.structuredContent.result.evidence.outputSha256,
+  );
+  assert.deepEqual(await stagingDirectories(), []);
+}
+
+async function checkCanvasRendering(activeClient) {
+  const dryRun = await activeClient.callTool("worldbend.canvas_render", {
+    source: "source.png",
+    outputDirectory: "out/canvas-dry",
+    spec: canvasSetSpec,
+    quality: "standard",
+    dryRun: true,
+  });
+  assert.equal(dryRun.result.isError, false);
+  assert.equal(dryRun.result.structuredContent.ok, true);
+  const dryResult = dryRun.result.structuredContent.result;
+  assert.equal(dryResult.status, "ready");
+  assert.equal(dryResult.dryRun, true);
+  assert.equal(dryResult.outputDirectory, "out/canvas-dry");
+  assert.equal(dryResult.plan.schema, "worldbend.canvas-set-plan");
+  assert.deepEqual(dryResult.plan.sourceSize, { width: 1, height: 1 });
+  assert.deepEqual(dryResult.items.map((item) => item.id), ["square", "wide"]);
+  assert.deepEqual(
+    dryResult.items.map((item) => item.output),
+    ["out/canvas-dry/square.png", "out/canvas-dry/wide.png"],
+  );
+  assert.deepEqual(
+    dryResult.items.map((item) => [item.width, item.height]),
+    [[2, 2], [3, 2]],
+  );
+  assert(dryResult.items.every((item) => item.bytes > 0 && /^[0-9a-f]{64}$/.test(item.sha256)));
+  assert.equal(await exists(path.join(fixtureRoot, "out", "canvas-dry")), false);
+  assert(dryRun.wireBytes < 256 * 1024);
+  metrics.canvasResponseBytes = dryRun.wireBytes;
+
+  const written = await activeClient.callTool("worldbend.canvas_render", {
+    source: "source.png",
+    outputDirectory: "out/canvas-written",
+    spec: canvasSetSpec,
+    quality: "standard",
+  });
+  assert.equal(written.result.isError, false);
+  const writtenResult = written.result.structuredContent.result;
+  assert.equal(writtenResult.status, "written");
+  assert.equal(writtenResult.dryRun, false);
+  assert.deepEqual((await readdir(path.join(fixtureRoot, "out", "canvas-written"))).sort(), [
+    "square.png",
+    "wide.png",
+  ]);
+  for (const item of writtenResult.items) {
+    const bytes = await readFile(path.join(fixtureRoot, item.output));
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal(item.sha256, sha256(bytes));
+    assert.equal(item.bytes, bytes.byteLength);
+  }
+
+  const replay = await activeClient.callTool("worldbend.canvas_render", {
+    source: "source.png",
+    outputDirectory: "out/canvas-replay",
+    plan: dryResult.plan,
+    sampling: "linear",
+    outsideFill: { kind: "transparent" },
+  });
+  assert.equal(replay.result.isError, false);
+  const replayResult = replay.result.structuredContent.result;
+  assert.deepEqual(replayResult.plan, dryResult.plan);
+  assert.deepEqual(replayResult.items.map((item) => item.id), ["square", "wide"]);
+  assert.deepEqual(
+    replayResult.items.map((item) => item.sha256),
+    writtenResult.items.map((item) => item.sha256),
+  );
+
+  expectToolError(
+    await activeClient.callTool("worldbend.canvas_render", {
+      source: "source.png",
+      outputDirectory: "out/canvas-written",
+      spec: canvasSetSpec,
+    }),
+    "E_DESTINATION_EXISTS",
+  );
+  assert.deepEqual((await readdir(path.join(fixtureRoot, "out", "canvas-written"))).sort(), [
+    "square.png",
+    "wide.png",
+  ]);
+  expectToolError(
+    await activeClient.callTool("worldbend.canvas_render", {
+      source: "source.png",
+      outputDirectory: "../escaped-canvas",
+      spec: canvasSetSpec,
+      dryRun: true,
+    }),
+    "E_PATH_OUTSIDE_ROOT",
+  );
+  assert.deepEqual(await stagingDirectories(), []);
 }
 
 async function checkRenderLifecycle(activeClient) {
@@ -593,8 +818,56 @@ async function checkCancellationAndRecovery(activeClient) {
     );
   }
   assert.equal(await exists(path.join(fixtureRoot, "out", "cancelled.png")), false);
+
+  const canvasRequest = activeClient.beginRequest("tools/call", {
+    name: "worldbend.canvas_render",
+    arguments: {
+      source: "source.png",
+      outputDirectory: "out/cancelled-canvas",
+      dryRun: true,
+      quality: "high",
+      spec: {
+        schema: "worldbend.canvas-set",
+        version: "0.1",
+        variants: [
+          {
+            id: "large",
+            operation: { kind: "stretch", output: { width: 8000, height: 4000 } },
+          },
+        ],
+      },
+    },
+  });
+  const canvasOutcomePromise = canvasRequest.promise.then(
+    (response) => ({ kind: "response", response }),
+    (error) => ({ kind: "error", error }),
+  );
+  await waitFor(async () => (await canvasStagingDirectories()).length > 0, 2_000);
+  const canvasCancelledAt = Date.now();
+  activeClient.notify("notifications/cancelled", {
+    requestId: canvasRequest.id,
+    reason: "runtime smoke Canvas cancellation",
+  });
+  await waitFor(async () => (await canvasStagingDirectories()).length === 0, 10_000);
+  metrics.canvasCancelCleanupMs = Date.now() - canvasCancelledAt;
+  assert(
+    metrics.canvasCancelCleanupMs < 1_500,
+    `Canvas cancellation cleanup took ${metrics.canvasCancelCleanupMs}ms`,
+  );
+  const canvasOutcome = await Promise.race([
+    canvasOutcomePromise,
+    new Promise((resolve) => setTimeout(() => resolve({ kind: "noResponse" }), 100)),
+  ]);
+  if (canvasOutcome.kind === "response") {
+    assert.equal(
+      canvasOutcome.response.result?.isError,
+      true,
+      "cancelled Canvas Set unexpectedly returned a successful tool response",
+    );
+  }
+  assert.equal(await exists(path.join(fixtureRoot, "out", "cancelled-canvas")), false);
   const recovery = await activeClient.request("tools/list", {});
-  assert.equal(recovery.result.tools.length, 5);
+  assert.equal(recovery.result.tools.length, 8);
 }
 
 async function checkBoundedConcurrency(activeClient) {
@@ -612,7 +885,10 @@ async function checkBoundedConcurrency(activeClient) {
         source: "source.png",
         output: `out/concurrent-${index}.png`,
         dryRun: true,
-        spec: makePixelSpec(5000, 5000),
+        // Keep two observable execution waves under the fixed 20 s whole-call
+        // deadline on the current development machine. The independent 32 MiP
+        // cancellation probe above still exercises the maximum render size.
+        spec: makePixelSpec(3000, 3000),
       }),
     );
     await waitFor(async () => (await stagingDirectories()).length === 2, 2_000);
@@ -622,7 +898,7 @@ async function checkBoundedConcurrency(activeClient) {
           source: "source.png",
           output: `out/overload-${index}.png`,
           dryRun: true,
-          spec: makePixelSpec(5000, 5000),
+          spec: makePixelSpec(3000, 3000),
         }),
       ),
     );
@@ -869,9 +1145,59 @@ function makeNormalizedSpec() {
   };
 }
 
+function makeRectifySpec(width, height) {
+  return {
+    schema: "worldbend.rectify",
+    version: "0.1",
+    source: {
+      space: "normalized",
+      quad: {
+        tl: { x: 0, y: 0 },
+        tr: { x: 1, y: 0 },
+        br: { x: 1, y: 1 },
+        bl: { x: 0, y: 1 },
+      },
+    },
+    output: { width, height },
+  };
+}
+
+function makeCanvasSetSpec() {
+  return {
+    schema: "worldbend.canvas-set",
+    version: "0.1",
+    variants: [
+      {
+        id: "square",
+        operation: {
+          kind: "contain",
+          output: { width: 2, height: 2 },
+          anchor: { x: 0.5, y: 0.5 },
+          background: { kind: "transparent" },
+        },
+      },
+      {
+        id: "wide",
+        operation: {
+          kind: "cover",
+          output: { width: 3, height: 2 },
+          anchor: { x: 0, y: 0 },
+          background: { kind: "color", space: "srgb8", rgba: [12, 34, 56, 255] },
+        },
+      },
+    ],
+  };
+}
+
 async function stagingDirectories() {
   return (await readdir(stagingRoot)).filter((name) =>
     name.startsWith(".worldbend-stage-"),
+  );
+}
+
+async function canvasStagingDirectories() {
+  return (await readdir(stagingRoot)).filter((name) =>
+    name.startsWith(".worldbend-canvas-stage-"),
   );
 }
 

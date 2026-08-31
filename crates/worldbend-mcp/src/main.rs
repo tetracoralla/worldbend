@@ -15,6 +15,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
 use std::{
+    fs,
     io::{Read, Write},
     path::PathBuf,
     process::{ExitStatus, Stdio},
@@ -29,20 +30,29 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use worker_limits::apply_worker_self_limits;
-use worldbend_agent_fs::{WorkspaceRoot, copy_source_to_private_staging};
+use worldbend_agent_fs::{
+    DirectoryOutputTarget, OutputTarget, StagedDirectoryCommit, WorkspaceRoot,
+    copy_source_to_private_staging,
+};
 use worldbend_core::{
-    AffineComposition, Content, Destination, ErrorCode, InspectOutput, Size, SolveOutput,
-    TransformError, TransformRecipe, TransformResult, TransformSpec, bounded_text, compose_affine,
-    emit_css_transform, inspect_spec, solve_spec,
+    AffineComposition, CanvasBackground, CanvasSetPlan, CanvasSetSpec, Content, Destination,
+    ErrorCode, InspectOutput, RectifyPlan, RectifySpec, Size, SolveOutput, TransformError,
+    TransformRecipe, TransformResult, TransformSpec, bounded_text, compose_affine,
+    emit_css_transform, inspect_spec, rectify_plane, solve_spec,
 };
 use worldbend_render::{
-    CanvasMode, DEFAULT_MAX_AXIS, DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus,
-    RenderLimits, RenderOptions, SamplingQuality, render_file_with_source_sha256,
+    CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult,
+    CanvasSetProgram, CanvasSetRenderOptions, CanvasSetRenderStatus, DEFAULT_MAX_AXIS,
+    DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus, RectifyFileRenderResult,
+    RectifyRenderOptions, RenderLimits, RenderOptions, SamplingQuality,
+    rectify_file_with_source_sha256, render_canvas_set_file, render_file_with_source_sha256,
 };
 
 const MAX_WORKER_REQUEST_BYTES: usize = 1024 * 1024;
 const MAX_WORKER_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_TOOL_RESPONSE_BYTES: usize = 256 * 1024;
+#[cfg(test)]
+const MAX_TOOL_CATALOG_BYTES: usize = 81_920;
 const MAX_TOOL_ARGUMENT_BYTES: usize = 1024 * 1024;
 const MAX_SCHEMA_ERROR_CHARS: usize = 1024;
 const MAX_CONCURRENT_RENDERS: usize = 2;
@@ -57,6 +67,11 @@ const MCP_MAX_AXIS: u32 = DEFAULT_MAX_AXIS;
 // per-worker ceiling so size-legal requests fail fast with E_OUTPUT_LIMIT
 // instead of always dying later under E_MEMORY.
 const MCP_MAX_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_CANVAS_SET_PIXELS: u64 = 32 * 1024 * 1024;
+// Agent Canvas output is an atomic set, so bound the sum of its encoded PNGs
+// before same-parent staging or commit. This is intentionally separate from
+// the pixel and 256 KiB response ceilings.
+const MCP_MAX_CANVAS_ENCODED_BYTES: u64 = 128 * 1024 * 1024;
 const MCP_MAX_SOURCE_BYTES: u64 = DEFAULT_MAX_SOURCE_BYTES;
 
 #[derive(Debug, Parser)]
@@ -118,22 +133,87 @@ where
     /// it. Shared by the final response path and the render preflight so both
     /// measure the same framing.
     fn build_complete_result(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let summary = match self {
-            Self::Success { .. } => "Worldbend operation completed.".to_owned(),
-            Self::Failure { error, .. } => format!(
-                "{}: {}",
-                error.code.as_str(),
-                bounded_text(&error.message, MAX_SCHEMA_ERROR_CHARS)
-            ),
-        };
         let value = serde_json::to_value(self).map_err(|error| {
             rmcp::ErrorData::internal_error(
                 format!("failed to serialize Worldbend tool result: {error}"),
                 None,
             )
         })?;
+        let summary = match self {
+            Self::Success { .. } => success_summary(&value["result"]),
+            Self::Failure { error, .. } => format!(
+                "{}: {}",
+                error.code.as_str(),
+                bounded_text(&error.message, MAX_SCHEMA_ERROR_CHARS)
+            ),
+        };
         Ok(build_call_tool_result(value, summary, self.is_error()))
     }
+}
+
+fn success_summary(result: &Value) -> String {
+    if let (Some(status), Some(output), Some(evidence)) = (
+        result.get("status").and_then(Value::as_str),
+        result.get("output").and_then(Value::as_str),
+        result.get("evidence"),
+    ) {
+        let width = evidence.get("outputWidth").and_then(Value::as_u64);
+        let height = evidence.get("outputHeight").and_then(Value::as_u64);
+        let bytes = result.get("bytes").and_then(Value::as_u64);
+        if let (Some(width), Some(height), Some(bytes)) = (width, height, bytes) {
+            return bounded_text(
+                &format!("Render {status}: {output} ({width}x{height}, {bytes} bytes)."),
+                MAX_SCHEMA_ERROR_CHARS,
+            );
+        }
+    }
+    if let (Some(status), Some(directory), Some(items)) = (
+        result.get("status").and_then(Value::as_str),
+        result.get("outputDirectory").and_then(Value::as_str),
+        result.get("items").and_then(Value::as_array),
+    ) {
+        return bounded_text(
+            &format!(
+                "Canvas Set {status}: {} ordered output{} in {directory}.",
+                items.len(),
+                if items.len() == 1 { "" } else { "s" }
+            ),
+            MAX_SCHEMA_ERROR_CHARS,
+        );
+    }
+    if let (Some(width), Some(height)) = (
+        result.get("width").and_then(Value::as_str),
+        result.get("height").and_then(Value::as_str),
+    ) {
+        return format!("CSS transform ready for a {width} x {height} element.");
+    }
+    if let Some(output) = result.get("outputSpec")
+        && let Some(reference) = output
+            .get("destination")
+            .and_then(|value| value.get("reference"))
+        && let (Some(width), Some(height)) = (
+            reference.get("width").and_then(Value::as_f64),
+            reference.get("height").and_then(Value::as_f64),
+        )
+    {
+        return format!("Rectification plan ready for {width}x{height} output.");
+    }
+    if let Some(size) = result.get("canvas").and_then(|value| value.get("size"))
+        && let (Some(width), Some(height)) = (
+            size.get("width").and_then(Value::as_f64),
+            size.get("height").and_then(Value::as_f64),
+        )
+    {
+        return format!("Transform composed into a {width}x{height} canvas.");
+    }
+    if result.get("resolvedDestination").is_some() {
+        return if result.get("spec").is_some() {
+            "Projective plane solved and validated.".to_owned()
+        } else {
+            "TransformSpec inspected and validated.".to_owned()
+        };
+    }
+    "Worldbend operation completed.".to_owned()
 }
 
 impl<T> IntoCallToolResult for ToolEnvelope<T>
@@ -206,14 +286,19 @@ struct SolveInput {
     #[serde(default)]
     content: Content,
     #[serde(default)]
+    #[schemars(
+        description = "Required to resolve normalized coordinates; omit for pixel coordinates"
+    )]
     target_size: Option<Size>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct ComposeInput {
+    #[schemars(description = "Saved worldbend.transform document to compose")]
     spec: TransformSpec,
     #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
     target_size: Option<Size>,
     #[serde(default)]
     transform: TransformRecipe,
@@ -222,8 +307,10 @@ struct ComposeInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct InspectInput {
+    #[schemars(description = "Saved worldbend.transform document to validate and inspect")]
     spec: TransformSpec,
     #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
     target_size: Option<Size>,
 }
 
@@ -238,17 +325,99 @@ struct RenderInput {
     #[serde(default)]
     options: RenderOptionsInput,
     #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
     overwrite: bool,
     #[serde(default)]
+    #[schemars(
+        description = "Run solve, render, encode, and destination preflight without publishing"
+    )]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+enum OptionalInput<T> {
+    #[default]
+    Missing,
+    Value(T),
+}
+
+impl<'de, T> Deserialize<'de> for OptionalInput<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Self::Value)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[schemars(
+    description = "Provide exactly one of spec or plan; plan requires sampling and outsideFill."
+)]
+struct CanvasRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    #[schemars(with = "CanvasSetSpec")]
+    spec: OptionalInput<CanvasSetSpec>,
+    #[serde(default)]
+    #[schemars(with = "CanvasSetPlan")]
+    plan: OptionalInput<CanvasSetPlan>,
+    #[serde(default)]
+    #[schemars(with = "SamplingQuality")]
+    quality: OptionalInput<SamplingQuality>,
+    #[serde(default)]
+    #[schemars(with = "CanvasReplaySampling")]
+    sampling: OptionalInput<CanvasReplaySampling>,
+    #[serde(default)]
+    #[schemars(with = "CanvasBackground")]
+    outside_fill: OptionalInput<CanvasBackground>,
+    #[serde(default)]
+    #[schemars(description = "Render and preflight the Canvas Set without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RectifyInput {
+    spec: RectifySpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RectifyRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    spec: RectifySpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: RectifyRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(
+        description = "Run rectify, render, encode, and destination preflight without publishing"
+    )]
     dry_run: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct CssInput {
+    #[schemars(description = "worldbend.transform document to express as CSS matrix3d")]
     spec: TransformSpec,
+    #[schemars(description = "Untransformed element border-box size in CSS pixels")]
     element_size: Size,
     #[serde(default)]
+    #[schemars(description = "Required for normalized specs; omit for pixel-space specs")]
     destination_size: Option<Size>,
 }
 
@@ -341,6 +510,7 @@ struct RenderOptionsInput {
     #[serde(default)]
     canvas: CanvasMode,
     #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
     target_size: Option<Size>,
     #[serde(default)]
     limits: RenderLimitsInput,
@@ -370,6 +540,35 @@ impl TryFrom<RenderOptionsInput> for RenderOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RectifyRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for RectifyRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<RectifyRenderOptionsInput> for RectifyRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: RectifyRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
 #[derive(Debug)]
 struct RenderRequest {
     source: String,
@@ -378,6 +577,65 @@ struct RenderRequest {
     options: RenderOptions,
     overwrite: bool,
     dry_run: bool,
+}
+
+#[derive(Debug)]
+struct RectifyRenderRequest {
+    source: String,
+    spec: RectifySpec,
+    output: String,
+    options: RectifyRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum CanvasWorkerProgram {
+    Spec {
+        spec: CanvasSetSpec,
+        quality: SamplingQuality,
+    },
+    Plan {
+        plan: CanvasSetPlan,
+        sampling: CanvasReplaySampling,
+        outside_fill: CanvasBackground,
+    },
+}
+
+#[derive(Debug)]
+struct CanvasRenderRequest {
+    source: String,
+    output_directory: String,
+    program: CanvasWorkerProgram,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct PreparedDirectoryResult<T> {
+    result: T,
+    commit: Option<StagedDirectoryCommit>,
+}
+
+#[derive(Debug)]
+struct PreparedRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: RenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedRectifyRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: RectifyRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedCanvasRenderRequest {
+    source: std::fs::File,
+    output: DirectoryOutputTarget,
+    request: CanvasRenderRequest,
 }
 
 impl TryFrom<RenderInput> for RenderRequest {
@@ -392,6 +650,74 @@ impl TryFrom<RenderInput> for RenderRequest {
             overwrite: value.overwrite,
             dry_run: value.dry_run,
         })
+    }
+}
+
+impl TryFrom<RectifyRenderInput> for RectifyRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: RectifyRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<CanvasRenderInput> for CanvasRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: CanvasRenderInput) -> Result<Self, Self::Error> {
+        match (
+            value.spec,
+            value.plan,
+            value.quality,
+            value.sampling,
+            value.outside_fill,
+        ) {
+            (
+                OptionalInput::Value(spec),
+                OptionalInput::Missing,
+                quality,
+                OptionalInput::Missing,
+                OptionalInput::Missing,
+            ) => Ok(Self {
+                source: value.source,
+                output_directory: value.output_directory,
+                program: CanvasWorkerProgram::Spec {
+                    spec,
+                    quality: match quality {
+                        OptionalInput::Missing => SamplingQuality::default(),
+                        OptionalInput::Value(quality) => quality,
+                    },
+                },
+                dry_run: value.dry_run,
+            }),
+            (
+                OptionalInput::Missing,
+                OptionalInput::Value(plan),
+                OptionalInput::Missing,
+                OptionalInput::Value(sampling),
+                OptionalInput::Value(outside_fill),
+            ) => Ok(Self {
+                source: value.source,
+                output_directory: value.output_directory,
+                program: CanvasWorkerProgram::Plan {
+                    plan,
+                    sampling,
+                    outside_fill,
+                },
+                dry_run: value.dry_run,
+            }),
+            _ => Err(TransformError::new(
+                ErrorCode::Schema,
+                "canvas_render requires exactly one spec or plan; spec accepts only quality, while plan requires sampling and outsideFill",
+            )),
+        }
     }
 }
 
@@ -411,11 +737,23 @@ impl WorldbendServer {
         set_input_schema::<SolveInput>(&mut tool_router, "worldbend.solve");
         set_input_schema::<InspectInput>(&mut tool_router, "worldbend.inspect");
         set_input_schema::<RenderInput>(&mut tool_router, "worldbend.render");
+        set_input_schema::<RectifyInput>(&mut tool_router, "worldbend.rectify");
+        set_input_schema::<RectifyRenderInput>(&mut tool_router, "worldbend.rectify_render");
+        set_canvas_render_input_schema(&mut tool_router);
         set_input_schema::<CssInput>(&mut tool_router, "worldbend.css");
         set_output_schema::<ToolEnvelope<AffineComposition>>(&mut tool_router, "worldbend.compose");
         set_output_schema::<ToolEnvelope<SolveOutput>>(&mut tool_router, "worldbend.solve");
         set_output_schema::<ToolEnvelope<InspectOutput>>(&mut tool_router, "worldbend.inspect");
         set_output_schema::<ToolEnvelope<FileRenderResult>>(&mut tool_router, "worldbend.render");
+        set_output_schema::<ToolEnvelope<RectifyPlan>>(&mut tool_router, "worldbend.rectify");
+        set_output_schema::<ToolEnvelope<RectifyFileRenderResult>>(
+            &mut tool_router,
+            "worldbend.rectify_render",
+        );
+        set_output_schema::<ToolEnvelope<CanvasSetFileRenderResult>>(
+            &mut tool_router,
+            "worldbend.canvas_render",
+        );
         set_output_schema::<ToolEnvelope<worldbend_core::CssTransform>>(
             &mut tool_router,
             "worldbend.css",
@@ -524,22 +862,163 @@ impl WorldbendServer {
                 ErrorCode::PathOutsideRoot,
                 "render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
             )),
-            (Some(root), Ok(input)) => match self.render_admissions.clone().try_acquire_owned() {
-                Err(_) => Err(TransformError::new(
-                    ErrorCode::Capacity,
-                    "render capacity is full; retry after current work completes",
-                )),
-                Ok(admission) => {
-                    let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
-                    execute_bounded_render(
-                        admission,
-                        self.render_slots.clone(),
-                        remaining,
-                        cancellation,
-                        run_render_worker(root, input),
+            (Some(root), Ok(input)) => match prepare_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
                     )
-                    .await
-                }
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_render_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Solve an explicit source-plane quadrilateral into a declared output rectangle.
+    #[tool(
+        name = "worldbend.rectify",
+        description = "Validate and solve one explicit source quadrilateral into an explicit integer output rectangle. This deterministic operation does not detect a plane, infer aspect ratio, inspect pixels, or estimate a camera.",
+        annotations(
+            title = "Plan plane rectification",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn rectify(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<RectifyPlan> {
+        let result = parse_tool_input::<RectifyInput>(Value::Object(arguments))
+            .and_then(|input| rectify_plane(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Render an explicitly selected source plane through a bounded isolated worker.
+    #[tool(
+        name = "worldbend.rectify_render",
+        description = "Flatten one caller-specified source quadrilateral into its declared PNG output rectangle. Paths stay inside the granted workspace; no plane detection, aspect inference, or camera estimation is performed. dryRun renders and encodes without publishing.",
+        annotations(
+            title = "Render plane rectification",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn rectify_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<RectifyFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<RectifyRenderInput>(Value::Object(arguments))
+            .and_then(RectifyRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "rectify_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_rectify_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_rectify_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Render one ordered Canvas Set atomically through a bounded isolated worker.
+    #[tool(
+        name = "worldbend.canvas_render",
+        description = "Render one source into an ordered Canvas Set from either an explicit spec or a resolved plan. Every variant reads the original source. The new output directory is committed atomically; dryRun fully renders and hashes without publishing. Plan replay requires explicit sampling and outside fill.",
+        annotations(
+            title = "Render Canvas Set",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn canvas_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<CanvasSetFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<CanvasRenderInput>(Value::Object(arguments))
+            .and_then(CanvasRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "canvas_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_canvas_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_canvas(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_canvas_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
             },
         };
         ToolEnvelope::from_result(result)
@@ -548,7 +1027,7 @@ impl WorldbendServer {
     /// Emit CSS matrix3d values for a live image, video, iframe, canvas, or DOM element.
     #[tool(
         name = "worldbend.css",
-        description = "Emit a frontend-native CSS matrix3d transform for a live element using the same explicit TransformSpec plane geometry. Non-projective Warp specs are rejected; render pixels or use the WebGL mesh path instead.",
+        description = "Emit CSS matrix3d for a TransformSpec plane. Supply destinationSize for normalized specs. Non-zero Warp requires raster or WebGL output.",
         annotations(
             title = "Emit projective CSS",
             read_only_hint = true,
@@ -583,7 +1062,7 @@ impl ServerHandler for WorldbendServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("worldbend", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "Use one direct Worldbend tool for semantic transform composition, explicit plane geometry, bounded common Warp presets, inspection, render, or CSS. Plane detection and custom mesh warp are not provided. Corner order is always TL, TR, BR, BL.",
+                "Use one direct Worldbend tool for semantic transform composition, explicit destination geometry, explicit source-plane rectification, ordered Canvas Set rendering, bounded common Warp presets, inspection, render, or CSS. Canvas operations and variants are caller-chosen; Worldbend does not choose crops or infer content. Rectification requires caller-supplied source corners and output dimensions. Plane detection, aspect inference, and custom mesh warp are not provided. Corner order is always TL, TR, BR, BL.",
             )
     }
 }
@@ -619,12 +1098,107 @@ where
             work.await
         }) => match outcome {
             Ok(inner) => inner,
-            Err(_) => Err(TransformError::new(
-                ErrorCode::Timeout,
-                "render exceeded the whole-call deadline while queued or executing",
+            Err(_) => Err(render_timeout_error(
+                "queued or executing",
+                deadline_remaining,
             )),
         },
     }
+}
+
+/// Keep one Canvas Set admission and execution slot through the atomic commit
+/// point. All cancellable/timeout-bound work, including same-parent staging,
+/// completes first. The final token/deadline check is followed by exactly one
+/// synchronous no-replace directory rename and no await.
+async fn execute_bounded_canvas<T, F>(
+    admission: OwnedSemaphorePermit,
+    slots: Arc<Semaphore>,
+    deadline_remaining: Duration,
+    cancellation: CancellationToken,
+    work_cancellation: CancellationToken,
+    work: F,
+) -> TransformResult<T>
+where
+    T: Send,
+    F: Future<Output = TransformResult<PreparedDirectoryResult<T>>> + Send,
+{
+    let started = Instant::now();
+    let _admission = admission;
+    let slot_remaining = deadline_remaining.saturating_sub(started.elapsed());
+    let _slot = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas Set render was cancelled by the client before completion",
+        )),
+        outcome = timeout(slot_remaining, slots.acquire_owned()) => match outcome {
+            Ok(Ok(permit)) => permit,
+            Ok(Err(_)) => return Err(TransformError::new(
+                ErrorCode::Internal,
+                "render concurrency gate is unavailable",
+            )),
+            Err(_) => return Err(render_timeout_error(
+                "queued for a Canvas Set execution slot",
+                deadline_remaining,
+            )),
+        }
+    };
+
+    let work_remaining = deadline_remaining.saturating_sub(started.elapsed());
+    tokio::pin!(work);
+    let mut prepared = tokio::select! {
+        _ = cancellation.cancelled() => {
+            // The work future may currently own a running spawn_blocking copy.
+            // Signal its chunked copier, then await the future so cleanup is
+            // complete instead of detaching a hidden same-parent directory.
+            work_cancellation.cancel();
+            let _ = work.await;
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "Canvas Set render was cancelled by the client before completion",
+            ));
+        },
+        _ = tokio::time::sleep(work_remaining) => {
+            work_cancellation.cancel();
+            let _ = work.await;
+            return Err(render_timeout_error(
+                "executing a Canvas Set",
+                deadline_remaining,
+            ));
+        },
+        result = &mut work => result?,
+    };
+
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas Set render was cancelled by the client before commit",
+        ));
+    }
+    if started.elapsed() >= deadline_remaining {
+        return Err(render_timeout_error(
+            "preflighting the Canvas Set commit",
+            deadline_remaining,
+        ));
+    }
+    if let Some(commit) = prepared.commit.take() {
+        commit.commit()?;
+    }
+    Ok(prepared.result)
+}
+
+fn render_timeout_error(stage: &'static str, deadline: Duration) -> TransformError {
+    TransformError::new(
+        ErrorCode::Timeout,
+        format!(
+            "render exceeded its {} ms whole-call deadline while {stage}; reduce target dimensions, sampling quality, or Canvas variant count before retrying",
+            deadline.as_millis()
+        ),
+    )
+    .with_details(json!({
+        "deadlineMs": u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),
+        "stage": stage,
+        "retryableAfterReducingWork": true
+    }))
 }
 
 /// Classify the observable worker exit rather than turning every missing
@@ -712,26 +1286,35 @@ where
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct WorkerRenderRequest {
-    source: PathBuf,
-    source_sha256: String,
-    spec: TransformSpec,
-    output: PathBuf,
-    options: RenderOptions,
+#[serde(tag = "operation", rename_all = "camelCase")]
+enum WorkerRequest {
+    Transform {
+        source: PathBuf,
+        source_sha256: String,
+        spec: TransformSpec,
+        output: PathBuf,
+        options: RenderOptions,
+    },
+    Rectify {
+        source: PathBuf,
+        source_sha256: String,
+        spec: RectifySpec,
+        output: PathBuf,
+        options: RectifyRenderOptions,
+    },
+    CanvasSet {
+        source: PathBuf,
+        program: CanvasWorkerProgram,
+        output_directory: PathBuf,
+        options: CanvasSetRenderOptions,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum WorkerEnvelope {
-    Success {
-        ok: bool,
-        result: Box<FileRenderResult>,
-    },
-    Failure {
-        ok: bool,
-        error: TransformError,
-    },
+enum WorkerEnvelope<T> {
+    Success { ok: bool, result: Box<T> },
+    Failure { ok: bool, error: TransformError },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -774,24 +1357,104 @@ fn run_worker_process() {
                         "worker request exceeds byte limit",
                     ));
                 }
-                serde_json::from_slice::<WorkerRenderRequest>(&bytes).map_err(|error| {
+                serde_json::from_slice::<WorkerRequest>(&bytes).map_err(|error| {
                     TransformError::new(
                         ErrorCode::Schema,
                         format!("invalid worker request: {error}"),
                     )
                 })
-            })
-            .and_then(|request| {
-                render_file_with_source_sha256(
-                    &request.source,
-                    &request.source_sha256,
-                    &request.spec,
-                    &request.output,
-                    request.options,
-                    true,
-                    false,
-                )
             });
+    match result {
+        Ok(WorkerRequest::Transform {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_file_with_source_sha256(
+            &source,
+            &source_sha256,
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+        )),
+        Ok(WorkerRequest::Rectify {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(rectify_file_with_source_sha256(
+            &source,
+            &source_sha256,
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+        )),
+        Ok(WorkerRequest::CanvasSet {
+            source,
+            program,
+            output_directory,
+            options,
+        }) => write_worker_result(run_canvas_set_worker_process(
+            &source,
+            program,
+            &output_directory,
+            options,
+        )),
+        Err(error) => write_worker_result::<FileRenderResult>(Err(error)),
+    }
+}
+
+fn run_canvas_set_worker_process(
+    source: &std::path::Path,
+    program: CanvasWorkerProgram,
+    output_directory: &std::path::Path,
+    options: CanvasSetRenderOptions,
+) -> TransformResult<CanvasSetFileRenderResult> {
+    match program {
+        CanvasWorkerProgram::Spec { spec, quality } => {
+            let options = CanvasSetRenderOptions { quality, ..options };
+            render_canvas_set_file(
+                source,
+                CanvasSetProgram::Spec(&spec),
+                output_directory,
+                options,
+                false,
+            )
+        }
+        CanvasWorkerProgram::Plan {
+            plan,
+            sampling,
+            outside_fill,
+        } => render_canvas_set_file(
+            source,
+            CanvasSetProgram::Plan {
+                plan: &plan,
+                replay: CanvasReplayOptions {
+                    sampling,
+                    outside_fill: canvas_background_rgba(outside_fill),
+                },
+            },
+            output_directory,
+            options,
+            false,
+        ),
+    }
+}
+
+fn canvas_background_rgba(background: CanvasBackground) -> [u8; 4] {
+    match background {
+        CanvasBackground::Transparent {} => [0, 0, 0, 0],
+        CanvasBackground::Color { rgba, .. } => rgba,
+    }
+}
+
+fn write_worker_result<T: Serialize>(result: TransformResult<T>) {
     let envelope = match result {
         Ok(result) => WorkerEnvelope::Success {
             ok: true,
@@ -804,12 +1467,53 @@ fn run_worker_process() {
     }
 }
 
-async fn run_render_worker(
+fn prepare_render_request(
     root: &WorkspaceRoot,
-    input: RenderRequest,
+    request: RenderRequest,
+) -> TransformResult<PreparedRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_rectify_render_request(
+    root: &WorkspaceRoot,
+    request: RectifyRenderRequest,
+) -> TransformResult<PreparedRectifyRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedRectifyRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_canvas_render_request(
+    root: &WorkspaceRoot,
+    request: CanvasRenderRequest,
+) -> TransformResult<PreparedCanvasRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedCanvasRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+async fn run_render_worker(
+    prepared: PreparedRenderRequest,
 ) -> Result<FileRenderResult, TransformError> {
-    let source = root.open_source(&input.source)?;
-    let output = root.prepare_output(&input.output, input.overwrite)?;
+    let PreparedRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
     // The worker sees only a private copy and a private output path. Agent-
     // controlled path components are opened once through the workspace
     // capability and are never re-resolved inside the child process.
@@ -837,13 +1541,302 @@ async fn run_render_worker(
         )
     })??;
     let staged_output = staging.path().join("result.png");
-    let request = WorkerRenderRequest {
+    let request = WorkerRequest::Transform {
         source: staged_source,
         source_sha256,
         spec: input.spec,
         output: staged_output.clone(),
         options: input.options,
     };
+    let mut result: FileRenderResult = execute_worker_request(&request).await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    if !input.dry_run {
+        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("output publication task failed: {error}"),
+                )
+            })??;
+    }
+    Ok(result)
+}
+
+async fn run_rectify_worker(
+    prepared: PreparedRectifyRenderRequest,
+) -> Result<RectifyFileRenderResult, TransformError> {
+    let PreparedRectifyRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(ErrorCode::Render, "private render staging is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = input.options.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, max_source_bytes)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Rectify {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: RectifyFileRenderResult = execute_worker_request(&request).await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    if !input.dry_run {
+        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("output publication task failed: {error}"),
+                )
+            })??;
+    }
+    Ok(result)
+}
+
+async fn run_canvas_worker(
+    prepared: PreparedCanvasRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<CanvasSetFileRenderResult>, TransformError> {
+    let PreparedCanvasRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-canvas-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(ErrorCode::Render, "private Canvas staging is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, MCP_MAX_SOURCE_BYTES)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private Canvas source staging task failed: {error}"),
+        )
+    })??;
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas Set render was cancelled while staging its source",
+        ));
+    }
+
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::CanvasSet {
+        source: staged_source,
+        program: input.program,
+        output_directory: staged_output.clone(),
+        options: CanvasSetRenderOptions {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimits {
+                max_width: MCP_MAX_AXIS,
+                max_height: MCP_MAX_AXIS,
+                max_pixels: MCP_MAX_PIXELS,
+                max_source_bytes: MCP_MAX_SOURCE_BYTES,
+            },
+            max_cumulative_pixels: MCP_MAX_CANVAS_SET_PIXELS,
+        },
+    };
+    let mut result: CanvasSetFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas Set render was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    normalize_canvas_worker_result(
+        &mut result,
+        &staged_output,
+        &input.output_directory,
+        input.dry_run,
+    )?;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(&staged_output_for_copy, &|| {
+            staging_cancellation.is_cancelled()
+        })
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Canvas output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        // Dry-run exercises the same same-parent copy and sync path, then
+        // removes the hidden directory instead of exposing a final name.
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_canvas_worker_result(
+    result: &mut CanvasSetFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+) -> TransformResult<()> {
+    if result.plan.variants.len() != result.items.len() {
+        return Err(invalid_canvas_worker_result(
+            "Canvas worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for (variant, item) in result.plan.variants.iter().zip(&mut result.items) {
+        if variant.id != item.id
+            || variant.plan.output_size.width != item.width
+            || variant.plan.output_size.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_canvas_worker_result(
+                "Canvas worker result does not match its ordered plan",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "Canvas encoded output byte count overflowed",
+            )
+        })?;
+        let filename = format!("{}.png", item.id);
+        let path = staged_output.join(&filename);
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            invalid_canvas_worker_result("Canvas worker output file is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
+        {
+            return Err(invalid_canvas_worker_result(
+                "Canvas worker output file does not match its result",
+            ));
+        }
+        expected_files.push(filename);
+        item.output = canvas_output_label(output_directory, &item.id);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_canvas_worker_result("Canvas worker output directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_canvas_worker_result("Canvas worker output could not be inspected")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_canvas_worker_result(
+            "Canvas worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_CANVAS_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "Canvas encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_CANVAS_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        CanvasSetRenderStatus::Ready
+    } else {
+        CanvasSetRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_canvas_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+/// MCP paths are root-relative logical labels, not host-native display paths.
+/// Normalize separators so an Agent receives the same portable path contract
+/// on Unix and Windows.
+fn canvas_output_label(output_directory: &str, id: &str) -> String {
+    let mut segments = std::path::Path::new(output_directory)
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            std::path::Component::CurDir => None,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    segments.push(format!("{id}.png"));
+    segments.join("/")
+}
+
+async fn execute_worker_request<T>(request: &WorkerRequest) -> TransformResult<T>
+where
+    T: DeserializeOwned,
+{
     let request_bytes = serde_json::to_vec(&request).map_err(|error| {
         TransformError::new(
             ErrorCode::Internal,
@@ -896,12 +1889,7 @@ async fn run_render_worker(
         }
     })
     .await
-    .map_err(|_| {
-        TransformError::new(
-            ErrorCode::Timeout,
-            "render worker exceeded the whole-call deadline",
-        )
-    })??;
+    .map_err(|_| render_timeout_error("waiting for the isolated worker", WORKER_TIMEOUT))??;
     if stdout_bytes.len() > MAX_WORKER_RESPONSE_BYTES
         || stderr_bytes.len() > MAX_WORKER_RESPONSE_BYTES
     {
@@ -910,28 +1898,26 @@ async fn run_render_worker(
             "render worker response exceeds byte limit",
         ));
     }
-    let envelope: WorkerEnvelope = serde_json::from_slice(&stdout_bytes).map_err(|_| {
+    let envelope: WorkerEnvelope<T> = serde_json::from_slice(&stdout_bytes).map_err(|_| {
         let stderr = String::from_utf8_lossy(&stderr_bytes);
         let (code, message) = classify_worker_death(&worker_status, stderr.as_ref());
         TransformError::new(code, message)
             .with_details(json!({ "stderr": bounded_text(&stderr, 2048) }))
     })?;
-    let mut result = match envelope {
-        WorkerEnvelope::Success { ok: _, result } => *result,
-        WorkerEnvelope::Failure { ok: _, error } => return Err(error),
-    };
-    result.output = input.output;
-    result.dry_run = input.dry_run;
-    result.status = if input.dry_run {
-        FileRenderStatus::Ready
-    } else {
-        FileRenderStatus::Written
-    };
+    match envelope {
+        WorkerEnvelope::Success { ok: _, result } => Ok(*result),
+        WorkerEnvelope::Failure { ok: _, error } => Err(error),
+    }
+}
 
+fn preflight_render_result<T>(result: &T) -> TransformResult<()>
+where
+    T: Serialize + JsonSchema + Clone + 'static,
+{
     // Measure the exact shape the client will receive: framing differences
-    // between the envelope and the final CallToolResult would otherwise let a
-    // file publish and then have the response swap to E_OUTPUT_LIMIT.
-    let preflight_envelope: ToolEnvelope<FileRenderResult> = ToolEnvelope::Success {
+    // between the worker envelope and the final CallToolResult would otherwise
+    // let a file publish and then have the response swap to E_OUTPUT_LIMIT.
+    let preflight_envelope: ToolEnvelope<T> = ToolEnvelope::Success {
         ok: true,
         result: result.clone(),
     };
@@ -955,18 +1941,7 @@ async fn run_render_worker(
             "render result exceeds response byte limit",
         ));
     }
-
-    if !input.dry_run {
-        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
-            .await
-            .map_err(|error| {
-                TransformError::new(
-                    ErrorCode::Internal,
-                    format!("output publication task failed: {error}"),
-                )
-            })??;
-    }
-    Ok(result)
+    Ok(())
 }
 
 fn worker_render_threads() -> usize {
@@ -1150,6 +2125,47 @@ where
         .unwrap_or_else(|error| panic!("invalid generated input schema for {name}: {error}"));
 }
 
+fn set_canvas_render_input_schema(tool_router: &mut ToolRouter<WorldbendServer>) {
+    const NAME: &str = "worldbend.canvas_render";
+    set_input_schema::<CanvasRenderInput>(tool_router, NAME);
+    let route = tool_router
+        .map
+        .get_mut(NAME)
+        .unwrap_or_else(|| panic!("missing generated tool route {NAME}"));
+    let mut schema = route.attr.input_schema.as_ref().clone();
+    schema.insert(
+        "oneOf".to_owned(),
+        json!([
+            {
+                "required": ["source", "outputDirectory", "spec"],
+                "not": {
+                    "anyOf": [
+                        { "required": ["plan"] },
+                        { "required": ["sampling"] },
+                        { "required": ["outsideFill"] }
+                    ]
+                }
+            },
+            {
+                "required": [
+                    "source",
+                    "outputDirectory",
+                    "plan",
+                    "sampling",
+                    "outsideFill"
+                ],
+                "not": {
+                    "anyOf": [
+                        { "required": ["spec"] },
+                        { "required": ["quality"] }
+                    ]
+                }
+            }
+        ]),
+    );
+    route.attr.input_schema = Arc::new(schema);
+}
+
 fn set_output_schema<T>(tool_router: &mut ToolRouter<WorldbendServer>, name: &str)
 where
     T: JsonSchema + 'static,
@@ -1171,10 +2187,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use worldbend_core::SourceOrientation;
+    use worldbend_core::{PixelSize, Point, Quad, SourceOrientation, plan_canvas_set};
+    use worldbend_render::CanvasSetRenderedItem;
 
     #[test]
-    fn public_tool_registry_has_five_direct_bounded_tools() {
+    fn public_tool_registry_has_eight_direct_bounded_tools() {
         let server = WorldbendServer::new(None);
         let tools = server.tool_router.list_all();
         let mut names = tools
@@ -1185,12 +2202,25 @@ mod tests {
         assert_eq!(
             names,
             [
+                "worldbend.canvas_render",
                 "worldbend.compose",
                 "worldbend.css",
                 "worldbend.inspect",
+                "worldbend.rectify",
+                "worldbend.rectify_render",
                 "worldbend.render",
                 "worldbend.solve"
             ]
+        );
+        let complete_tools_list = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": &tools }
+        });
+        let catalog_bytes = serde_json::to_vec(&complete_tools_list).unwrap().len();
+        assert!(
+            catalog_bytes <= MAX_TOOL_CATALOG_BYTES,
+            "complete tools/list is {catalog_bytes} bytes; budget is {MAX_TOOL_CATALOG_BYTES}"
         );
         for tool in tools {
             assert!(tool.input_schema.contains_key("properties"));
@@ -1226,6 +2256,16 @@ mod tests {
         let inspect_schema = serde_json::to_string(&inspect.input_schema).unwrap();
         assert!(inspect_schema.contains(r#""const":"worldbend.transform""#));
         assert!(inspect_schema.contains(r#""const":"0.1""#));
+
+        let rectify = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.rectify")
+            .unwrap();
+        let rectify_schema = serde_json::to_string(&rectify.input_schema).unwrap();
+        assert!(rectify_schema.contains(r#""const":"worldbend.rectify""#));
+        assert!(rectify_schema.contains(r#""const":"pixel""#));
+        assert!(rectify_schema.contains(r#""const":"normalized""#));
+        assert!(rectify_schema.contains(r#""minimum":1"#));
 
         let compose = tools
             .iter()
@@ -1279,8 +2319,108 @@ mod tests {
         let render_schema = serde_json::to_string(&render.input_schema).unwrap();
         assert!(render_schema.contains(&format!(r#""maximum":{MCP_MAX_AXIS}"#)));
         assert!(render_schema.contains(&format!(r#""maximum":{MCP_MAX_PIXELS}"#)));
+        for field in ["overwrite", "dryRun"] {
+            assert!(
+                render.input_schema["properties"][field]["description"]
+                    .as_str()
+                    .is_some_and(|description| !description.is_empty()),
+                "render.{field} must explain its side-effect contract"
+            );
+        }
+        assert!(
+            render.input_schema["$defs"]["RenderOptionsInput"]["properties"]["targetSize"]
+                ["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("normalized"))
+        );
         let render_limits = &render.input_schema["$defs"]["RenderLimitsInput"];
         assert!(render_limits.get("required").is_none());
+
+        let rectify_render = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.rectify_render")
+            .unwrap();
+        let rectify_render_schema = serde_json::to_string(&rectify_render.input_schema).unwrap();
+        assert!(rectify_render_schema.contains(&format!(r#""maximum":{MCP_MAX_PIXELS}"#)));
+        assert!(!rectify_render_schema.contains(r#""canvas""#));
+        assert!(!rectify_render_schema.contains(r#""targetSize""#));
+
+        let canvas_render = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.canvas_render")
+            .unwrap();
+        let canvas_render_schema = serde_json::to_string(&canvas_render.input_schema).unwrap();
+        assert!(canvas_render_schema.contains(r#""const":"worldbend.canvas-set""#));
+        assert!(canvas_render_schema.contains(r#""const":"worldbend.canvas-set-plan""#));
+        assert!(canvas_render_schema.contains(r#""outputDirectory""#));
+        assert!(canvas_render_schema.contains(r#""sampling""#));
+        assert!(canvas_render_schema.contains(r#""outsideFill""#));
+        assert!(!canvas_render_schema.contains(r#""overwrite""#));
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][0]["required"],
+            json!(["source", "outputDirectory", "spec"])
+        );
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][0]["not"]["anyOf"],
+            json!([
+                { "required": ["plan"] },
+                { "required": ["sampling"] },
+                { "required": ["outsideFill"] }
+            ])
+        );
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][1]["required"],
+            json!([
+                "source",
+                "outputDirectory",
+                "plan",
+                "sampling",
+                "outsideFill"
+            ])
+        );
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][1]["not"]["anyOf"],
+            json!([
+                { "required": ["spec"] },
+                { "required": ["quality"] }
+            ])
+        );
+        assert_eq!(
+            canvas_render
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.read_only_hint),
+            Some(false)
+        );
+        assert_eq!(
+            canvas_render
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.destructive_hint),
+            Some(false)
+        );
+        assert_eq!(
+            canvas_render
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.idempotent_hint),
+            Some(false)
+        );
+        let canvas_output =
+            serde_json::to_string(canvas_render.output_schema.as_ref().unwrap()).unwrap();
+        for field in [
+            "outputDirectory",
+            "plan",
+            "items",
+            "sha256",
+            "width",
+            "height",
+        ] {
+            assert!(
+                canvas_output.contains(field),
+                "canvas output schema is missing {field}"
+            );
+        }
 
         let render_output = render.output_schema.as_ref().unwrap();
         let render_output_defs = &render_output["$defs"];
@@ -1302,6 +2442,21 @@ mod tests {
         assert_eq!(output_bytes["minimum"], json!(0));
         assert_eq!(output_bytes["maximum"], json!(9_007_199_254_740_991_u64));
         assert!(output_bytes.get("format").is_none());
+
+        let css = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.css")
+            .unwrap();
+        assert!(
+            css.description
+                .as_deref()
+                .is_some_and(|description| description.contains("destinationSize"))
+        );
+        assert!(
+            css.input_schema["properties"]["destinationSize"]["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("normalized"))
+        );
 
         for tool in tools {
             let output_schema =
@@ -1419,6 +2574,108 @@ mod tests {
     }
 
     #[test]
+    fn successful_text_summaries_name_the_usable_result() {
+        assert_eq!(
+            success_summary(&json!({
+                "status": "written",
+                "output": "out/result.png",
+                "bytes": 1234,
+                "evidence": { "outputWidth": 640, "outputHeight": 360 }
+            })),
+            "Render written: out/result.png (640x360, 1234 bytes)."
+        );
+        assert_eq!(
+            success_summary(&json!({
+                "status": "ready",
+                "outputDirectory": "out/social",
+                "items": [{}, {}]
+            })),
+            "Canvas Set ready: 2 ordered outputs in out/social."
+        );
+    }
+
+    #[tokio::test]
+    async fn filesystem_preflight_returns_stable_errors_before_capacity() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("source.png"),
+            b"not decoded during preflight",
+        )
+        .unwrap();
+        fs::write(root.path().join("existing.png"), b"existing").unwrap();
+        let server = WorldbendServer::new(Some(WorkspaceRoot::open(root.path()).unwrap()));
+        let _held = (0..MAX_IN_FLIGHT_RENDERS)
+            .map(|_| {
+                server
+                    .render_admissions
+                    .clone()
+                    .try_acquire_owned()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let spec = TransformSpec::pixel(
+            Size::new(2.0, 2.0),
+            Quad::new(
+                Point::new(0.0, 0.0),
+                Point::new(2.0, 0.0),
+                Point::new(2.0, 2.0),
+                Point::new(0.0, 2.0),
+            ),
+        );
+        let arguments = |source: &str, output: &str| {
+            json!({ "source": source, "spec": spec, "output": output })
+                .as_object()
+                .unwrap()
+                .clone()
+        };
+
+        let escaped = server
+            .render(
+                Parameters(arguments("../source.png", "out.png")),
+                CancellationToken::new(),
+            )
+            .await;
+        assert!(matches!(
+            escaped,
+            ToolEnvelope::Failure {
+                error: TransformError {
+                    code: ErrorCode::PathOutsideRoot,
+                    ..
+                },
+                ..
+            }
+        ));
+
+        let exists = server
+            .render(
+                Parameters(arguments("source.png", "existing.png")),
+                CancellationToken::new(),
+            )
+            .await;
+        match exists {
+            ToolEnvelope::Failure { error, .. } => {
+                assert_eq!(error.code, ErrorCode::DestinationExists);
+                assert!(error.message.contains("overwrite"));
+            }
+            ToolEnvelope::Success { .. } => panic!("existing destination must fail preflight"),
+        }
+
+        let capacity = server
+            .render(
+                Parameters(arguments("source.png", "new.png")),
+                CancellationToken::new(),
+            )
+            .await;
+        match capacity {
+            ToolEnvelope::Failure { error, .. } => {
+                assert_eq!(error.code, ErrorCode::Capacity);
+                assert_eq!(error.details.unwrap()["retryable"], json!(true));
+            }
+            ToolEnvelope::Success { .. } => panic!("full admission must fail"),
+        }
+    }
+
+    #[test]
     fn malformed_arguments_are_bounded_stable_schema_errors() {
         let unknown = "x".repeat(MAX_SCHEMA_ERROR_CHARS * 2);
         let error = parse_tool_input::<SolveInput>(json!({ unknown: true })).unwrap_err();
@@ -1481,6 +2738,158 @@ mod tests {
         );
     }
 
+    #[test]
+    fn canvas_render_input_is_a_closed_exactly_one_program_union() {
+        let spec_value = json!({
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [{
+                "id": "square",
+                "operation": {
+                    "kind": "stretch",
+                    "output": { "width": 2, "height": 2 }
+                }
+            }]
+        });
+        let spec: CanvasSetSpec = serde_json::from_value(spec_value.clone()).unwrap();
+        let plan = plan_canvas_set(&spec, PixelSize::new(3, 2)).unwrap();
+
+        let spec_input = parse_tool_input::<CanvasRenderInput>(json!({
+            "source": "input.png",
+            "spec": spec_value,
+            "outputDirectory": "outputs",
+            "quality": "high",
+            "dryRun": true
+        }))
+        .and_then(CanvasRenderRequest::try_from)
+        .unwrap();
+        assert!(matches!(
+            spec_input.program,
+            CanvasWorkerProgram::Spec {
+                quality: SamplingQuality::High,
+                ..
+            }
+        ));
+
+        let plan_input = parse_tool_input::<CanvasRenderInput>(json!({
+            "source": "control.png",
+            "plan": plan,
+            "outputDirectory": "control-outputs",
+            "sampling": "nearest",
+            "outsideFill": { "kind": "transparent" }
+        }))
+        .and_then(CanvasRenderRequest::try_from)
+        .unwrap();
+        assert!(matches!(
+            plan_input.program,
+            CanvasWorkerProgram::Plan {
+                sampling: CanvasReplaySampling::Nearest,
+                ..
+            }
+        ));
+
+        for invalid in [
+            json!({
+                "source": "input.png",
+                "spec": spec_value,
+                "plan": plan_canvas_set(&spec, PixelSize::new(3, 2)).unwrap(),
+                "outputDirectory": "outputs",
+                "sampling": "nearest",
+                "outsideFill": { "kind": "transparent" }
+            }),
+            json!({
+                "source": "input.png",
+                "plan": plan_canvas_set(&spec, PixelSize::new(3, 2)).unwrap(),
+                "outputDirectory": "outputs",
+                "sampling": "nearest"
+            }),
+            json!({
+                "source": "input.png",
+                "spec": spec,
+                "outputDirectory": "outputs",
+                "sampling": "nearest"
+            }),
+            json!({
+                "source": "input.png",
+                "spec": {
+                    "schema": "worldbend.canvas-set",
+                    "version": "0.1",
+                    "variants": [{
+                        "id": "square",
+                        "operation": {
+                            "kind": "stretch",
+                            "output": { "width": 2, "height": 2 }
+                        }
+                    }]
+                },
+                "quality": null,
+                "outputDirectory": "outputs"
+            }),
+            json!({
+                "source": "input.png",
+                "plan": null,
+                "outputDirectory": "outputs",
+                "sampling": "nearest",
+                "outsideFill": { "kind": "transparent" }
+            }),
+        ] {
+            assert_eq!(
+                parse_tool_input::<CanvasRenderInput>(invalid)
+                    .and_then(CanvasRenderRequest::try_from)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Schema
+            );
+        }
+    }
+
+    #[test]
+    fn canvas_encoded_set_ceiling_fails_before_publication() {
+        let private = tempfile::tempdir().unwrap();
+        let output = private.path().join("square.png");
+        fs::File::create(&output)
+            .unwrap()
+            .set_len(MCP_MAX_CANVAS_ENCODED_BYTES + 1)
+            .unwrap();
+        let spec: CanvasSetSpec = serde_json::from_value(json!({
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [{
+                "id": "square",
+                "operation": {
+                    "kind": "stretch",
+                    "output": { "width": 2, "height": 2 }
+                }
+            }]
+        }))
+        .unwrap();
+        let plan = plan_canvas_set(&spec, PixelSize::new(2, 2)).unwrap();
+        let mut result = CanvasSetFileRenderResult {
+            status: CanvasSetRenderStatus::Ready,
+            dry_run: true,
+            output_directory: private.path().to_string_lossy().into_owned(),
+            plan,
+            items: vec![CanvasSetRenderedItem {
+                id: "square".to_owned(),
+                output: output.to_string_lossy().into_owned(),
+                bytes: MCP_MAX_CANVAS_ENCODED_BYTES + 1,
+                sha256: "0".repeat(64),
+                width: 2,
+                height: 2,
+            }],
+        };
+
+        let error =
+            normalize_canvas_worker_result(&mut result, private.path(), "sets/social", false)
+                .unwrap_err();
+        assert_eq!(error.code, ErrorCode::OutputLimit);
+        assert_eq!(
+            error.details.unwrap()["maximum"],
+            json!(MCP_MAX_CANVAS_ENCODED_BYTES)
+        );
+        assert_eq!(result.items[0].output, "sets/social/square.png");
+    }
+
     #[tokio::test]
     async fn bounded_worker_stream_accepts_the_limit_and_rejects_the_next_byte() {
         let mut exact = &b"1234"[..];
@@ -1512,6 +2921,8 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Timeout);
+        assert!(error.message.contains("80 ms"));
+        assert_eq!(error.details.as_ref().unwrap()["deadlineMs"], json!(80));
         assert!(started.elapsed() >= Duration::from_millis(70));
         assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
         assert_eq!(slots.available_permits(), 0);
@@ -1582,6 +2993,184 @@ mod tests {
         .unwrap();
         assert_eq!(value, 7);
         assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn canvas_commit_is_one_sync_step_after_cancellable_work() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("square.png"), b"png").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let commit = workspace
+            .prepare_output_directory("set")
+            .unwrap()
+            .stage_from(private.path())
+            .unwrap();
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let work_cancellation = cancellation.child_token();
+
+        let value = execute_bounded_canvas(
+            admission,
+            slots.clone(),
+            Duration::from_secs(5),
+            cancellation,
+            work_cancellation,
+            async move {
+                Ok::<_, TransformError>(PreparedDirectoryResult {
+                    result: 7_u32,
+                    commit: Some(commit),
+                })
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(value, 7);
+        assert_eq!(
+            fs::read(root.path().join("set/square.png")).unwrap(),
+            b"png"
+        );
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn canvas_cancellation_before_commit_publishes_nothing_and_cleans_staging() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("square.png"), b"png").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let commit = workspace
+            .prepare_output_directory("set")
+            .unwrap()
+            .stage_from(private.path())
+            .unwrap();
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let work_cancellation = cancellation.child_token();
+        let cancel_before_return = cancellation.clone();
+
+        let error = execute_bounded_canvas(
+            admission,
+            slots.clone(),
+            Duration::from_secs(5),
+            cancellation,
+            work_cancellation,
+            async move {
+                cancel_before_return.cancel();
+                Ok::<_, TransformError>(PreparedDirectoryResult {
+                    result: (),
+                    commit: Some(commit),
+                })
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(!root.path().join("set").exists());
+        let residues = fs::read_dir(root.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".worldbend-canvas-"))
+            .collect::<Vec<_>>();
+        assert!(
+            residues.is_empty(),
+            "unexpected Canvas staging: {residues:?}"
+        );
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn canvas_cancellation_during_same_parent_copy_waits_for_cleanup() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::File::create(private.path().join("large.png"))
+            .unwrap()
+            .set_len(64 * 1024 * 1024)
+            .unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let target = workspace.prepare_output_directory("outputs/final").unwrap();
+        let source = private.path().to_path_buf();
+        let output_parent = root.path().join("outputs");
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let work_cancellation = cancellation.child_token();
+        let staging_token = work_cancellation.clone();
+        let copy_observed_cancellation = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed_in_work = copy_observed_cancellation.clone();
+        let cancel_when_hidden = cancellation.clone();
+
+        let watcher = tokio::spawn(async move {
+            loop {
+                let hidden_exists = fs::read_dir(&output_parent)
+                    .unwrap()
+                    .flatten()
+                    .any(|entry| {
+                        entry
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with(".worldbend-")
+                    });
+                if hidden_exists {
+                    cancel_when_hidden.cancel();
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        });
+        let error = execute_bounded_canvas(
+            admission,
+            slots.clone(),
+            Duration::from_secs(5),
+            cancellation,
+            work_cancellation,
+            async move {
+                let staged = tokio::task::spawn_blocking(move || {
+                    target.stage_from_with_cancel(&source, &|| staging_token.is_cancelled())
+                })
+                .await
+                .unwrap();
+                match staged {
+                    Err(error) if error.code == ErrorCode::Cancelled => {
+                        observed_in_work.store(true, std::sync::atomic::Ordering::SeqCst);
+                        Err(error)
+                    }
+                    Err(error) => Err(error),
+                    Ok(commit) => Ok(PreparedDirectoryResult {
+                        result: (),
+                        commit: Some(commit),
+                    }),
+                }
+            },
+        )
+        .await
+        .unwrap_err();
+        watcher.await.unwrap();
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(copy_observed_cancellation.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!root.path().join("outputs/final").exists());
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
     }
 
     #[test]
