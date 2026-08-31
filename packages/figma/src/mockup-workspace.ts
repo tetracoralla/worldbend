@@ -39,6 +39,7 @@ export function createMockupWorkspace(input: {
   const shell = createDesignerWorkspaceShell(input.root);
   shell.inspector.innerHTML = `<div class="designer-tabs" data-role="planes" role="tablist"></div>
     <div class="designer-row"><label class="designer-field"><span data-role="width-label"></span><input data-role="width" type="number" min="1" max="4096" step="1"></label><label class="designer-field"><span data-role="height-label"></span><input data-role="height" type="number" min="1" max="4096" step="1"></label></div>
+    <div class="inspector-divider" aria-hidden="true"></div>
     <label class="designer-field"><span data-role="opacity-label"></span><input data-role="opacity" type="range" min="0" max="100" step="1"></label>
     <label class="designer-field"><span><input data-role="grid" type="checkbox"> <span data-role="grid-label"></span></span></label>
     <div class="designer-row" data-role="grid-size"><label class="designer-field"><span data-role="columns-label"></span><input data-role="columns" type="number" min="1" max="64" step="1"></label><label class="designer-field"><span data-role="rows-label"></span><input data-role="rows" type="number" min="1" max="64" step="1"></label></div>`;

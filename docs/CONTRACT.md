@@ -477,7 +477,9 @@ An intentional budget change requires a current measurement and cannot be
 smuggled into the same checker merely to make an unrelated build green.
 
 The Figma `perspective` workspace retains the checked operation order
-Transform, Free, Perspective, Warp, Correct, More. One compact icon launcher
+Transform, Free, Perspective, Warp, Correct, More. Free and Perspective stay
+visible and clickable in every Perspective mode because they are the controls
+that re-enter Distort. One compact icon-and-label launcher
 opens the sibling `canvas`, `mockup`, `mesh`, and `remap` task workspaces.
 Each owns its draft, controls, messages, and runtime resources; only the active
 workspace renders. Entering and returning cannot mutate Perspective semantic
@@ -500,10 +502,11 @@ not own rectification mathematics.
 The 600 x 720 human panel is canvas-first. Its selected source name is the only
 in-panel identity heading. Object identity, operation choice, and the active
 operation's continuous parameters share one persistent full-width top operation
-bar. Reset and Apply occupy the left and right ends of a separate full-width
-bottom session bar because they act on the whole session rather than tune the
-active operation. The two bars frame one uninterrupted rectangular editor and
-never overlay it. Free and Perspective Distort are direct peer choices.
+bar. Reset, Undo, and Redo occupy the left end and Apply the right end of a
+separate full-width bottom session bar because they act on the whole session
+rather than tune the active operation. The two bars frame one uninterrupted
+rectangular editor and never overlay it. Free and Perspective Distort are
+direct peer choices.
 Operation labels use quiet, transparent chrome with one selected emphasis;
 nested background containers must not compete with the canvas. Transform and
 Warp parameters remain visible while their operation is active so a designer

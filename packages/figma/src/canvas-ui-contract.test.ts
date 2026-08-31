@@ -50,8 +50,27 @@ describe("Figma product workspace markup", () => {
     );
   });
 
-  it("lets hidden remove the display-contents Distort subgroup outside Distort mode", () => {
+  it("keeps the Free and Perspective peers reachable outside Distort mode", () => {
+    // The peers are the only controls that re-enter Distort, so no mode may
+    // hide them: renderMode must never toggle the subgroup's hidden attribute.
     expect(html).toContain("#distort-kind { display: contents; }");
     expect(html).toContain("#distort-kind[hidden] { display: none; }");
+    expect(html).not.toMatch(/<span id="distort-kind"[^>]*\shidden/);
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).not.toContain("distortKind.hidden");
+  });
+
+  it("keeps session edit history beside Reset in the bottom session bar", () => {
+    const dockStart = html.indexOf('<footer id="action-dock"');
+    const dockEnd = html.indexOf("</footer>", dockStart);
+    const dock = html.slice(dockStart, dockEnd);
+    expect(dock).toContain('id="reset"');
+    expect(dock).toContain('id="action-undo"');
+    expect(dock).toContain('id="action-redo"');
+    const popoverStart = html.indexOf('<div id="settings-popover"');
+    const popoverEnd = html.indexOf("</div>", popoverStart);
+    const popoverMarkup = html.slice(popoverStart, popoverEnd);
+    expect(popoverMarkup).not.toContain('id="action-undo"');
+    expect(popoverMarkup).not.toContain('id="action-redo"');
   });
 });

@@ -25,8 +25,10 @@
       #source-name { min-width: 0; margin: 0; overflow: hidden; padding: 0 4px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
       #source-name:empty { display: none; }
       #task-launcher { position: relative; flex: none; }
-      #task-launcher-button { width: 28px; height: 28px; display: grid; border-color: transparent; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); background: transparent; }
+      #task-launcher-button { min-height: 28px; display: inline-flex; align-items: center; gap: 5px; border-color: transparent; padding: 4px 7px 4px 9px; color: var(--figma-color-text-secondary, #777); background: transparent; }
       #task-launcher-button:hover, #task-launcher-button[aria-expanded="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      #task-launcher-label { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      #task-launcher-button .ui-icon { width: 14px; height: 14px; }
       #task-menu { position: absolute; z-index: 35; top: 34px; left: 0; width: 132px; padding: 5px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 8px; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }
       #task-menu[hidden] { display: none; }
       #task-menu button { width: 100%; min-height: 30px; display: block; border: 0; padding: 6px 8px; text-align: left; }
@@ -116,6 +118,7 @@
       .mode-button[aria-pressed="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); box-shadow: none; font-weight: 600; }
       #action-dock { position: relative; z-index: 20; width: 100%; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 12%)); background: var(--figma-color-bg, #fff); }
       #action-dock button { min-height: 36px; padding: 7px 14px; font-size: 12px; white-space: nowrap; }
+      #session-actions { display: flex; flex: none; align-items: center; gap: 8px; }
       #apply { padding-inline: 18px; font-weight: 600; }
       #status { min-width: 0; flex: 1; overflow: hidden; margin: 0; color: var(--figma-color-text-secondary, #777); font-size: 11px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
       #status:empty { display: none; }
@@ -124,6 +127,7 @@
       #error-dismiss { flex: none; width: 24px; height: 24px; padding: 0; border-color: transparent; background: transparent; font-size: 16px; line-height: 1; }
       #error[hidden] { display: none; }
       .menu-shortcuts { margin: 4px 10px 8px; color: var(--figma-color-text-tertiary, #999); font-size: 10px; line-height: 1.45; }
+      .inspector-divider { margin: 2px 0 12px; border-top: 1px solid var(--figma-color-border, #e5e5e5); }
       #context-controls { margin-top: 10px; border-top: 1px solid var(--figma-color-border, #e5e5e5); padding: 12px 4px 4px; }
       #controls[data-editor-mode="distort"] #context-controls { display: none; }
       #transform-options { position: relative; }
@@ -227,7 +231,8 @@
           <div id="object-group">
             <h1 id="source-name"></h1>
             <div id="task-launcher">
-              <button id="task-launcher-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="task-menu" aria-label="Tools">
+              <button id="task-launcher-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="task-menu" aria-label="Open tools">
+                <span id="task-launcher-label">Tools</span>
                 <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               </button>
               <div id="task-menu" role="menu" aria-label="Tools" hidden>
@@ -253,8 +258,6 @@
             </button>
             <div id="settings-popover" role="menu" aria-label="More options" hidden>
               <button id="action-apply-copy" class="menu-option" type="button" role="menuitem">Apply as New Image</button>
-              <button id="action-undo" class="menu-option" type="button" role="menuitem">Undo edit</button>
-              <button id="action-redo" class="menu-option" type="button" role="menuitem">Redo edit</button>
               <p id="shortcut-help" class="menu-shortcuts">Shift switches Distort · Space pans · ⌘/Ctrl 0 fits · ⌘/Ctrl 1 shows 100%</p>
               <p id="settings-title" class="menu-section-title">Language</p>
               <button class="menu-option" type="button" role="menuitemradio" data-locale="system" aria-checked="true">
@@ -379,7 +382,11 @@
       </header>
       <div id="editor"></div>
       <footer id="action-dock">
-        <button id="reset" type="button">Reset</button>
+        <div id="session-actions">
+          <button id="reset" type="button">Reset</button>
+          <button id="action-undo" type="button" disabled>Undo</button>
+          <button id="action-redo" type="button" disabled>Redo</button>
+        </div>
         <p id="status" role="status" aria-live="polite"></p>
         <button id="apply" class="primary" type="button" disabled>Apply as image</button>
       </footer>

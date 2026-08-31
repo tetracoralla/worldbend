@@ -109,9 +109,11 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
           <label><span id="canvas-pad-bottom-label"></span><input id="canvas-pad-bottom" type="number" min="0" max="4096" step="1"></label>
           <label><span id="canvas-pad-left-label"></span><input id="canvas-pad-left" type="number" min="0" max="4096" step="1"></label>
         </div>
+        <div class="inspector-divider" aria-hidden="true"></div>
         <div id="canvas-anchor-field" class="canvas-field"><span id="canvas-anchor-label"></span><div id="canvas-anchor-grid" class="canvas-anchor-grid" role="group"></div></div>
         <label id="canvas-background-field" class="canvas-field"><span id="canvas-background-label"></span><select id="canvas-background"><option value="transparent"></option><option value="color"></option></select></label>
         <input id="canvas-background-color" class="canvas-color" type="color" value="#ffffff" hidden>
+        <div class="inspector-divider" aria-hidden="true"></div>
         <button id="canvas-remove-variant" class="canvas-remove" type="button"></button>
       </aside>
     </div>

@@ -154,6 +154,7 @@ const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
 const taskLauncherButton = required<HTMLButtonElement>("task-launcher-button");
+const taskLauncherLabel = required<HTMLSpanElement>("task-launcher-label");
 const taskMenu = required<HTMLElement>("task-menu");
 const actionUndo = required<HTMLButtonElement>("action-undo");
 const actionRedo = required<HTMLButtonElement>("action-redo");
@@ -1793,7 +1794,9 @@ function renderMode(): void {
   transformOptions.hidden = !transformSelected;
   warpOptions.hidden = !warpSelected;
   rectifyOptions.hidden = !rectifySelected;
-  distortKind.hidden = !distortSelected;
+  // Free and Perspective stay visible in every Perspective mode: they are the
+  // direct peer choices that re-enter Distort, so hiding them outside Distort
+  // would strand the session in Transform, Warp, or Correct.
   distortFreeButton.setAttribute(
     "aria-pressed",
     String(distortSelected && distortMode === "free"),
@@ -2166,7 +2169,11 @@ function renderState(): void {
     button.disabled = !positionReady;
   }
   actionApplyCopy.disabled =
-    !menuReady || (editorMode === "rectify" && !rectifyInputsValid);
+    !menuReady ||
+    // Without an existing result there is nothing to copy beside: the primary
+    // Apply already publishes a new image, so the copy variant is redundant.
+    !current?.targetNodeId ||
+    (editorMode === "rectify" && !rectifyInputsValid);
   taskLauncher.setDisabled(!taskReady);
   actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
   actionUndo.disabled = !ready || !history?.canUndo();
@@ -2190,8 +2197,10 @@ function renderState(): void {
   modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeWarpButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeRectifyButton.disabled = !ready || !valid || blockingCompose || refreshInFlight;
-  distortFreeButton.disabled = !ready || editorMode !== "distort" || blockingCompose || refreshInFlight;
-  distortPerspectiveButton.disabled = !ready || editorMode !== "distort" || blockingCompose || refreshInFlight;
+  const peersDisabled =
+    !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
+  distortFreeButton.disabled = peersDisabled;
+  distortPerspectiveButton.disabled = peersDisabled;
   transformControls.setDisabled(!ready || refreshInFlight || editorMode !== "transform");
   const warpDisabled = !ready || refreshInFlight || editorMode !== "warp";
   warpPresetSelect.disabled = warpDisabled;
@@ -2292,6 +2301,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
     mesh: translate(locale, "workspaceMesh"),
     remap: translate(locale, "workspaceRemap"),
   });
+  taskLauncherLabel.textContent = translate(locale, "tools");
   actionApplyCopy.textContent = translate(locale, "applyAsCopy");
   actionUndo.textContent = translate(locale, "undoEdit");
   actionRedo.textContent = translate(locale, "redoEdit");
@@ -2409,7 +2419,7 @@ function remapWorkspaceCopy(): RemapWorkspaceCopy {
     height: translate(activeLocale, "rectifyHeight"),
     k1: translate(activeLocale, "remapK1"), k2: translate(activeLocale, "remapK2"),
     k3: translate(activeLocale, "remapK3"), p1: translate(activeLocale, "remapP1"),
-    p2: translate(activeLocale, "remapP2"), more: translate(activeLocale, "moreOptions"),
+    p2: translate(activeLocale, "remapP2"), more: translate(activeLocale, "more"),
     centerX: translate(activeLocale, "remapCenterX"), centerY: translate(activeLocale, "remapCenterY"),
     scaleX: translate(activeLocale, "remapScaleX"), scaleY: translate(activeLocale, "remapScaleY"),
     xChannel: translate(activeLocale, "remapXChannel"), yChannel: translate(activeLocale, "remapYChannel"),
