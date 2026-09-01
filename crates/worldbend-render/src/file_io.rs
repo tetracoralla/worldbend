@@ -112,14 +112,14 @@ pub(crate) fn write_png(image: &image::RgbaImage, writer: impl Write) -> Transfo
         })
 }
 
-struct EvidenceWriter<W> {
+pub(crate) struct EvidenceWriter<W> {
     inner: W,
     hasher: Sha256,
     bytes: u64,
 }
 
 impl<W> EvidenceWriter<W> {
-    fn new(inner: W) -> Self {
+    pub(crate) fn new(inner: W) -> Self {
         Self {
             inner,
             hasher: Sha256::new(),
@@ -127,7 +127,7 @@ impl<W> EvidenceWriter<W> {
         }
     }
 
-    fn finish(self) -> (u64, String) {
+    pub(crate) fn finish(self) -> (u64, String) {
         (self.bytes, format!("{:x}", self.hasher.finalize()))
     }
 }
@@ -177,7 +177,7 @@ pub fn render_file_with_source_sha256(
     )
 }
 
-fn validate_claimed_source_sha256(claimed: &str) -> TransformResult<()> {
+pub(crate) fn validate_claimed_source_sha256(claimed: &str) -> TransformResult<()> {
     if claimed.len() == 64 && claimed.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Ok(());
     }
@@ -359,7 +359,7 @@ fn rectify_file_internal(
     })
 }
 
-fn output_parent(output: &Path) -> &Path {
+pub(crate) fn output_parent(output: &Path) -> &Path {
     let parent = output.parent().unwrap_or_else(|| Path::new("."));
     if parent.as_os_str().is_empty() {
         Path::new(".")

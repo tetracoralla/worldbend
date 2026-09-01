@@ -1,5 +1,17 @@
 # Worldbend product model
 
+## Product direction
+
+Worldbend's owner-confirmed target is an Agent-native two-dimensional graphics
+work system with one shared non-destructive operation model and an extremely
+restrained human canvas. This is a target, not a claim that the current product
+already performs arbitrary graphics work. The exact current capabilities below
+remain authoritative; new deterministic capabilities normally enter the core
+and Agent/direct route before they are considered for human UI.
+
+The active implementation stage, human UI admission rule, autonomy boundary,
+and recovery state are maintained in `docs/GRAPHICS_WORKSPACE_GOAL.md`.
+
 ## Product definition
 
 Worldbend is a reusable deterministic transform and rendering primitive. Its
@@ -27,6 +39,13 @@ remaps, and an ordered atomic Timeline. Each family has its own versioned
 contract and compile feature. Their presence does not authorize perception or
 make them appear in every carrier.
 
+The Agent/full carrier also accepts a bounded single-raster program. It chains
+1..8 existing Transform, Rectify, and Canvas stages in memory and publishes
+only one final PNG, so a caller does not need to publish and re-decode
+intermediate rasters. It is orchestration over existing semantics, not a scene
+graph, layer model, public batch operation, or human workspace. See
+`docs/RASTER_PROGRAM_CONTRACT.md`.
+
 The primary human user is a visual designer expecting a Photoshop-familiar
 Free Transform workflow for a screen, label, poster, package face, or other
 planar asset, including later source replacement. The primary Agent user needs
@@ -41,6 +60,7 @@ Canvas(Set)Spec -> worldbend-core -> resolved source rectangles + placements
 MockupSpec -> worldbend-core -> ordered plane/seam/grid plan
 Mesh/RemapSpec -> worldbend-core -> explicit deformation/remap plan
 TimelineSpec -> worldbend-core -> ordered validated frame plan
+RasterProgramSpec -> ordered existing single-raster stages
                                |-> native raster renderer
                                |-> CSS live-element adapter
                                |-> CLI / MCP
@@ -88,10 +108,11 @@ and freshly verifies:
    detection in one Rust core;
 3. a native reference PNG renderer using inverse plane/mesh mapping and correct alpha;
 4. structured transform, rectification, Canvas, Place/Mockup, custom Mesh,
-   Lens/Displacement Remap, Timeline, and CSS CLI operations;
+   Lens/Displacement Remap, Timeline, single-raster Program, and CSS CLI operations;
 5. the same eight direct MCP compatibility tools over the core plus one compact
    `search` / `describe` / `run` Agent projection, including one ordered atomic
-   Canvas Set renderer plus on-demand Place, Mesh, Remap, and Timeline
+   Canvas Set renderer plus on-demand Place, Mesh, Remap, Timeline, and bounded
+   single-raster Program
    operations, exact schemas, bounded catalogs and results, explicit workspace
    authority, dry-run, and safe output publication;
 6. a Rust-to-WASM geometry/mesh bridge, CSS adapter, WebGL2 preview, and minimal web
@@ -176,6 +197,9 @@ compatibility mode):
 - validate saved mapping: one `worldbend.run` call with operation `inspect`;
 - source plus saved spec to PNG: one `worldbend.run` call with operation
   `render`;
+- one explicit ordered Transform / Rectify / Canvas chain over a single raster:
+  one `worldbend.run` call with operation `program_render`; it publishes only
+  the final PNG and is not a batch or scene graph;
 - explicit source quad plus explicit output size to a reusable plan: one
   `worldbend.rectify` call;
 - the same explicit rectification plus a local raster to PNG: one

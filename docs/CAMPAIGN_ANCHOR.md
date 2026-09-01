@@ -1,6 +1,11 @@
 # Worldbend campaign anchor
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
+
+> The owner-confirmed Agent-native graphics-workspace direction and its active
+> implementation recovery state are maintained in
+> `docs/GRAPHICS_WORKSPACE_GOAL.md`. This file retains the completed repository,
+> carrier, release, and designer-workspace campaign history below.
 
 ## Objective
 
@@ -30,6 +35,9 @@ workflow carriers.
   channel displacement map.
 - `worldbend.timeline@0.1` expands explicit frames or linearly interpolated
   corner keyframes and publishes one ordered atomic PNG sequence.
+- `worldbend.raster-program@0.1` executes 1..8 explicit Transform, Rectify,
+  and Canvas stages over one source in memory and publishes only one final
+  PNG. It is not a scene graph, multi-source program, or public batch.
 - Corner order is `TL -> TR -> BR -> BL`; source flips use the explicit source
   orientation contract and never mirrored destination order.
 - Native rasterization uses inverse mapping, pixel centers, premultiplied-alpha

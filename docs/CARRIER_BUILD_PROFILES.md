@@ -15,7 +15,7 @@ checks consume this file; it is not a future marketplace or plugin registry.
 | Carrier | Current product surface | Compiled or packaged runtime | Deliberately absent |
 | --- | --- | --- | --- |
 | Figma | The mature `perspective` workspace plus independent Sizes, Mockup, Mesh, and Remap workspaces behind one compact task launcher | One self-contained UI, main adapter, and a no-CSS WASM build with Canvas/Place/Deform/Remap planners | Timeline, Agent binaries, MCP schemas, Comfy Python, CSS emission, automatic perception/calibration |
-| Agent | Compact `search` / `describe` / `run` MCP projection by default, the eight direct headless tools as an explicit compatibility surface, plus CLI and the unchanged conditional Capability projection | Full stable native core and file renderer, including Place / Mockup, custom Mesh, Lens/Displacement Remap, and Timeline, with no human UI | Figma HTML/CSS and Comfy Python |
+| Agent | Compact `search` / `describe` / `run` MCP projection by default, the eight direct headless tools as an explicit compatibility surface, plus CLI and the unchanged conditional Capability projection | Full stable native core and file renderer, including Place / Mockup, custom Mesh, Lens/Displacement Remap, Timeline, and the bounded single-raster Program, with no human UI | Figma HTML/CSS and Comfy Python |
 | ComfyUI | Nine V3 nodes: transform/rectification pairs, Canvas Set validation/application/plan replay, and Remap validation/application | A `comfy` CLI build containing only transform, rectification, Canvas, and Remap commands | Place, custom Mesh, Timeline, Compose/Solve/CSS/Schema, MCP/Skill/Capability files, Figma UI |
 
 The Figma distribution remains one HTML file because Figma needs a local,
@@ -35,7 +35,8 @@ that unsupported route returns `E_SCHEMA` and no Figma product control exposes
 it. A real generated-WASM smoke executes both the retained solve path and that
 closed CSS path. The Comfy package builds the same CLI source with the `comfy`
 feature and checks the staged help surface so a full CLI cannot silently enter
-that package. Place, custom Mesh, and Timeline are Agent-full-only features.
+that package. Place, custom Mesh, Timeline, and the single-raster Program are
+Agent-full-only features.
 Remap is shared by Agent full and Comfy because it has a real graph-native
 consumer; Figma omits all four. Reduced compilation and staged command
 inventories check these boundaries. Timeline remains absent from Figma because
@@ -83,7 +84,8 @@ catalog is paid only by clients that explicitly select it.
 Canvas/multi-output is owned by `docs/CANVAS_CONTRACT.md`; multi-plane Place /
 Mockup by `docs/MOCKUP_CONTRACT.md`; custom Mesh and Remap by
 `docs/DEFORMATION_CONTRACT.md`; and the ordered frame program by
-`docs/TIMELINE_CONTRACT.md`. Every new Agent family reuses the compact
+`docs/TIMELINE_CONTRACT.md`. In-memory composition of existing single-raster
+operations is owned by `docs/RASTER_PROGRAM_CONTRACT.md`. Every new Agent family reuses the compact
 operation catalog and may not grow the Perspective or Canvas interfaces into a
 generic Photoshop panel, add speculative registry schema, or multiply
 top-level Agent tools per primitive.

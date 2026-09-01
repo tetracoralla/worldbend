@@ -19,6 +19,8 @@ use worldbend_core::{
     PixelSize, Point, Quad, Srgb8Space, TransformError, TransformResult, TransformSpec,
     resolve_canvas_set, resolve_trim_rect_rgba_with_cancel,
 };
+#[cfg(feature = "program")]
+use worldbend_core::{CanvasSpec, resolve_canvas};
 
 const MAX_EXACT_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -307,7 +309,7 @@ fn validate_plan_limits(
     Ok(())
 }
 
-fn render_primary_plan(
+pub(crate) fn render_primary_plan(
     source: &RgbaImage,
     plan: &CanvasPlan,
     options: CanvasSetRenderOptions,
@@ -338,6 +340,25 @@ fn render_primary_plan(
             composite_background(rendered, plan.background, is_cancelled)
         }
     }
+}
+
+#[cfg(feature = "program")]
+pub(crate) fn resolve_canvas_for_rgba(
+    source: &RgbaImage,
+    spec: &CanvasSpec,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<CanvasPlan> {
+    let source_size = PixelSize::new(source.width(), source.height());
+    let resolved_trim = match spec.operation {
+        CanvasOperation::Trim { alpha_threshold } => Some(resolve_trim_rect_rgba_with_cancel(
+            source.as_raw(),
+            source_size,
+            alpha_threshold,
+            is_cancelled,
+        )?),
+        _ => None,
+    };
+    resolve_canvas(spec, source_size, resolved_trim)
 }
 
 fn render_exact_crop(

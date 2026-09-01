@@ -7,11 +7,12 @@ publish = false
 description = "Native reference raster renderer for Worldbend"
 
 [features]
-default = ["place", "deform", "remap", "timeline"]
+default = ["place", "deform", "remap", "timeline", "program"]
 place = ["worldbend-core/place"]
 deform = ["worldbend-core/deform"]
 remap = ["worldbend-core/remap"]
 timeline = ["worldbend-core/timeline"]
+program = ["worldbend-core/program"]
 
 [dependencies]
 image.workspace = true

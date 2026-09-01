@@ -14,10 +14,12 @@ full = [
     "worldbend-core/deform",
     "worldbend-core/remap",
     "worldbend-core/timeline",
+    "worldbend-core/program",
     "worldbend-render/place",
     "worldbend-render/deform",
     "worldbend-render/remap",
     "worldbend-render/timeline",
+    "worldbend-render/program",
 ]
 
 [[bin]]

@@ -11,6 +11,7 @@
     "mesh-warp",
     "lens-displacement-remap",
     "timeline-motion",
+    "single-raster-program",
     "native-raster",
     "css-embedding"
   ],
@@ -64,6 +65,7 @@
         "mesh-warp",
         "lens-displacement-remap",
         "timeline-motion",
+        "single-raster-program",
         "native-raster",
         "css-embedding"
       ],

@@ -98,6 +98,8 @@ for (const command of [
   "mesh-render",
   "timeline-inspect",
   "timeline-render",
+  "program-inspect",
+  "program-render",
 ]) {
   if (binaryHelp.includes(`  ${command}`)) {
     throw new Error(`ComfyUI runtime unexpectedly contains full CLI command: ${command}`);

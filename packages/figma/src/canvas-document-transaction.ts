@@ -1,13 +1,13 @@
 import type { SourcePayload, UiToMainMessage } from "./messages";
 import { singleCanvasSpec } from "./stored-canvas";
+import type { StoredOperation } from "./stored-operation";
 
 type CanvasPayload = Extract<UiToMainMessage, { type: "apply-canvas" }>["payload"];
 
 export interface CanvasPublishRequest {
   existing?: RectangleNode;
   imageHash: string;
-  storedKind: "canvas";
-  serializedOperation: string;
+  storedOperation: Extract<StoredOperation, { kind: "canvas" }>;
   sourceName: string;
   placement: SourcePayload["placement"];
   renderWidth: number;
@@ -40,8 +40,7 @@ export async function publishCanvasDocumentTransaction(input: {
       const result = await input.publish({
         ...(input.existing ? { existing: input.existing } : {}),
         imageHash: images[index]!.hash,
-        storedKind: "canvas",
-        serializedOperation: JSON.stringify(singleCanvasSpec(variant.operation)),
+        storedOperation: { kind: "canvas", spec: singleCanvasSpec(variant.operation) },
         sourceName: `${input.sourceName} · ${variant.id}`,
         placement: output.placement,
         renderWidth: output.renderWidth,

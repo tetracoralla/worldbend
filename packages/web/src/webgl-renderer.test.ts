@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { warpMeshVertexData } from "./webgl-renderer";
+import { warpMeshVertexData, writeWarpMeshVertexData } from "./webgl-renderer";
 import type { WarpMesh } from "./types";
 
 describe("warpMeshVertexData", () => {
@@ -101,5 +101,31 @@ describe("warpMeshVertexData", () => {
     expect(() =>
       warpMeshVertexData({ subdivisions: Number.MAX_SAFE_INTEGER, vertices: [] }),
     ).toThrow("topology is invalid");
+  });
+
+  it("fills one caller-owned staging buffer across repeated mesh updates", () => {
+    const subdivisions = 2;
+    const mesh: WarpMesh = {
+      subdivisions,
+      vertices: Array.from({ length: (subdivisions + 1) ** 2 }, (_, index) => {
+        const x = index % (subdivisions + 1);
+        const y = Math.floor(index / (subdivisions + 1));
+        const source = { x: x / subdivisions, y: y / subdivisions };
+        return { source, warped: { ...source } };
+      }),
+    };
+    const target = new Float32Array(16 ** 2 * 2 * 3 * 4);
+    const firstCount = writeWarpMeshVertexData(mesh, target);
+    mesh.vertices[4] = {
+      source: { x: 0.5, y: 0.5 },
+      warped: { x: 0.55, y: 0.5 },
+    };
+    const secondCount = writeWarpMeshVertexData(mesh, target);
+    expect(firstCount).toBe(subdivisions ** 2 * 2 * 3 * 4);
+    expect(secondCount).toBe(firstCount);
+    expect(target[8]).toBeCloseTo(0.55);
+    expect(() => writeWarpMeshVertexData(mesh, new Float32Array(firstCount - 1))).toThrow(
+      "geometry buffer is too small",
+    );
   });
 });

@@ -10,6 +10,8 @@ mod deform;
 mod file_io;
 #[cfg(feature = "place")]
 mod mockup;
+#[cfg(feature = "program")]
+mod raster_program;
 #[cfg(feature = "remap")]
 mod remap;
 #[cfg(feature = "timeline")]
@@ -24,6 +26,14 @@ pub use canvas::{
 pub use file_io::{
     preflight_destination, publish_staged_file, rectify_file, rectify_file_with_source_sha256,
     render_file, render_file_with_source_sha256,
+};
+
+#[cfg(feature = "program")]
+pub use raster_program::{
+    RasterProgramFileRenderResult, RasterProgramRenderOptions, RasterProgramStageResult,
+    RenderedRasterProgram, render_raster_program, render_raster_program_file,
+    render_raster_program_file_with_cancel, render_raster_program_file_with_source_sha256,
+    render_raster_program_with_cancel,
 };
 
 #[cfg(feature = "deform")]
@@ -297,10 +307,10 @@ pub(crate) struct RenderExecution {
     pub(crate) render_ms: f64,
 }
 
-struct RectifyRenderExecution {
-    rendered: RectifiedImage,
-    solve_ms: f64,
-    render_ms: f64,
+pub(crate) struct RectifyRenderExecution {
+    pub(crate) rendered: RectifiedImage,
+    pub(crate) solve_ms: f64,
+    pub(crate) render_ms: f64,
 }
 
 pub fn decode_image_with_limits(
@@ -522,7 +532,7 @@ pub(crate) fn validate_limits(limits: RenderLimits) -> TransformResult<()> {
     Ok(())
 }
 
-fn render_rgba_image(
+pub(crate) fn render_rgba_image(
     source: RgbaImage,
     spec: &TransformSpec,
     options: RenderOptions,
@@ -602,7 +612,7 @@ fn render_rgba_image_with_mesh(
     })
 }
 
-fn rectify_rgba_image(
+pub(crate) fn rectify_rgba_image(
     source: RgbaImage,
     spec: &RectifySpec,
     options: RectifyRenderOptions,
@@ -788,7 +798,7 @@ fn validate_render_target(spec: &TransformSpec, target_size: Option<Size>) -> Tr
     Ok(())
 }
 
-fn plan_canvas(
+pub(crate) fn plan_canvas(
     bounds: Bounds,
     reference: Size,
     canvas: CanvasMode,

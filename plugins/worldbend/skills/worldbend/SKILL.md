@@ -1,6 +1,6 @@
 ---
 name: worldbend
-description: "Execute caller-authored deterministic 2D geometry: compose, solve, inspect, render, rectify, Canvas variants, multi-plane mockups/extraction, bounded custom meshes, lens/displacement remaps, ordered transform timelines, or CSS. Use when parameters, corners, grids, maps, sources, or keyframes are explicit. Do not use for plane/subject detection, inferred crops or dimensions, depth/flow/lens estimation, 3D, or creative planning."
+description: "Execute caller-authored deterministic 2D geometry: compose, solve, inspect, render, rectify, Canvas variants, bounded single-raster programs, multi-plane mockups/extraction, custom meshes, lens/displacement remaps, ordered transform timelines, or CSS. Use when parameters, corners, grids, maps, sources, stages, or keyframes are explicit. Do not use for plane/subject detection, inferred crops or dimensions, depth/flow/lens estimation, 3D, or creative planning."
 ---
 
 # Worldbend
@@ -50,28 +50,34 @@ target from an image.
    The output directory must be a new relative directory; one call publishes
    the complete ordered set or publishes nothing. Do not choose a crop,
    background, anchor, or aspect ratio for the caller.
-6. Run `mockup_plan` / `mockup_render` for caller-authored ordered planes,
+6. Run `program_inspect` / `program_render` when the caller supplies one
+   ordered chain of 1..8 existing Transform, Rectify, and Canvas stages over
+   one source raster. Use it instead of publishing and reopening intermediate
+   PNGs. It produces one final PNG or nothing, and reports every stage's input
+   and output size. Do not invent stages, use it as a batch operation, or add
+   multi-source, branching, fan-out, or per-stage publication.
+7. Run `mockup_plan` / `mockup_render` for caller-authored ordered planes,
    source IDs, seams, grids, measurements, opacity, and canvas. Run
    `mockup_extract_plan` / `mockup_extract_render` when the caller supplies an
    ordered set of Rectify programs to extract from one original raster. Source
    sets must match exactly; directory output is all-or-none. Do not detect,
    align, or repair planes.
-7. Run `mesh_plan` / `mesh_render` for a caller-authored regular custom mesh.
+8. Run `mesh_plan` / `mesh_render` for a caller-authored regular custom mesh.
    Preserve vertex order, source grid, boundary, and positive triangles. Do
    not synthesize control points or combine custom Mesh with preset Warp.
-8. Run `remap_plan` / `remap_render` for explicit Brown-Conrady lens values or
+9. Run `remap_plan` / `remap_render` for explicit Brown-Conrady lens values or
    a channel displacement map. Displacement requires exactly one map; lens
    rejects one. Do not estimate a lens, depth, flow, channels, neutral value,
    scale, or boundary mode.
-9. Run `timeline_plan` / `timeline_render` for explicit per-frame transforms or
+10. Run `timeline_plan` / `timeline_render` for explicit per-frame transforms or
    linear four-corner keyframes. The source set, frame order, IDs, fixed output,
    cumulative budget, and atomic PNG directory are part of the program. Do not
    track motion, invent keyframes, or loop independent render calls.
-10. Run `render` once to apply or reuse a saved mapping on a local
+11. Run `render` once to apply or reuse a saved mapping on a local
    PNG, JPEG, or WebP. Paths are relative to the explicitly granted workspace.
    Use `dryRun: true` when overwrite authority or output feasibility is not yet
    established; do not claim a file was written from a dry-run result.
-11. Run `css` once for a live image, video, iframe, canvas, or DOM
+12. Run `css` once for a live image, video, iframe, canvas, or DOM
    element. Supply the element size and, for normalized planes, the concrete
    destination size. CSS cannot represent a Warp whose `amount` is non-zero;
    `amount: 0` is identity and remains CSS-representable. Use render or the Web
@@ -87,7 +93,8 @@ homography in model reasoning when the tool is available.
 
 - Automatic plane detection, salient-subject crop selection, output-size
   inference, segmentation, lens/depth/flow or camera estimation, split Warp,
-  3D, artistic brush distortion, and encoded video/audio are separate capabilities.
+  3D, artistic brush distortion, public batch/branch programs, and encoded
+  video/audio are separate capabilities.
 - A render workspace is available only when the host grants
   `WORLDBEND_WORKSPACE_ROOT`. If it is absent, compose, solve, inspect, and
   CSS and rectification planning remain available; report that file rendering

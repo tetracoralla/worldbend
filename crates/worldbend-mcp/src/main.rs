@@ -37,9 +37,10 @@ use worldbend_agent_fs::{
 use worldbend_core::{
     AffineComposition, CanvasBackground, CanvasSetPlan, CanvasSetSpec, Content, Destination,
     ErrorCode, InspectOutput, MeshWarpPlan, MeshWarpSpec, MockupExtractPlan, MockupExtractSpec,
-    MockupPlan, MockupSpec, RectifyPlan, RectifySpec, RemapPlan, RemapSpec, Size, SolveOutput,
-    TimelinePlan, TimelineSpec, TransformError, TransformRecipe, TransformResult, TransformSpec,
-    bounded_text, compose_affine, emit_css_transform, inspect_spec, plan_mesh_warp, plan_mockup,
+    MockupPlan, MockupSpec, RasterProgramInspection, RasterProgramSpec, RectifyPlan, RectifySpec,
+    RemapPlan, RemapSpec, Size, SolveOutput, TimelinePlan, TimelineSpec, TransformError,
+    TransformRecipe, TransformResult, TransformSpec, bounded_text, compose_affine,
+    emit_css_transform, inspect_raster_program, inspect_spec, plan_mesh_warp, plan_mockup,
     plan_mockup_extract, plan_remap, plan_timeline, rectify_plane, solve_spec,
 };
 use worldbend_render::{
@@ -48,12 +49,13 @@ use worldbend_render::{
     DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus, MeshWarpFileRenderResult,
     MeshWarpRenderOptions, MockupExtractFileRenderResult, MockupExtractRenderOptions,
     MockupExtractRenderStatus, MockupFileRenderResult, MockupFileSource, MockupRenderOptions,
-    RectifyFileRenderResult, RectifyRenderOptions, RemapFileMap, RemapFileRenderResult,
-    RemapRenderOptions, RenderLimits, RenderOptions, SamplingQuality, TimelineFileRenderResult,
-    TimelineFileSource, TimelineRenderOptions, TimelineRenderStatus,
-    rectify_file_with_source_sha256, render_canvas_set_file, render_file_with_source_sha256,
-    render_mesh_warp_file_with_cancel, render_mockup_extract_files_with_cancel,
-    render_mockup_files_with_cancel, render_remap_file_with_cancel,
+    RasterProgramFileRenderResult, RasterProgramRenderOptions, RectifyFileRenderResult,
+    RectifyRenderOptions, RemapFileMap, RemapFileRenderResult, RemapRenderOptions, RenderLimits,
+    RenderOptions, SamplingQuality, TimelineFileRenderResult, TimelineFileSource,
+    TimelineRenderOptions, TimelineRenderStatus, rectify_file_with_source_sha256,
+    render_canvas_set_file, render_file_with_source_sha256, render_mesh_warp_file_with_cancel,
+    render_mockup_extract_files_with_cancel, render_mockup_files_with_cancel,
+    render_raster_program_file_with_source_sha256, render_remap_file_with_cancel,
     render_timeline_files_with_cancel,
 };
 
@@ -79,6 +81,7 @@ const MCP_MAX_AXIS: u32 = DEFAULT_MAX_AXIS;
 // instead of always dying later under E_MEMORY.
 const MCP_MAX_PIXELS: u64 = 32 * 1024 * 1024;
 const MCP_MAX_CANVAS_SET_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_RASTER_PROGRAM_PIXELS: u64 = 64 * 1024 * 1024;
 // Agent Canvas output is an atomic set, so bound the sum of its encoded PNGs
 // before same-parent staging or commit. This is intentionally separate from
 // the pixel and 256 KiB response ceilings.
@@ -467,6 +470,30 @@ struct RectifyRenderInput {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramInspectInput {
+    spec: RasterProgramSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    spec: RasterProgramSpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: ProgramRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(description = "Execute every stage and encode the final PNG without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct CssInput {
     #[schemars(description = "worldbend.transform document to express as CSS matrix3d")]
     spec: TransformSpec,
@@ -486,6 +513,8 @@ enum OperationId {
     Render,
     Rectify,
     RectifyRender,
+    ProgramInspect,
+    ProgramRender,
     CanvasRender,
     MockupPlan,
     MockupRender,
@@ -501,13 +530,15 @@ enum OperationId {
 }
 
 impl OperationId {
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 20] = [
         Self::Compose,
         Self::Solve,
         Self::Inspect,
         Self::Render,
         Self::Rectify,
         Self::RectifyRender,
+        Self::ProgramInspect,
+        Self::ProgramRender,
         Self::CanvasRender,
         Self::MockupPlan,
         Self::MockupRender,
@@ -530,6 +561,8 @@ impl OperationId {
             Self::Render => "render",
             Self::Rectify => "rectify",
             Self::RectifyRender => "rectify_render",
+            Self::ProgramInspect => "program_inspect",
+            Self::ProgramRender => "program_render",
             Self::CanvasRender => "canvas_render",
             Self::MockupPlan => "mockup_plan",
             Self::MockupRender => "mockup_render",
@@ -553,6 +586,8 @@ impl OperationId {
             Self::Render => "Render projective raster",
             Self::Rectify => "Plan plane rectification",
             Self::RectifyRender => "Render plane rectification",
+            Self::ProgramInspect => "Inspect raster program",
+            Self::ProgramRender => "Render raster program",
             Self::CanvasRender => "Render Canvas Set",
             Self::MockupPlan => "Plan multi-plane mockup",
             Self::MockupRender => "Render multi-plane mockup",
@@ -587,6 +622,12 @@ impl OperationId {
             }
             Self::RectifyRender => {
                 "Render an explicit planar rectification to a local PNG under the granted root."
+            }
+            Self::ProgramInspect => {
+                "Validate one ordered single-raster Transform, Rectify, and Canvas program without decoding pixels."
+            }
+            Self::ProgramRender => {
+                "Execute ordered single-raster stages in memory and atomically publish only the final PNG."
             }
             Self::CanvasRender => {
                 "Render one ordered explicit Canvas Set atomically, or replay its resolved plan."
@@ -637,6 +678,12 @@ impl OperationId {
             Self::Render => "render raster png jpeg webp apply replace image",
             Self::Rectify => "rectify flatten extract source plane quadrilateral plan",
             Self::RectifyRender => "rectify render flatten extract source plane png image",
+            Self::ProgramInspect => {
+                "program pipeline ordered transform rectify canvas inspect validate single raster"
+            }
+            Self::ProgramRender => {
+                "program pipeline ordered transform rectify canvas render in memory atomic png"
+            }
             Self::CanvasRender => {
                 "canvas crop trim pad contain cover stretch multi output resize variants"
             }
@@ -675,6 +722,7 @@ impl OperationId {
             self,
             Self::Render
                 | Self::RectifyRender
+                | Self::ProgramRender
                 | Self::CanvasRender
                 | Self::MockupRender
                 | Self::MockupExtractRender
@@ -1214,6 +1262,52 @@ impl TryFrom<RectifyRenderOptionsInput> for RectifyRenderOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_raster_program_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_RASTER_PROGRAM_PIXELS))]
+    max_cumulative_pixels: u64,
+}
+
+const fn default_mcp_raster_program_pixels() -> u64 {
+    MCP_MAX_RASTER_PROGRAM_PIXELS
+}
+
+impl Default for ProgramRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_cumulative_pixels: MCP_MAX_RASTER_PROGRAM_PIXELS,
+        }
+    }
+}
+
+impl TryFrom<ProgramRenderOptionsInput> for RasterProgramRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: ProgramRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_cumulative_pixels == 0
+            || value.max_cumulative_pixels > MCP_MAX_RASTER_PROGRAM_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "raster-program cumulative pixel limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_cumulative_pixels: value.max_cumulative_pixels,
+        })
+    }
+}
+
 #[derive(Debug)]
 struct RenderRequest {
     source: String,
@@ -1230,6 +1324,16 @@ struct RectifyRenderRequest {
     spec: RectifySpec,
     output: String,
     options: RectifyRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct ProgramRenderRequest {
+    source: String,
+    spec: RasterProgramSpec,
+    output: String,
+    options: RasterProgramRenderOptions,
     overwrite: bool,
     dry_run: bool,
 }
@@ -1326,6 +1430,13 @@ struct PreparedRectifyRenderRequest {
 }
 
 #[derive(Debug)]
+struct PreparedProgramRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: ProgramRenderRequest,
+}
+
+#[derive(Debug)]
 struct PreparedMockupRenderRequest {
     sources: Vec<(String, std::fs::File)>,
     output: OutputTarget,
@@ -1387,6 +1498,22 @@ impl TryFrom<RectifyRenderInput> for RectifyRenderRequest {
     type Error = TransformError;
 
     fn try_from(value: RectifyRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<ProgramRenderInput> for ProgramRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: ProgramRenderInput) -> Result<Self, Self::Error> {
+        inspect_raster_program(&value.spec)?;
         Ok(Self {
             source: value.source,
             spec: value.spec,
@@ -1702,6 +1829,11 @@ impl WorldbendServer {
             OperationId::Rectify => self.rectify(arguments).into_value(),
             OperationId::RectifyRender => self
                 .rectify_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::ProgramInspect => self.program_inspect(arguments).into_value(),
+            OperationId::ProgramRender => self
+                .program_render(arguments, cancellation)
                 .await
                 .into_value(),
             OperationId::CanvasRender => self
@@ -2199,6 +2331,58 @@ impl WorldbendServer {
         ToolEnvelope::from_result(result)
     }
 
+    fn program_inspect(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<RasterProgramInspection> {
+        let result = parse_tool_input::<ProgramInspectInput>(Value::Object(arguments))
+            .and_then(|input| inspect_raster_program(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn program_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<RasterProgramFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<ProgramRenderInput>(Value::Object(arguments))
+            .and_then(ProgramRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "program_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_program_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_program_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
     /// Render one ordered Canvas Set atomically through a bounded isolated worker.
     #[tool(
         name = "worldbend.canvas_render",
@@ -2555,6 +2739,13 @@ enum WorkerRequest {
         output: PathBuf,
         options: RectifyRenderOptions,
     },
+    RasterProgram {
+        source: PathBuf,
+        source_sha256: String,
+        spec: RasterProgramSpec,
+        output: PathBuf,
+        options: RasterProgramRenderOptions,
+    },
     CanvasSet {
         source: PathBuf,
         program: CanvasWorkerProgram,
@@ -2676,6 +2867,21 @@ fn run_worker_process() {
             output,
             options,
         }) => write_worker_result(rectify_file_with_source_sha256(
+            &source,
+            &source_sha256,
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+        )),
+        Ok(WorkerRequest::RasterProgram {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_raster_program_file_with_source_sha256(
             &source,
             &source_sha256,
             &spec,
@@ -2886,6 +3092,20 @@ fn prepare_rectify_render_request(
     let source = root.open_source(&request.source)?;
     let output = root.prepare_output(&request.output, request.overwrite)?;
     Ok(PreparedRectifyRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_program_render_request(
+    root: &WorkspaceRoot,
+    request: ProgramRenderRequest,
+) -> TransformResult<PreparedProgramRenderRequest> {
+    inspect_raster_program(&request.spec)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedProgramRenderRequest {
         source,
         output,
         request,
@@ -3183,6 +3403,68 @@ async fn run_rectify_worker(
                 TransformError::new(
                     ErrorCode::Internal,
                     format!("output publication task failed: {error}"),
+                )
+            })??;
+    }
+    Ok(result)
+}
+
+async fn run_program_worker(
+    prepared: PreparedProgramRenderRequest,
+) -> Result<RasterProgramFileRenderResult, TransformError> {
+    let PreparedProgramRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let mut staging_builder = tempfile::Builder::new();
+    staging_builder.prefix(".worldbend-program-stage-");
+    let staging = match std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT") {
+        Some(directory) => staging_builder.tempdir_in(directory),
+        None => staging_builder.tempdir(),
+    }
+    .map_err(|error| {
+        TransformError::new(ErrorCode::Render, "private program staging is not writable")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = input.options.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, max_source_bytes)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private program source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::RasterProgram {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: RasterProgramFileRenderResult = execute_worker_request(&request).await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    if !input.dry_run {
+        tokio::task::spawn_blocking(move || output.publish_from(&staged_output))
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("program output publication task failed: {error}"),
                 )
             })??;
     }
@@ -4260,6 +4542,12 @@ fn describe_operation(operation: OperationId) -> OperationDescriptor {
         OperationId::RectifyRender => {
             operation_schemas::<RectifyRenderInput, RectifyFileRenderResult>()
         }
+        OperationId::ProgramInspect => {
+            operation_schemas::<ProgramInspectInput, RasterProgramInspection>()
+        }
+        OperationId::ProgramRender => {
+            operation_schemas::<ProgramRenderInput, RasterProgramFileRenderResult>()
+        }
         OperationId::CanvasRender => (
             Value::Object(canvas_render_input_schema()),
             Value::Object(generated_output_schema::<
@@ -4552,6 +4840,16 @@ mod tests {
         assert_eq!(canvas.input_schema["type"], "object");
         assert!(canvas.input_schema.get("oneOf").is_some());
         assert_eq!(canvas.output_schema["type"], "object");
+
+        let program = describe_operation(OperationId::ProgramRender);
+        assert_eq!(program.operation, OperationId::ProgramRender);
+        let program_schema = serde_json::to_string(&program.input_schema).unwrap();
+        assert!(program_schema.contains(r#""const":"worldbend.raster-program""#));
+        assert!(program_schema.contains(r#""maximum":67108864"#));
+        assert!(program_schema.contains(r#""transform""#));
+        assert!(program_schema.contains(r#""rectify""#));
+        assert!(program_schema.contains(r#""canvas""#));
+        assert_eq!(program.output_schema["type"], "object");
     }
 
     #[test]

@@ -107,6 +107,18 @@ keyframes are owned by `docs/TIMELINE_CONTRACT.md`. These are independent
 versioned programs, not optional TransformSpec fields, perception features, or
 adapter-local loops.
 
+## Ordered single-raster program
+
+`worldbend.raster-program@0.1` composes 1..8 already-defined Transform,
+Rectify, and Canvas stages over one raster in strict order. Every stage has one
+safe unique ID. Execution preflights the next output and cumulative processed
+pixels before allocating it, keeps intermediate rasters in memory, and has one
+final PNG publication boundary. A failure, cancellation, timeout, response
+budget failure, or dry-run publishes no file. The program is not a public
+batch operation: it has one source, one final output, no fan-out, no partial
+success, and no per-stage publication. Exact semantics and exclusions are
+owned by `docs/RASTER_PROGRAM_CONTRACT.md`.
+
 ## Stable errors
 
 | Code | Meaning |
@@ -283,7 +295,9 @@ constants, positive sizes, unknown-field rejection, and server resource
 ceilings. The compact run envelope deliberately keeps its nested arguments
 generic in `tools/list`; accepting it does not weaken validation because the
 selected operation is parsed against the exact schema returned by describe and
-used by its direct compatibility tool. Every tool output schema declares a
+passed to its operation-specific handler. The eight compatibility operations
+also expose their existing direct tools; catalog-only families do not grow
+that frozen surface. Every tool output schema declares a
 top-level JSON object while retaining the closed success/failure envelope
 beneath it, so strict MCP clients can accept `tools/list` without weakening
 result validation. The complete direct and compact catalogs have independent

@@ -16,9 +16,10 @@ use std::{
 #[cfg(feature = "full")]
 use worldbend_core::{
     AffineComposition, CanvasPlan, CanvasSpec, CssTransform, Flip2D, MeshWarpPlan, MeshWarpSpec,
-    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, Point, Quad, RectifyPlan,
-    RemapPlan, Scale2D, Skew2D, SolveOutput, TimelinePlan, TimelineSpec, TransformRecipe, WarpMesh,
-    WarpPreset, WarpSpec, compose_affine, emit_css_transform, plan_mesh_warp, plan_mockup,
+    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, Point, Quad,
+    RasterProgramInspection, RasterProgramSpec, RectifyPlan, RemapPlan, Scale2D, Skew2D,
+    SolveOutput, TimelinePlan, TimelineSpec, TransformRecipe, WarpMesh, WarpPreset, WarpSpec,
+    compose_affine, emit_css_transform, inspect_raster_program, plan_mesh_warp, plan_mockup,
     plan_mockup_extract, plan_timeline, solve_spec,
 };
 use worldbend_core::{
@@ -36,8 +37,9 @@ use worldbend_render::{
 };
 #[cfg(feature = "full")]
 use worldbend_render::{
-    MeshWarpRenderOptions, MockupExtractRenderOptions, MockupRenderOptions, TimelineRenderOptions,
-    render_mesh_warp_file_with_cancel, render_mockup_extract_files, render_mockup_files,
+    MeshWarpRenderOptions, MockupExtractRenderOptions, MockupRenderOptions,
+    RasterProgramRenderOptions, TimelineRenderOptions, render_mesh_warp_file_with_cancel,
+    render_mockup_extract_files, render_mockup_files, render_raster_program_file,
     render_timeline_files,
 };
 #[cfg(any(feature = "full", feature = "comfy"))]
@@ -218,6 +220,45 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
         /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate one ordered single-raster program without decoding a source.
+    #[cfg(feature = "full")]
+    ProgramInspect {
+        /// Path to a worldbend.raster-program JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// Accepted for explicit scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Execute ordered Transform, Rectify, and Canvas stages in memory, then publish one PNG.
+    #[cfg(feature = "full")]
+    ProgramRender {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = worldbend_core::MAX_RASTER_PROGRAM_PIXELS)]
+        max_cumulative_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        /// Run all stages and PNG encoding without publishing the output.
+        #[arg(long)]
+        dry_run: bool,
         #[arg(long)]
         json: bool,
     },
@@ -789,6 +830,55 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 result,
             })
         }
+        #[cfg(feature = "full")]
+        Command::ProgramInspect { spec, json: _ } => {
+            let spec: RasterProgramSpec = read_json_file(&spec, "RasterProgramSpec")?;
+            let result = inspect_raster_program(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "programInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::ProgramRender {
+            source,
+            spec,
+            output,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_cumulative_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec: RasterProgramSpec = read_json_file(&spec, "RasterProgramSpec")?;
+            let result = render_raster_program_file(
+                &source,
+                &spec,
+                &output,
+                RasterProgramRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                    max_cumulative_pixels,
+                },
+                overwrite,
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "programRender",
+                result,
+            })
+        }
         Command::CanvasInspect { spec, json: _ } => {
             let spec: CanvasSetSpec = read_json_file(&spec, "CanvasSetSpec")?;
             spec.validate()?;
@@ -1192,6 +1282,10 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "fileRenderResult": schema_for!(worldbend_render::FileRenderResult),
                 "rectifyRenderOptions": schema_for!(RectifyRenderOptions),
                 "rectifyFileRenderResult": schema_for!(worldbend_render::RectifyFileRenderResult),
+                "rasterProgramSpec": schema_for!(RasterProgramSpec),
+                "rasterProgramInspection": schema_for!(RasterProgramInspection),
+                "rasterProgramRenderOptions": schema_for!(RasterProgramRenderOptions),
+                "rasterProgramFileRenderResult": schema_for!(worldbend_render::RasterProgramFileRenderResult),
                 "cssTransform": schema_for!(CssTransform),
                 "transformError": schema_for!(TransformError),
                 "webContract": schema_for!(WebContract)

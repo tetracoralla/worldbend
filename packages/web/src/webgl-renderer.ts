@@ -102,6 +102,7 @@ export class TransformWebGLRenderer {
   private geometryInitialized = false;
   private geometryCapacityBytes = 0;
   private geometryVertexCount = 0;
+  private geometryVertexData: Float32Array | undefined;
 
   constructor(
     canvas: HTMLCanvasElement = document.createElement("canvas"),
@@ -270,18 +271,33 @@ export class TransformWebGLRenderer {
     if (this.geometryInitialized && warpMesh === this.uploadedWarpMesh) {
       return this.geometryVertexCount;
     }
-    const vertices = warpMeshVertexData(warpMesh);
+    let vertices: Float32Array;
+    let floatCount: number;
+    if (warpMesh) {
+      // One bounded CPU staging buffer survives continuous Warp/custom-Mesh
+      // updates. The mesh resolution is capped at 16x16, so a changing mesh no
+      // longer allocates a new ~24 KiB Float32Array on every rendered sample.
+      this.geometryVertexData ??= new Float32Array(MAX_WARP_MESH_FLOATS);
+      vertices = this.geometryVertexData;
+      floatCount = writeWarpMeshVertexData(warpMesh, vertices);
+    } else {
+      vertices = unitMeshVertexData;
+      floatCount = vertices.length;
+    }
+    const uploadBytes = floatCount * Float32Array.BYTES_PER_ELEMENT;
     const { gl } = this;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer ?? fail("Preview geometry is unavailable"));
-    if (vertices.byteLength <= this.geometryCapacityBytes) {
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
+    if (uploadBytes <= this.geometryCapacityBytes) {
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices, 0, floatCount);
     } else {
-      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
-      this.geometryCapacityBytes = vertices.byteLength;
+      const capacityBytes = warpMesh ? vertices.byteLength : uploadBytes;
+      gl.bufferData(gl.ARRAY_BUFFER, capacityBytes, gl.DYNAMIC_DRAW);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices, 0, floatCount);
+      this.geometryCapacityBytes = capacityBytes;
     }
     this.uploadedWarpMesh = warpMesh;
     this.geometryInitialized = true;
-    this.geometryVertexCount = vertices.length / 4;
+    this.geometryVertexCount = floatCount / 4;
     assertNoWebGlError(gl, "Unable to upload preview geometry");
     return this.geometryVertexCount;
   }
@@ -316,6 +332,7 @@ export class TransformWebGLRenderer {
     this.geometryInitialized = false;
     this.geometryCapacityBytes = 0;
     this.geometryVertexCount = 0;
+    this.geometryVertexData = undefined;
   }
 }
 
@@ -328,25 +345,31 @@ const unitMeshVertices: readonly WarpVertex[] = [
 
 const MIN_MESH_SUBDIVISIONS = 2;
 const MAX_MESH_SUBDIVISIONS = 16;
+const MAX_WARP_MESH_FLOATS = MAX_MESH_SUBDIVISIONS ** 2 * 2 * 3 * 4;
 
 export function warpMeshVertexData(mesh?: WarpMesh): Float32Array {
+  const subdivisions = validatedMeshSubdivisions(mesh);
+  const triangleCount = mesh ? subdivisions ** 2 * 2 : 2;
+  const output = new Float32Array(triangleCount * 3 * 4);
+  writeWarpMeshVertexData(mesh, output);
+  return output;
+}
+
+/** Fill caller-owned geometry storage and return the written float count. */
+export function writeWarpMeshVertexData(
+  mesh: WarpMesh | undefined,
+  output: Float32Array,
+): number {
   // Validate the complete topology before using caller-reachable dimensions
   // in an allocation. Preset Warp supplies the canonical 16x16 mesh while the
   // custom Mesh contract supplies a core-validated 2..16 grid.
-  const subdivisions = mesh?.subdivisions ?? 1;
+  const subdivisions = validatedMeshSubdivisions(mesh);
   const side = subdivisions + 1;
-  if (
-    mesh &&
-    (!Number.isSafeInteger(subdivisions) ||
-      subdivisions < MIN_MESH_SUBDIVISIONS ||
-      subdivisions > MAX_MESH_SUBDIVISIONS ||
-      mesh.vertices.length !== side * side)
-  ) {
-    throw new Error("The warp mesh topology is invalid");
-  }
-  // Preallocated so a warp drag uploads without a boxed number[] detour.
   const triangleCount = mesh ? subdivisions ** 2 * 2 : 2;
-  const output = new Float32Array(triangleCount * 3 * 4);
+  const floatCount = triangleCount * 3 * 4;
+  if (output.length < floatCount) {
+    throw new Error("The warp mesh geometry buffer is too small");
+  }
   let offset = 0;
   const append = (vertex: WarpVertex): void => {
     assertFinitePoint(vertex.warped);
@@ -364,7 +387,7 @@ export function warpMeshVertexData(mesh?: WarpMesh): Float32Array {
   if (!mesh) {
     appendTriangle(unitMeshVertices[0]!, unitMeshVertices[1]!, unitMeshVertices[2]!);
     appendTriangle(unitMeshVertices[0]!, unitMeshVertices[2]!, unitMeshVertices[3]!);
-    return output;
+    return floatCount;
   }
   const vertex = (x: number, y: number): WarpVertex =>
     mesh.vertices[y * side + x] ?? fail("The warp mesh is incomplete");
@@ -388,7 +411,24 @@ export function warpMeshVertexData(mesh?: WarpMesh): Float32Array {
       appendTriangle(tl, br, bl);
     }
   }
-  return output;
+  return floatCount;
+}
+
+const unitMeshVertexData = warpMeshVertexData();
+
+function validatedMeshSubdivisions(mesh?: WarpMesh): number {
+  const subdivisions = mesh?.subdivisions ?? 1;
+  const side = subdivisions + 1;
+  if (
+    mesh &&
+    (!Number.isSafeInteger(subdivisions) ||
+      subdivisions < MIN_MESH_SUBDIVISIONS ||
+      subdivisions > MAX_MESH_SUBDIVISIONS ||
+      mesh.vertices.length !== side * side)
+  ) {
+    throw new Error("The warp mesh topology is invalid");
+  }
+  return subdivisions;
 }
 
 function assertFixedBoundary(

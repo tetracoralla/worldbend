@@ -50,6 +50,7 @@ let mockupExtractSpec;
 let meshSpec;
 let remapSpec;
 let timelineSpec;
+let rasterProgramSpec;
 let mcpComposeResult;
 let mcpFlippedComposeResult;
 let mcpWarpComposeResult;
@@ -95,6 +96,7 @@ async function main() {
     meshSpec = makeMeshSpec();
     remapSpec = makeRemapSpec();
     timelineSpec = makeTimelineSpec();
+    rasterProgramSpec = makeRasterProgramSpec();
     await writeFile(
       path.join(fixtureRoot, "pixel.projective.json"),
       JSON.stringify(pixelSpec),
@@ -106,6 +108,10 @@ async function main() {
     await writeFile(
       path.join(fixtureRoot, "rectify.projective.json"),
       JSON.stringify(rectifySpec),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "raster-program.json"),
+      JSON.stringify(rasterProgramSpec),
     );
 
     catalogClient = new StdioClient(mcp, [
@@ -133,7 +139,7 @@ async function main() {
     await checkBoundedConcurrency(client);
     checkCliAdapter();
     console.log(
-      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms)`,
+      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms)`,
     );
   } finally {
     if (catalogClient) await catalogClient.close();
@@ -177,6 +183,21 @@ async function checkProgressiveCatalog(activeClient) {
   assert(Array.isArray(describe.result.structuredContent.result.inputSchema.oneOf));
   assert.equal(describe.result.structuredContent.result.outputSchema.type, "object");
 
+  const programDescription = await activeClient.callTool("worldbend.describe", {
+    operation: "program_render",
+  });
+  assert.equal(programDescription.result.structuredContent.ok, true);
+  assert.equal(
+    programDescription.result.structuredContent.result.inputSchema.$defs.RasterProgramSpec
+      .properties.schema.const,
+    "worldbend.raster-program",
+  );
+  assert.equal(
+    programDescription.result.structuredContent.result.inputSchema.$defs
+      .ProgramRenderOptionsInput.properties.maxCumulativePixels.maximum,
+    64 * 1024 * 1024,
+  );
+
   const mockupSearch = await activeClient.callTool("worldbend.search", {
     query: "mockup packaging",
   });
@@ -216,6 +237,124 @@ async function checkProgressiveCatalog(activeClient) {
     arguments: { destination: pixelSpec.destination, unexpected: true },
   });
   expectToolError(rejected, "E_SCHEMA");
+
+  const programInspection = await activeClient.callTool("worldbend.run", {
+    operation: "program_inspect",
+    arguments: { spec: rasterProgramSpec },
+  });
+  assert.equal(programInspection.result.structuredContent.ok, true);
+  assert.deepEqual(
+    programInspection.result.structuredContent.result.stages.map((stage) => stage.id),
+    ["perspective", "padding"],
+  );
+
+  const programDry = await activeClient.callTool("worldbend.run", {
+    operation: "program_render",
+    arguments: {
+      source: "source.png",
+      spec: rasterProgramSpec,
+      output: "out/program-dry.png",
+      dryRun: true,
+    },
+  });
+  assert.equal(programDry.result.structuredContent.ok, true);
+  assert.equal(programDry.result.structuredContent.result.status, "ready");
+  assert.equal(programDry.result.structuredContent.result.evidence.outputWidth, 3);
+  assert.equal(programDry.result.structuredContent.result.evidence.outputHeight, 2);
+  assert.deepEqual(
+    programDry.result.structuredContent.result.stages.map((stage) => stage.output),
+    [{ width: 1, height: 1 }, { width: 3, height: 2 }],
+  );
+  assert.equal(await exists(path.join(fixtureRoot, "out", "program-dry.png")), false);
+
+  const programWritten = await activeClient.callTool("worldbend.run", {
+    operation: "program_render",
+    arguments: {
+      source: "source.png",
+      spec: rasterProgramSpec,
+      output: "out/program.png",
+    },
+  });
+  assert.equal(programWritten.result.structuredContent.ok, true);
+  assert.equal(programWritten.result.structuredContent.result.status, "written");
+  const programBytes = await readFile(path.join(fixtureRoot, "out", "program.png"));
+  assert.equal(
+    programWritten.result.structuredContent.result.evidence.outputSha256,
+    sha256(programBytes),
+  );
+  metrics.programResponseBytes = programWritten.wireBytes;
+
+  const invalidLateStage = structuredClone(rasterProgramSpec);
+  invalidLateStage.stages[1] = {
+    kind: "canvas",
+    id: "bad-crop",
+    spec: {
+      schema: "worldbend.canvas",
+      version: "0.1",
+      operation: { kind: "crop", rect: { x: 1, y: 0, width: 1, height: 1 } },
+    },
+  };
+  const failedProgram = await activeClient.callTool("worldbend.run", {
+    operation: "program_render",
+    arguments: {
+      source: "source.png",
+      spec: invalidLateStage,
+      output: "out/program-failed.png",
+    },
+  });
+  expectToolError(failedProgram, "E_CROP_BOUNDS");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "program-failed.png")), false);
+  assert.deepEqual(await programStagingDirectories(), []);
+
+  const slowProgram = {
+    schema: "worldbend.raster-program",
+    version: "0.1",
+    stages: [
+      {
+        kind: "transform",
+        id: "large",
+        spec: makePixelSpec(8000, 4000),
+        canvas: "reference",
+      },
+    ],
+  };
+  const programRequest = activeClient.beginRequest("tools/call", {
+    name: "worldbend.run",
+    arguments: {
+      operation: "program_render",
+      arguments: {
+        source: "source.png",
+        spec: slowProgram,
+        output: "out/program-cancelled.png",
+        dryRun: true,
+        options: { quality: "high" },
+      },
+    },
+  });
+  const programOutcomePromise = programRequest.promise.then(
+    (response) => ({ kind: "response", response }),
+    (error) => ({ kind: "error", error }),
+  );
+  await waitFor(async () => (await programStagingDirectories()).length > 0, 2_000);
+  const programCancelledAt = Date.now();
+  activeClient.notify("notifications/cancelled", {
+    requestId: programRequest.id,
+    reason: "runtime smoke Program cancellation",
+  });
+  await waitFor(async () => (await programStagingDirectories()).length === 0, 10_000);
+  metrics.programCancelCleanupMs = Date.now() - programCancelledAt;
+  assert(
+    metrics.programCancelCleanupMs < 1_500,
+    `Program cancellation cleanup took ${metrics.programCancelCleanupMs}ms`,
+  );
+  const programOutcome = await Promise.race([
+    programOutcomePromise,
+    new Promise((resolve) => setTimeout(() => resolve({ kind: "noResponse" }), 100)),
+  ]);
+  if (programOutcome.kind === "response") {
+    assert.equal(programOutcome.response.result?.isError, true);
+  }
+  assert.equal(await exists(path.join(fixtureRoot, "out", "program-cancelled.png")), false);
 
   const mockupPlan = await activeClient.callTool("worldbend.run", {
     operation: "mockup_plan",
@@ -1390,6 +1529,32 @@ function checkCliAdapter() {
   }
   assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-dry.png")), false);
 
+  const programInspect = runCli([
+    "program-inspect",
+    "--spec",
+    path.join(fixtureRoot, "raster-program.json"),
+  ]);
+  assert.equal(programInspect.status, 0);
+  assert.deepEqual(
+    programInspect.body.result.stages.map((stage) => stage.id),
+    ["perspective", "padding"],
+  );
+
+  const programDry = runCli([
+    "program-render",
+    "--source",
+    path.join(fixtureRoot, "source.png"),
+    "--spec",
+    path.join(fixtureRoot, "raster-program.json"),
+    "--output",
+    path.join(fixtureRoot, "out", "cli-program-dry.png"),
+    "--dry-run",
+  ]);
+  assert.equal(programDry.status, 0);
+  assert.equal(programDry.body.result.status, "ready");
+  assert.equal(programDry.body.result.evidence.outputWidth, 3);
+  assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-program-dry.png")), false);
+
   const schema = runCli(["schema"]);
   assert.equal(schema.status, 0);
   assert.equal(
@@ -1661,6 +1826,34 @@ function makeTimelineSpec(frameCount = 2) {
   };
 }
 
+function makeRasterProgramSpec() {
+  return {
+    schema: "worldbend.raster-program",
+    version: "0.1",
+    stages: [
+      {
+        kind: "transform",
+        id: "perspective",
+        spec: makePixelSpec(1, 1),
+        canvas: "reference",
+      },
+      {
+        kind: "canvas",
+        id: "padding",
+        spec: {
+          schema: "worldbend.canvas",
+          version: "0.1",
+          operation: {
+            kind: "pad",
+            insets: { top: 0, right: 1, bottom: 1, left: 1 },
+            background: { kind: "transparent" },
+          },
+        },
+      },
+    ],
+  };
+}
+
 async function stagingDirectories() {
   return (await readdir(stagingRoot)).filter((name) =>
     name.startsWith(".worldbend-stage-"),
@@ -1670,6 +1863,12 @@ async function stagingDirectories() {
 async function canvasStagingDirectories() {
   return (await readdir(stagingRoot)).filter((name) =>
     name.startsWith(".worldbend-canvas-stage-"),
+  );
+}
+
+async function programStagingDirectories() {
+  return (await readdir(stagingRoot)).filter((name) =>
+    name.startsWith(".worldbend-program-stage-"),
   );
 }
 

@@ -14,6 +14,8 @@ mod geometry;
 #[cfg(feature = "place")]
 mod mockup;
 mod model;
+#[cfg(feature = "program")]
+mod raster_program;
 mod rectify;
 #[cfg(feature = "remap")]
 mod remap;
@@ -54,6 +56,13 @@ pub use mockup::{
 pub use model::{
     Content, CoordinateSpace, Destination, FitMode, Point, Quad, SPEC_SCHEMA, SPEC_VERSION, Size,
     SourceOrientation, TransformSpec,
+};
+#[cfg(feature = "program")]
+pub use raster_program::{
+    MAX_RASTER_PROGRAM_PIXELS, MAX_RASTER_PROGRAM_STAGES, RASTER_PROGRAM_INSPECTION_SCHEMA,
+    RASTER_PROGRAM_SCHEMA, RASTER_PROGRAM_VERSION, RasterProgramCanvasMode,
+    RasterProgramInspection, RasterProgramSpec, RasterProgramStage, RasterProgramStageKind,
+    RasterProgramStageSummary, inspect_raster_program,
 };
 pub use rectify::{
     PixelSize, RECTIFY_SCHEMA, RECTIFY_VERSION, RectifyDiagnostics, RectifyPlan, RectifySpec,

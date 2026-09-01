@@ -1,7 +1,6 @@
 import type { MainToUiMessage, SourcePayload, UiToMainMessage } from "./messages";
 import { isUiToMainMessage } from "./messages";
 import { withTimeout } from "./async-timeout";
-import type { RectifySpecInput, TransformSpec } from "@worldbend/web/types";
 import { createLocalePreferenceSettings } from "./locale-preference";
 import {
   LOCALE_STORAGE_KEY,
@@ -15,29 +14,24 @@ import {
 } from "./i18n";
 import {
   MAX_FIGMA_IMAGE_AXIS,
-  parseOwnedRectifySpec,
-  parseOwnedTransformSpec,
   RENDER_HEIGHT_KEY,
   RENDER_WIDTH_KEY,
-  SHARED_NAMESPACE,
-  SHARED_RECTIFY_KEY,
-  SHARED_TRANSFORM_KEY,
 } from "./stored-plane";
 import {
   ownedCanvasOperationOutput,
-  parseOwnedCanvasSpec,
-  SHARED_CANVAS_KEY,
-  type OwnedCanvasSpec,
 } from "./stored-canvas";
 import {
   CanvasRollbackIncompleteError,
   publishCanvasDocumentTransaction,
 } from "./canvas-document-transaction";
 import {
-  parseStoredDesignerTask,
-  SHARED_DESIGNER_TASK_KEY,
-  type StoredDesignerTask,
-} from "./stored-designer-task";
+  readStoredOperation,
+  readStoredOperationSlots,
+  restoreStoredOperationSlots,
+  writeStoredOperation,
+  type StoredOperation,
+} from "./stored-operation";
+import type { StoredDesignerTask } from "./stored-designer-task";
 
 figma.showUI(__html__, { width: 600, height: 720, themeColors: true });
 
@@ -204,7 +198,7 @@ async function loadSelection(generation: number): Promise<void> {
 
 async function selectionPayload(selection: readonly SceneNode[]): Promise<SourcePayload> {
   if (selection.length < 1 || selection.length > 9) throw userError("selectOneOrPair");
-  const candidates = selection.map((node) => ({ node, stored: readStoredPlane(node) }));
+  const candidates = selection.map((node) => ({ node, stored: readStoredOperation(node) }));
   if (candidates.some((candidate) => candidate.stored.status === "invalid")) {
     throw userError("invalidReusablePlane");
   }
@@ -228,12 +222,6 @@ async function selectionPayload(selection: readonly SceneNode[]): Promise<Source
   }
   return exportSources(sources, target.node, target.stored.operation);
 }
-
-type StoredOperation =
-  | { kind: "transform"; spec: TransformSpec }
-  | { kind: "rectify"; spec: RectifySpecInput }
-  | { kind: "canvas"; spec: OwnedCanvasSpec }
-  | { kind: "task"; task: StoredDesignerTask };
 
 async function exportSources(
   sources: readonly SceneNode[],
@@ -413,7 +401,7 @@ async function applyResult(
       if (!target || target.type !== "RECTANGLE") {
         throw userError("resultUnavailable");
       }
-      const stored = readStoredPlane(target);
+      const stored = readStoredOperation(target);
       if (
         stored.status !== "valid" ||
         checkedOutputAxis(target.width) !== prepared.renderWidth ||
@@ -424,8 +412,9 @@ async function applyResult(
       existing = target;
     }
 
-    const storedKind = payload.rectification ? "rectify" : "transform";
-    const serializedOperation = JSON.stringify(payload.rectification ?? payload.spec);
+    const storedOperation: StoredOperation = payload.rectification
+      ? { kind: "rectify", spec: payload.rectification }
+      : { kind: "transform", spec: payload.spec! };
     // Establish an explicit pre-mutation snapshot. A post-mutation commit alone
     // can leave a long-running UI plugin without the boundary needed for the
     // host's next Undo to restore an in-place replacement.
@@ -435,8 +424,7 @@ async function applyResult(
     const result = await publishResult({
       ...(existing ? { existing } : {}),
       imageHash: image.hash,
-      storedKind,
-      serializedOperation,
+      storedOperation,
       sourceName: source.name,
       placement: payload.placement,
       renderWidth: payload.renderWidth,
@@ -487,7 +475,7 @@ async function applyCanvasSet(
         throw userError("selectionChanged");
       }
       if (!target || target.type !== "RECTANGLE") throw userError("resultUnavailable");
-      const stored = readStoredPlane(target);
+      const stored = readStoredOperation(target);
       const storedOutput = stored.status === "valid" && stored.operation.kind === "canvas"
         ? ownedCanvasOperationOutput(stored.operation.spec.operation, {
             width: prepared.renderWidth,
@@ -553,7 +541,7 @@ async function applyDesignerResult(
     if (payload.targetNodeId && !payload.duplicate) {
       const target = await figma.getNodeByIdAsync(payload.targetNodeId);
       if (!target || target.type !== "RECTANGLE") throw userError("resultUnavailable");
-      const stored = readStoredPlane(target);
+      const stored = readStoredOperation(target);
       const storedWidth = Number(target.getPluginData(RENDER_WIDTH_KEY));
       const storedHeight = Number(target.getPluginData(RENDER_HEIGHT_KEY));
       if (
@@ -571,8 +559,7 @@ async function applyDesignerResult(
     const result = await publishResult({
       ...(existing ? { existing } : {}),
       imageHash: figma.createImage(payload.bytes).hash,
-      storedKind: "task",
-      serializedOperation: JSON.stringify(payload.task),
+      storedOperation: { kind: "task", task: payload.task },
       sourceName: source.name,
       placement: payload.placement,
       renderWidth: payload.renderWidth,
@@ -708,8 +695,7 @@ function selectionAncestorIds(selection: readonly SceneNode[]): ReadonlySet<stri
 async function publishResult(input: {
   existing?: RectangleNode;
   imageHash: string;
-  storedKind: "transform" | "rectify" | "canvas" | "task";
-  serializedOperation: string;
+  storedOperation: StoredOperation;
   sourceName: string;
   placement: SourcePayload["placement"];
   renderWidth: number;
@@ -720,22 +706,9 @@ async function publishResult(input: {
     throw userError("mixedFills");
   }
   const priorFills = existingFills ? [...existingFills] : undefined;
-  const priorShared = input.existing?.getSharedPluginData(
-    SHARED_NAMESPACE,
-    SHARED_TRANSFORM_KEY,
-  );
-  const priorRectification = input.existing?.getSharedPluginData(
-    SHARED_NAMESPACE,
-    SHARED_RECTIFY_KEY,
-  );
-  const priorCanvas = input.existing?.getSharedPluginData(
-    SHARED_NAMESPACE,
-    SHARED_CANVAS_KEY,
-  );
-  const priorTask = input.existing?.getSharedPluginData(
-    SHARED_NAMESPACE,
-    SHARED_DESIGNER_TASK_KEY,
-  );
+  const priorOperationSlots = input.existing
+    ? readStoredOperationSlots(input.existing)
+    : undefined;
   const priorWidth = input.existing?.getPluginData(RENDER_WIDTH_KEY);
   const priorHeight = input.existing?.getPluginData(RENDER_HEIGHT_KEY);
   const priorFrame = input.existing
@@ -771,26 +744,7 @@ async function publishResult(input: {
       result.y = center.y - input.renderHeight / 2;
     }
     result.fills = [{ type: "IMAGE", imageHash: input.imageHash, scaleMode: "FILL" }];
-    result.setSharedPluginData(
-      SHARED_NAMESPACE,
-      SHARED_TRANSFORM_KEY,
-      input.storedKind === "transform" ? input.serializedOperation : "",
-    );
-    result.setSharedPluginData(
-      SHARED_NAMESPACE,
-      SHARED_RECTIFY_KEY,
-      input.storedKind === "rectify" ? input.serializedOperation : "",
-    );
-    result.setSharedPluginData(
-      SHARED_NAMESPACE,
-      SHARED_CANVAS_KEY,
-      input.storedKind === "canvas" ? input.serializedOperation : "",
-    );
-    result.setSharedPluginData(
-      SHARED_NAMESPACE,
-      SHARED_DESIGNER_TASK_KEY,
-      input.storedKind === "task" ? input.serializedOperation : "",
-    );
+    writeStoredOperation(result, input.storedOperation);
     result.setPluginData(RENDER_WIDTH_KEY, String(input.renderWidth));
     result.setPluginData(RENDER_HEIGHT_KEY, String(input.renderHeight));
     return result;
@@ -798,19 +752,12 @@ async function publishResult(input: {
     try {
       if (created) {
         result.remove();
-      } else if (priorFills && priorFrame) {
+      } else if (priorFills && priorFrame && priorOperationSlots) {
         result.resize(priorFrame.width, priorFrame.height);
         result.x = priorFrame.x;
         result.y = priorFrame.y;
         result.fills = priorFills;
-        result.setSharedPluginData(SHARED_NAMESPACE, SHARED_TRANSFORM_KEY, priorShared ?? "");
-        result.setSharedPluginData(
-          SHARED_NAMESPACE,
-          SHARED_RECTIFY_KEY,
-          priorRectification ?? "",
-        );
-        result.setSharedPluginData(SHARED_NAMESPACE, SHARED_CANVAS_KEY, priorCanvas ?? "");
-        result.setSharedPluginData(SHARED_NAMESPACE, SHARED_DESIGNER_TASK_KEY, priorTask ?? "");
+        restoreStoredOperationSlots(result, priorOperationSlots);
         result.setPluginData(RENDER_WIDTH_KEY, priorWidth ?? "");
         result.setPluginData(RENDER_HEIGHT_KEY, priorHeight ?? "");
       }
@@ -880,51 +827,6 @@ function requirePreparedDesignerSelection(
     prepared.payload.targetNodeId !== payload.targetNodeId
   ) throw userError("selectionChanged");
   return prepared.payload;
-}
-
-function readStoredPlane(
-  node: SceneNode,
-):
-  | { status: "none" }
-  | { status: "invalid" }
-  | {
-      status: "valid";
-      operation:
-        | { kind: "transform"; spec: TransformSpec }
-        | { kind: "rectify"; spec: RectifySpecInput }
-        | { kind: "canvas"; spec: OwnedCanvasSpec }
-        | { kind: "task"; task: StoredDesignerTask };
-    } {
-  const transform = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_TRANSFORM_KEY);
-  const rectification = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_RECTIFY_KEY);
-  const canvas = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_CANVAS_KEY);
-  const task = node.getSharedPluginData(SHARED_NAMESPACE, SHARED_DESIGNER_TASK_KEY);
-  if (!transform && !rectification && !canvas && !task) return { status: "none" };
-  // Exactly one operation owns a reusable result. Ambiguous or malformed
-  // plugin data is rejected instead of choosing one silently.
-  if ([transform, rectification, canvas, task].filter(Boolean).length !== 1) {
-    return { status: "invalid" };
-  }
-  if (transform) {
-    const parsed = parseOwnedTransformSpec(transform);
-    return parsed
-      ? { status: "valid", operation: { kind: "transform", spec: parsed } }
-      : { status: "invalid" };
-  }
-  if (rectification) {
-    const parsed = parseOwnedRectifySpec(rectification);
-    return parsed
-      ? { status: "valid", operation: { kind: "rectify", spec: parsed } }
-      : { status: "invalid" };
-  }
-  if (canvas) {
-    const parsed = parseOwnedCanvasSpec(canvas);
-    return parsed
-      ? { status: "valid", operation: { kind: "canvas", spec: parsed } }
-      : { status: "invalid" };
-  }
-  const parsed = parseStoredDesignerTask(task);
-  return parsed ? { status: "valid", operation: { kind: "task", task: parsed } } : { status: "invalid" };
 }
 
 function checkedOutputAxis(value: number): number {

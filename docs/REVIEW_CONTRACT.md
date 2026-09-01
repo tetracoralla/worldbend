@@ -51,6 +51,7 @@ surface, Product Skill, installed provider manifest, and live transport.
 | Place / Mockup semantics | Ordered planes, exact source identities, explicit seams/grids/measurements, source-over composition, reverse extraction, cumulative limits, and atomic directory publication follow `docs/MOCKUP_CONTRACT.md`. | A carrier detects a plane, repairs a seam, accepts extra/missing sources, changes z-order, chains extraction outputs, or publishes a partial set. |
 | Mesh and Remap semantics | Custom grids and explicit lens/displacement programs follow `docs/DEFORMATION_CONTRACT.md`; mesh topology, map presence, channel/neutral/boundary behavior, shared native sampling, and feature projection remain exact. | Adapter-local deformation, folded mesh acceptance, automatic lens/depth/flow estimation, implicit map choice, or carrier-only math. |
 | Timeline semantics | Explicit frames or linear corner keyframes expand and render under `docs/TIMELINE_CONTRACT.md`, including stable order/IDs, exact sources, intermediate validation, cumulative budgets, cancellation, and all-or-none directory publication. | Tracking, invented frames, easing drift, frame chaining, partial publication, generic batch semantics, or a Python per-frame loop presented as Timeline. |
+| Single-raster Program semantics | One `worldbend.raster-program@0.1` chains 1..8 uniquely identified Transform, Rectify, and Canvas stages under `docs/RASTER_PROGRAM_CONTRACT.md`. It preflights every next output and cumulative pixels, keeps intermediates in memory, preserves order, and publishes exactly one final PNG after cancellation and response checks. | Intermediate publication/redecode, stage reordering, partial success, allocation before the cumulative check, branching/fan-in/fan-out, adapter-local math, or exposure in Figma/Comfy without a current consumer. |
 | Stable errors | Every `docs/CONTRACT.md` product error remains reachable or explicitly reserved; CLI/MCP mappings agree; Capability narrowing is closed and intentional; messages/details and echoed input stay bounded. | Unknown product error falls through as a misleading known error, long input is reflected, or Capability accepts a shape its Profile rejects. |
 | Geometry diagnostics | Inspect, solve, compose, CSS, and render use core solving; reprojection, horizon, determinant, bounds, and inversion keep their declared meaning. Orientation-reversing homographies caused by explicit flips remain legal. | Render bypasses `solve_spec`, determinant sign is “repaired,” horizon checks differ, or diagnostics describe geometry not executed. |
 | Raster and side effects | Inverse mapping, pixel centers, premultiplied-alpha filtering, transparent outside samples, output limits, return feasibility, staging, and atomic publication follow `docs/CONTRACT.md`; dry-run executes the same preflight without publication. | Mutation precedes final preflight, overwrite occurs without authority, cancellation leaves staging/output, or dry-run and write disagree. |
@@ -246,6 +247,11 @@ atomicity semantics, one cumulative resource budget, fairness, cancellation,
 and publication behavior. A transport batch of independent calls does not
 automatically change the Capability Profile or become a Procedure.
 
+The single-raster Program is also not a batch: it has one source, one final
+output, no item-level success, and no fan-out. Its cumulative limit bounds
+private sequential stage outputs rather than a collection of publishable
+results.
+
 Measure ComfyUI separately from MCP. Its current path adds tensor-to-8-bit PNG
 conversion, one native process startup, native render, PNG decode, and tensor
 reconstruction. `pnpm test:comfyui` establishes correctness through a real
@@ -289,14 +295,39 @@ grabbed-control divergence, a discontinuous or runaway edge pan, or stale
 release geometry. Those are runtime human-flow failures even when frame timing
 is stable.
 
-Worldbend currently declares no interactive latency or frame-delivery SLO.
-Until a reproducible product workload, environment policy, metric, threshold,
-and blocked action are declared, report current measurements as a baseline or
-comparable before/after observation rather than a mechanical performance PASS.
-A reproducible functional failure, stale result, resource leak, or regression
-under the declared workload is still a runtime human-flow FAIL. Figma phases
-that the host does not expose remain explicitly unmeasured; designer judgment
-of perceived smoothness stays in business/experience acceptance.
+Worldbend declares one **local Web development regression threshold**, not a
+cross-device or installed-host SLO. Serve the current Web demo with
+`pnpm --filter @worldbend/web exec vite --config vite.demo.config.ts --host
+127.0.0.1`, open `/performance.html`, and record the emitted
+`worldbend.browser-canvas-observation.v1` JSON. The reference observation uses
+Chrome 151 on macOS, a 1280 x 720 CSS-pixel viewport, device pixel ratio 2, the
+checked example image/spec, and both of these current-source workloads:
+
+- Perspective: 120 repeated closed corner drags, 121 pointer samples each,
+  followed by three idle seconds;
+- Warp: 120 ordered `wave` amount samples through the development-only sample
+  control, followed by two idle seconds.
+
+On that same reference environment, a canvas-performance-sensitive change is
+blocked when either workload has input-to-WebGL-draw p95 above 16.7 ms, any
+input-to-draw sample above 34 ms, any frame delta above 34 ms, any Long Task, a
+missing final draw, more than one retained preview program/texture/buffer, or
+nonzero retained preview resources after Dispose. These thresholds were
+derived from the 2026-09-01 current-source baseline: Perspective p95 11.1 ms
+and zero frame deltas above 20 ms across 14,521 pointer moves; Warp p95 1.0 ms
+and zero frame deltas above 20 ms across 120 samples. They block accepting the
+performance-sensitive change in this local lane; they do not claim universal
+60 fps behavior.
+
+`performance.memory.usedJSHeapSize` remains an observation, not a gate: current
+sequential runs show collection between sessions, while the host exposes no
+forced-GC or retained-object attribution through this harness. A monotonic
+multi-session trend requires investigation, but one pre-GC delta cannot issue
+a leak verdict. A reproducible functional failure, stale result, resource leak,
+or regression under the declared workload is still a runtime human-flow FAIL.
+Figma phases that the host does not expose remain explicitly unmeasured;
+designer judgment of perceived smoothness stays in business/experience
+acceptance.
 
 ## Whole-system optimization
 
