@@ -121,9 +121,20 @@ export class RemapWebGLRenderer {
     gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
   }
 
-  render(source: TexImageSource, map: TexImageSource | undefined, spec: RemapSpecInput, highQuality = false): void {
+  render(
+    source: TexImageSource,
+    map: TexImageSource | undefined,
+    spec: RemapSpecInput,
+    highQuality = false,
+    canvasSize?: { width: number; height: number },
+  ): void {
     const { gl } = this;
-    const { width, height } = spec.output;
+    // The mapping itself is resolution independent (lens is normalized and
+    // displacement offsets are source texels), so a presentation caller may
+    // draw the same validated program into a smaller preview canvas.
+    const size = canvasSize ?? spec.output;
+    const width = Math.max(1, Math.round(size.width));
+    const height = Math.max(1, Math.round(size.height));
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
     gl.viewport(0, 0, width, height);

@@ -1,5 +1,7 @@
 import { RemapWebGLRenderer, type RemapOperation, type RemapSpecInput } from "@worldbend/web";
 import { planRemap } from "./designer-plan";
+import { scaledPreviewSize } from "./designer-preview";
+import { createFrameCoalescer } from "./frame-coalescer";
 import {
   createDesignerWorkspaceShell,
   fitPreviewCanvas,
@@ -45,16 +47,31 @@ export function createRemapWorkspace(input: {
   let generation = 0;
   let busy = false;
   let active = false;
+  // Numeric edits preview live at paint cadence; the change event remains the
+  // commit boundary that echoes values back into the fields.
+  const liveFrames = createFrameCoalescer(() => void render(false));
 
   shell.back.addEventListener("click", input.onBack);
-  shell.reset.addEventListener("click", () => { if (baseline) { spec = structuredClone(baseline); renderControls(); void render(); } });
+  shell.reset.addEventListener("click", () => { if (baseline) { spec = structuredClone(baseline); renderControls(); void render(false); } });
   controls["more"]!.addEventListener("click", () => {
     advanced.hidden = !advanced.hidden;
     controls["more"]!.setAttribute("aria-expanded", String(!advanced.hidden));
   });
   for (const control of Object.values(controls)) {
     if (control === controls["more"]) continue;
-    control.addEventListener(control instanceof HTMLInputElement && control.type === "number" ? "change" : "change", commitControls);
+    control.addEventListener("input", () => {
+      if (control instanceof HTMLInputElement && control.type === "number") {
+        // Live preview stays quiet while any numeric field is empty or
+        // invalid; the explicit change event still surfaces the error.
+        if (!numberInputsCommittable()) return;
+      }
+      commitControls();
+    });
+    control.addEventListener("change", () => {
+      commitControls();
+      renderControls();
+      liveFrames.flush();
+    });
   }
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
@@ -67,8 +84,7 @@ export function createRemapWorkspace(input: {
       ? { kind: "lens", coefficients: { k1: number("k1"), k2: number("k2"), k3: number("k3"), p1: number("p1"), p2: number("p2") }, center: { x: number("center-x"), y: number("center-y") }, scale: { x: number("lens-scale-x"), y: number("lens-scale-y") } }
       : { kind: "displacement", xChannel: select("x-channel") as "red", yChannel: select("y-channel") as "green", scaleXPixels: number("scale-x"), scaleYPixels: number("scale-y"), neutral: number("neutral"), boundary: select("boundary") as "transparent" };
     spec = { ...spec, output, operation };
-    renderControls();
-    void render();
+    liveFrames.request();
   }
 
   function renderControls(): void {
@@ -102,7 +118,15 @@ export function createRemapWorkspace(input: {
         shell.apply.disabled = true;
         return false;
       }
-      renderer.render(source.sources[0]!.image, map, plan.spec, high);
+      // Preview draws the validated program at the shared capped axis; the
+      // Apply path below renders the full requested output.
+      renderer.render(
+        source.sources[0]!.image,
+        map,
+        plan.spec,
+        high,
+        high ? undefined : scaledPreviewSize(spec.output.width, spec.output.height),
+      );
       fitPreviewCanvas(renderer.canvas, shell.preview);
       shell.showError(); shell.apply.disabled = false;
       return true;
@@ -115,7 +139,11 @@ export function createRemapWorkspace(input: {
 
   async function apply(duplicate: boolean): Promise<void> {
     if (!source || !spec || busy) return;
-    busy = true; shell.setBusy(true); shell.status.textContent = input.copy().applying;
+    busy = true;
+    // A queued preview frame must not redraw capped pixels over the full
+    // resolution output between render and encode.
+    liveFrames.cancel();
+    shell.setBusy(true); shell.status.textContent = input.copy().applying;
     try {
       if (!(await render(true))) throw new Error("Remap output is invalid");
       postDesignerResult({ post: input.post, source, task: { kind: "remap", spec }, bytes: await renderer.exportPng(), width: spec.output.width, height: spec.output.height, duplicate });
@@ -123,7 +151,7 @@ export function createRemapWorkspace(input: {
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(); }, leave() { active = false; shell.root.hidden = true; generation += 1; },
+    enter() { active = true; shell.root.hidden = false; void render(false); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
     setSource(next) {
       busy = false; shell.setBusy(false);
       source = next;
@@ -149,10 +177,21 @@ export function createRemapWorkspace(input: {
       else shell.status.textContent = input.copy().applied;
       return true;
     },
-    handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; }, dispose() { renderer.dispose(); },
+    handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; }, dispose() { liveFrames.cancel(); renderer.dispose(); },
   };
 
   function number(name: string): number { return Number((controls[name] as HTMLInputElement).value); }
+  function numberInputsCommittable(): boolean {
+    for (const candidate of Object.values(controls)) {
+      if (
+        candidate instanceof HTMLInputElement && candidate.type === "number" &&
+        (!candidate.validity.valid || candidate.value.trim().length === 0)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
   function select(name: string): string { return (controls[name] as HTMLSelectElement).value; }
   function set(name: string, value: number): void { (controls[name] as HTMLInputElement).value = String(value); }
   function selectSet(name: string, value: string): void { (controls[name] as HTMLSelectElement).value = value; }

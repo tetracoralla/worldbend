@@ -66,8 +66,7 @@ function createEditor(): PerspectiveEditor | undefined {
         // valid clears it via onValidityChange instead.
         if (valid) clearError();
         setStatus("");
-        renderSpec(spec);
-        void renderCss(spec);
+        refreshDeveloperOutput();
       },
       onDistortGesture(event) {
         viewport?.handleDistortGesture(event);
@@ -141,8 +140,7 @@ async function openExample(): Promise<void> {
     showingExample = true;
     workspace.hidden = false;
     viewport?.fit();
-    renderSpec(editor.captureSpec());
-    await renderCss(editor.captureSpec());
+    refreshDeveloperOutput();
     setStatus("Example opened.");
   } catch (error) {
     if (generation !== loadGeneration) return;
@@ -180,8 +178,7 @@ async function replaceImage(): Promise<void> {
     showingExample = false;
     workspace.hidden = false;
     viewport?.fit();
-    renderSpec(editor.captureSpec());
-    await renderCss(editor.captureSpec());
+    refreshDeveloperOutput();
     setStatus(previousImage ? "Image replaced." : "Image opened.");
   } catch (error) {
     if (generation !== loadGeneration) return;
@@ -225,8 +222,7 @@ async function resetPerspective(): Promise<void> {
     await editor.reset();
     if (valid) {
       viewport?.fit();
-      renderSpec(editor.captureSpec());
-      await renderCss(editor.captureSpec());
+      refreshDeveloperOutput();
       setStatus("Worldbend reset.");
     }
   } catch (error) {
@@ -485,10 +481,21 @@ function setDeveloperMode(open: boolean, options: { restoreFocus?: boolean } = {
   developerOutput.hidden = !open;
   developerToggle.setAttribute("aria-expanded", String(open));
   if (options.restoreFocus) developerToggle.focus();
+  if (open) refreshDeveloperOutput();
 }
 
 function toggleDeveloperMode(): void {
   setDeveloperMode(developerOutput.hasAttribute("hidden"));
+}
+
+// Per-frame JSON/CSS output is expert feedback behind the developer
+// disclosure. Skip the WASM CSS emission and serialization while the panel is
+// closed so a live drag only pays for the preview itself; opening refreshes
+// the panel once from the current spec.
+function refreshDeveloperOutput(): void {
+  if (developerOutput.hidden || !editor || !sourceImage) return;
+  renderSpec(editor.captureSpec());
+  void renderCss(editor.captureSpec());
 }
 
 function clearError(): void {

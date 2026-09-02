@@ -5,7 +5,9 @@ import {
   type MockupSpecInput,
 } from "@worldbend/web";
 import { planMockup } from "./designer-plan";
+import { previewScaleFor, scaleSolveByFactor } from "./designer-preview";
 import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
+import { createFrameCoalescer } from "./frame-coalescer";
 import {
   canvasPng,
   createDesignerWorkspaceShell,
@@ -65,6 +67,11 @@ export function createMockupWorkspace(input: {
   let generation = 0;
   let busy = false;
   let active = false;
+  // Continuous plan changes (opacity drags, corner moves) collapse to one
+  // preview request per paint. Overlay moves never rebuild the point layer:
+  // the moved point is already positioned by the overlay itself, and a
+  // rebuild would destroy the focused button after a single keyboard press.
+  const previewFrames = createFrameCoalescer(() => void render("preview", false));
 
   shell.back.addEventListener("click", input.onBack);
   shell.reset.addEventListener("click", () => {
@@ -76,6 +83,7 @@ export function createMockupWorkspace(input: {
   });
   for (const control of [width, height]) control.addEventListener("change", commitCanvasSize);
   opacity.addEventListener("input", () => updateActivePlane({ opacity: Number(opacity.value) / 100 }));
+  opacity.addEventListener("change", () => previewFrames.flush());
   grid.addEventListener("change", () => {
     updateActivePlane({ grid: grid.checked ? { columns: 4, rows: 4 } : null });
     renderControls();
@@ -91,13 +99,13 @@ export function createMockupWorkspace(input: {
   function commitCanvasSize(): void {
     if (!spec || !width.validity.valid || !height.validity.valid) return;
     spec = { ...spec, canvas: { width: Number(width.value), height: Number(height.value) } };
-    void render();
+    previewFrames.request();
   }
   function activePlane(): MockupPlane | undefined { return spec?.planes.find((plane) => plane.id === activePlaneId); }
   function updateActivePlane(patch: Partial<MockupPlane>): void {
     if (!spec) return;
     spec = { ...spec, planes: spec.planes.map((plane) => plane.id === activePlaneId ? { ...plane, ...patch } : plane) };
-    void render();
+    previewFrames.request();
   }
 
   async function render(quality: "preview" | "high" = "preview", refreshOverlay = true): Promise<boolean> {
@@ -106,25 +114,39 @@ export function createMockupWorkspace(input: {
     try {
       const plan = await planMockup(spec);
       if (currentGeneration !== generation) return false;
-      if (canvas.width !== plan.canvas.width) canvas.width = plan.canvas.width;
-      if (canvas.height !== plan.canvas.height) canvas.height = plan.canvas.height;
+      // Preview composites at one shared presentation factor so every plane
+      // keeps its relative placement; Apply re-renders the full plan below.
+      const factor = quality === "preview"
+        ? previewScaleFor(plan.canvas.width, plan.canvas.height)
+        : 1;
+      const previewWidth = Math.max(1, Math.round(plan.canvas.width * factor));
+      const previewHeight = Math.max(1, Math.round(plan.canvas.height * factor));
+      if (canvas.width !== previewWidth) canvas.width = previewWidth;
+      if (canvas.height !== previewHeight) canvas.height = previewHeight;
       fitPreviewCanvas(canvas, shell.preview);
-      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.setTransform(factor, 0, 0, factor, 0, 0);
+      context.clearRect(0, 0, plan.canvas.width, plan.canvas.height);
       if (plan.background.kind === "color") {
         const [r, g, b, a] = plan.background.rgba;
         context.fillStyle = `rgba(${r} ${g} ${b} / ${a / 255})`;
-        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillRect(0, 0, plan.canvas.width, plan.canvas.height);
       }
       for (let index = 0; index < plan.planes.length; index += 1) {
         const plane = plan.planes[index]!;
         const image = sourceForPlane(source.sources, plane.sourceId);
         if (!image) throw new Error(`Missing ${plane.sourceId}`);
-        renderer.render(image.image, plane.solve, undefined, quality);
+        renderer.render(image.image, scaleSolveByFactor(plane.solve, factor), undefined, quality);
         context.save();
         context.globalAlpha = plane.opacity;
-        context.drawImage(renderer.canvas, 0, 0);
+        context.drawImage(
+          renderer.canvas,
+          0,
+          0,
+          plane.solve.resolvedDestination.reference.width,
+          plane.solve.resolvedDestination.reference.height,
+        );
         context.restore();
-        if (plane.grid) drawGrid(context, plane.grid);
+        if (plane.grid) drawGrid(context, plane.grid, 1 / factor);
       }
       shell.showError();
       shell.apply.disabled = false;
@@ -176,7 +198,8 @@ export function createMockupWorkspace(input: {
         spec = { ...spec, planes: spec.planes.map((candidate) => candidate.id === activePlaneId
           ? { ...candidate, transform: { ...candidate.transform, destination: { space: "normalized", quad } } }
           : candidate) };
-        void render("preview", final);
+        previewFrames.request();
+        if (final) previewFrames.flush();
       },
     });
     const copy = input.copy();
@@ -186,6 +209,9 @@ export function createMockupWorkspace(input: {
   async function apply(duplicate: boolean): Promise<void> {
     if (!source || !spec || busy) return;
     busy = true;
+    // A queued preview frame must not redraw capped pixels over the full
+    // resolution output between render and encode.
+    previewFrames.cancel();
     shell.setBusy(true);
     shell.status.textContent = input.copy().applying;
     try {
@@ -200,7 +226,7 @@ export function createMockupWorkspace(input: {
 
   return {
     enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
-    leave() { active = false; shell.root.hidden = true; generation += 1; },
+    leave() { active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); },
     setSource(next) {
       busy = false;
       shell.setBusy(false);
@@ -226,7 +252,7 @@ export function createMockupWorkspace(input: {
       return true;
     },
     handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; },
-    dispose() { overlay?.dispose(); renderer.dispose(); },
+    dispose() { previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }
 
@@ -252,8 +278,8 @@ export function defaultMockup(sources: readonly LoadedDesignerSource[]): MockupS
 function sourceForPlane(sources: readonly LoadedDesignerSource[], id: string): LoadedDesignerSource | undefined {
   const match = /^source-(\d+)$/.exec(id); return match ? sources[Number(match[1]) - 1] : undefined;
 }
-function drawGrid(context: CanvasRenderingContext2D, grid: { vertical: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>; horizontal: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> }): void {
-  context.save(); context.strokeStyle = "rgba(13,153,255,.55)"; context.lineWidth = 1;
+function drawGrid(context: CanvasRenderingContext2D, grid: { vertical: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>; horizontal: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> }, lineWidth: number): void {
+  context.save(); context.strokeStyle = "rgba(13,153,255,.55)"; context.lineWidth = lineWidth;
   for (const line of [...grid.vertical, ...grid.horizontal]) { context.beginPath(); context.moveTo(line.start.x, line.start.y); context.lineTo(line.end.x, line.end.y); context.stroke(); }
   context.restore();
 }

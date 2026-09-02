@@ -5,7 +5,9 @@ import {
   type WarpMesh,
 } from "@worldbend/web";
 import { planMeshWarp } from "./designer-plan";
+import { scalePreviewSolve } from "./designer-preview";
 import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
+import { createFrameCoalescer } from "./frame-coalescer";
 import {
   canvasPng,
   createDesignerWorkspaceShell,
@@ -47,6 +49,11 @@ export function createMeshWorkspace(input: {
   let generation = 0;
   let busy = false;
   let active = false;
+  // Live point moves collapse to one preview request per paint. The overlay
+  // never rebuilds on a move: the dragged or nudged point is already
+  // positioned by the overlay itself, and a rebuild would destroy the
+  // focused button after a single keyboard press.
+  const moveFrames = createFrameCoalescer(() => void render(false));
 
   shell.back.addEventListener("click", input.onBack);
   shell.reset.addEventListener("click", () => {
@@ -71,7 +78,9 @@ export function createMeshWorkspace(input: {
     try {
       const plan = await planMeshWarp(spec);
       if (currentGeneration !== generation) return;
-      renderer.render(first.image, plan.solve, spec.mesh, "preview");
+      // Preview draws at the shared capped axis; Apply re-plans and renders
+      // the full requested resolution below.
+      renderer.render(first.image, scalePreviewSolve(plan.solve), spec.mesh, "preview");
       fitPreviewCanvas(renderer.canvas, shell.preview);
       shell.showError();
       if (refreshOverlay) renderOverlay();
@@ -103,7 +112,8 @@ export function createMeshWorkspace(input: {
           candidateIndex === index ? { ...candidate, warped: point } : candidate,
         );
         spec = { ...spec, mesh: { ...spec.mesh, vertices } };
-        void render(final);
+        moveFrames.request();
+        if (final) moveFrames.flush();
       },
     });
     const count = spec.mesh.subdivisions;
@@ -119,6 +129,9 @@ export function createMeshWorkspace(input: {
   async function apply(duplicate: boolean): Promise<void> {
     if (!source || !spec || busy) return;
     busy = true;
+    // A queued preview frame must not redraw capped pixels over the full
+    // resolution output between render and encode.
+    moveFrames.cancel();
     shell.setBusy(true);
     shell.status.textContent = input.copy().applying;
     try {
@@ -144,7 +157,7 @@ export function createMeshWorkspace(input: {
 
   return {
     enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
-    leave() { active = false; shell.root.hidden = true; generation += 1; },
+    leave() { active = false; shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
     setSource(next) {
       busy = false;
       shell.setBusy(false);
@@ -173,7 +186,7 @@ export function createMeshWorkspace(input: {
       return true;
     },
     handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; },
-    dispose() { overlay?.dispose(); renderer.dispose(); },
+    dispose() { moveFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }
 
