@@ -51,6 +51,10 @@ pub struct StagedDirectoryCommit {
 
 impl WorkspaceRoot {
     pub fn open(path: &Path) -> std::io::Result<Self> {
+        Self::open_with_canonical_path(path).map(|(workspace, _)| workspace)
+    }
+
+    pub fn open_with_canonical_path(path: &Path) -> std::io::Result<(Self, PathBuf)> {
         let canonical = fs::canonicalize(path)?;
         let directory = open_ambient_dir(&canonical, ambient_authority())?;
         if !directory.metadata()?.is_dir() {
@@ -59,7 +63,7 @@ impl WorkspaceRoot {
                 "workspace root must resolve to a directory",
             ));
         }
-        Ok(Self { directory })
+        Ok((Self { directory }, canonical))
     }
 
     pub fn open_source(&self, relative: &str) -> TransformResult<File> {
@@ -93,7 +97,12 @@ impl WorkspaceRoot {
 
     pub fn prepare_output(&self, relative: &str, overwrite: bool) -> TransformResult<OutputTarget> {
         let components = validate_relative_path(relative)?;
-        let (parent, name) = self.open_parent(&components)?;
+        let (name, _) = components.split_last().ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "path must name a file inside the granted workspace",
+            )
+        })?;
         if !Path::new(&name)
             .extension()
             .and_then(OsStr::to_str)
@@ -104,6 +113,29 @@ impl WorkspaceRoot {
                 "render output path must use a .png extension",
             ));
         }
+
+        self.prepare_file_output_components(components, overwrite)
+    }
+
+    /// Acquire one single-file output of a format owned by the caller's
+    /// closed operation contract. This retains the descriptor-confined,
+    /// no-symlink publication boundary without imposing the legacy PNG-only
+    /// transform restriction on production media and vector carriers.
+    pub fn prepare_file_output(
+        &self,
+        relative: &str,
+        overwrite: bool,
+    ) -> TransformResult<OutputTarget> {
+        let components = validate_relative_path(relative)?;
+        self.prepare_file_output_components(components, overwrite)
+    }
+
+    fn prepare_file_output_components(
+        &self,
+        components: Vec<OsString>,
+        overwrite: bool,
+    ) -> TransformResult<OutputTarget> {
+        let (parent, name) = self.open_parent(&components)?;
 
         match stat(&parent, Path::new(&name), FollowSymlinks::No) {
             Ok(metadata) => {
@@ -163,23 +195,22 @@ impl WorkspaceRoot {
             Ok(_) => {
                 return Err(TransformError::new(
                     ErrorCode::DestinationExists,
-                    "Canvas output directory already exists; choose a new outputDirectory because Canvas Set publication does not overwrite or merge",
+                    "output directory already exists; choose a new outputDirectory because directory publication does not overwrite or merge",
                 ));
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(TransformError::new(
                     ErrorCode::Render,
-                    "failed to inspect Canvas output directory",
+                    "failed to inspect output directory",
                 )
                 .with_details(json!({ "reason": error.to_string() })));
             }
         }
 
         let probe = create_staging_directory(&parent)?;
-        remove_dir(&parent, Path::new(&probe)).map_err(render_io(
-            "failed to remove Canvas output preflight directory",
-        ))?;
+        remove_dir(&parent, Path::new(&probe))
+            .map_err(render_io("failed to remove output preflight directory"))?;
         Ok(DirectoryOutputTarget { parent, name })
     }
 
@@ -346,7 +377,7 @@ impl DirectoryOutputTarget {
         source_directory: &Path,
         max_files: usize,
     ) -> TransformResult<StagedDirectoryCommit> {
-        self.stage_from_with_cancel(source_directory, max_files, &|| false)
+        self.stage_flat_files_from_with_cancel(source_directory, max_files, &["png"], &|| false)
     }
 
     /// Cancellable form of [`Self::stage_from`]. The predicate is polled
@@ -359,10 +390,36 @@ impl DirectoryOutputTarget {
         max_files: usize,
         is_cancelled: &(dyn Fn() -> bool + Sync),
     ) -> TransformResult<StagedDirectoryCommit> {
+        self.stage_flat_files_from_with_cancel(source_directory, max_files, &["png"], is_cancelled)
+    }
+
+    /// Stage one flat, closed file set using the caller-owned format contract.
+    /// Extensions are matched case-insensitively without a leading dot; paths,
+    /// links, count bounds, cancellation, sync, and atomic commit remain owned
+    /// by this filesystem boundary.
+    pub fn stage_flat_files_from_with_cancel(
+        self,
+        source_directory: &Path,
+        max_files: usize,
+        allowed_extensions: &[&str],
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedDirectoryCommit> {
         if max_files == 0 {
             return Err(TransformError::new(
                 ErrorCode::Internal,
                 "directory staging file limit must be positive",
+            ));
+        }
+        if allowed_extensions.is_empty()
+            || allowed_extensions.iter().any(|extension| {
+                extension.is_empty()
+                    || extension.len() > 16
+                    || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            })
+        {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "directory staging requires a closed extension allowlist",
             ));
         }
         let metadata = fs::symlink_metadata(source_directory)
@@ -411,11 +468,15 @@ impl DirectoryOutputTarget {
                 if !Path::new(&name)
                     .extension()
                     .and_then(OsStr::to_str)
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+                    .is_some_and(|extension| {
+                        allowed_extensions
+                            .iter()
+                            .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+                    })
                 {
                     return Err(TransformError::new(
                         ErrorCode::Render,
-                        "staged output files must use .png",
+                        "staged output file extension is not permitted by the operation contract",
                     ));
                 }
                 let mut source =
@@ -439,7 +500,7 @@ impl DirectoryOutputTarget {
             if file_count == 0 {
                 return Err(TransformError::new(
                     ErrorCode::Render,
-                    "staged output must contain at least one PNG",
+                    "staged output must contain at least one permitted file",
                 ));
             }
             check_cancelled(is_cancelled)?;
@@ -459,6 +520,185 @@ impl DirectoryOutputTarget {
             committed: false,
         })
     }
+
+    /// Copy a controller-private PNG tree with exactly one directory level
+    /// into hidden same-parent staging. This is the publication shape used by
+    /// Variation Jobs: `<item-id>/<output-id>.png`. Both component kinds are
+    /// restricted to the same stable ASCII identifier grammar as the core
+    /// contract, and links or deeper descendants are rejected.
+    pub fn stage_one_level_tree_from_with_cancel(
+        self,
+        source_directory: &Path,
+        max_directories: usize,
+        max_files: usize,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedDirectoryCommit> {
+        if max_directories == 0 || max_files == 0 {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "tree staging directory and file limits must be positive",
+            ));
+        }
+        let metadata = fs::symlink_metadata(source_directory)
+            .map_err(render_io("private output directory is not accessible"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(TransformError::new(
+                ErrorCode::Render,
+                "private output must be a real directory",
+            ));
+        }
+        let staged_name = create_staging_directory(&self.parent)?;
+        let staged_directory = match open_dir_nofollow(&self.parent, Path::new(&staged_name)) {
+            Ok(directory) => directory,
+            Err(error) => {
+                let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+                return Err(render_io(
+                    "failed to open same-parent output staging directory",
+                )(error));
+            }
+        };
+        let staged = (|| -> TransformResult<()> {
+            let mut directory_count = 0_usize;
+            let mut file_count = 0_usize;
+            for entry in fs::read_dir(source_directory)
+                .map_err(render_io("failed to inspect private output directory"))?
+            {
+                check_cancelled(is_cancelled)?;
+                directory_count += 1;
+                if directory_count > max_directories {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "staged output contains too many item directories",
+                    )
+                    .with_details(json!({ "maximum": max_directories })));
+                }
+                let entry = entry.map_err(render_io("failed to inspect staged output entry"))?;
+                let file_type = entry
+                    .file_type()
+                    .map_err(render_io("failed to inspect staged output entry type"))?;
+                if file_type.is_symlink() || !file_type.is_dir() {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "tree-staged output root must contain only item directories",
+                    ));
+                }
+                let item_name = entry.file_name();
+                validate_staged_id_component(&item_name, "item directory")?;
+                create_dir(&staged_directory, Path::new(&item_name), &DirOptions::new())
+                    .map_err(render_io("failed to create staged item directory"))?;
+                let staged_item = open_dir_nofollow(&staged_directory, Path::new(&item_name))
+                    .map_err(render_io("failed to open staged item directory"))?;
+                let mut item_file_count = 0_usize;
+                for file in fs::read_dir(entry.path())
+                    .map_err(render_io("failed to inspect private item directory"))?
+                {
+                    check_cancelled(is_cancelled)?;
+                    file_count += 1;
+                    item_file_count += 1;
+                    if file_count > max_files {
+                        return Err(TransformError::new(
+                            ErrorCode::Render,
+                            "staged output contains too many files",
+                        )
+                        .with_details(json!({ "maximum": max_files })));
+                    }
+                    let file = file.map_err(render_io("failed to inspect staged output file"))?;
+                    let file_type = file
+                        .file_type()
+                        .map_err(render_io("failed to inspect staged output file type"))?;
+                    if file_type.is_symlink() || !file_type.is_file() {
+                        return Err(TransformError::new(
+                            ErrorCode::Render,
+                            "item directories must contain only regular PNG files",
+                        ));
+                    }
+                    let file_name = file.file_name();
+                    validate_staged_png_component(&file_name)?;
+                    let mut source = File::open(file.path())
+                        .map_err(render_io("failed to open staged output"))?;
+                    let mut options = OpenOptions::new();
+                    options
+                        .write(true)
+                        .create_new(true)
+                        .follow(FollowSymlinks::No);
+                    let mut destination = open(&staged_item, Path::new(&file_name), &options)
+                        .map_err(render_io("failed to create same-parent staged output"))?;
+                    copy_with_cancel(&mut source, &mut destination, is_cancelled)?;
+                    check_cancelled(is_cancelled)?;
+                    destination
+                        .flush()
+                        .map_err(render_io("failed to flush staged output"))?;
+                    destination
+                        .sync_all()
+                        .map_err(render_io("failed to sync staged output"))?;
+                }
+                if item_file_count == 0 {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "each staged item directory must contain at least one PNG",
+                    ));
+                }
+                staged_item
+                    .sync_all()
+                    .map_err(render_io("failed to sync staged item directory"))?;
+            }
+            if directory_count == 0 || file_count == 0 {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "tree-staged output must contain at least one item and PNG",
+                ));
+            }
+            check_cancelled(is_cancelled)?;
+            staged_directory
+                .sync_all()
+                .map_err(render_io("failed to sync output staging directory"))?;
+            Ok(())
+        })();
+        if let Err(error) = staged {
+            let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+            return Err(error);
+        }
+        Ok(StagedDirectoryCommit {
+            parent: self.parent,
+            staged_name,
+            final_name: self.name,
+            committed: false,
+        })
+    }
+}
+
+fn validate_staged_id_component(name: &OsStr, kind: &'static str) -> TransformResult<()> {
+    let valid = name.to_str().is_some_and(|value| {
+        (1..=64).contains(&value.len())
+            && value.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_alphanumeric() || (index > 0 && matches!(byte, b'_' | b'-'))
+            })
+    });
+    if valid {
+        return Ok(());
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        format!("staged {kind} does not use the closed identifier grammar"),
+    ))
+}
+
+fn validate_staged_png_component(name: &OsStr) -> TransformResult<()> {
+    let path = Path::new(name);
+    let is_png = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+    let valid_stem = path
+        .file_stem()
+        .is_some_and(|stem| validate_staged_id_component(stem, "PNG filename").is_ok());
+    if is_png && valid_stem {
+        return Ok(());
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        "staged output filenames must be <output-id>.png",
+    ))
 }
 
 fn copy_with_cancel(
@@ -839,6 +1079,16 @@ mod tests {
         workspace
             .prepare_output("assets/output.png", false)
             .unwrap();
+        assert_eq!(
+            workspace
+                .prepare_output("assets/output.svg", false)
+                .unwrap_err()
+                .code,
+            ErrorCode::Schema
+        );
+        workspace
+            .prepare_file_output("assets/output.svg", false)
+            .unwrap();
     }
 
     #[test]
@@ -1068,6 +1318,63 @@ mod tests {
 
         assert_eq!(error.code, ErrorCode::Cancelled);
         assert!(!root.path().join("outputs/final").exists());
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+    }
+
+    #[test]
+    fn one_level_tree_staging_preserves_item_directories_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::create_dir(private.path().join("sku-a")).unwrap();
+        fs::create_dir(private.path().join("sku-b")).unwrap();
+        fs::write(private.path().join("sku-a/hero.png"), b"a").unwrap();
+        fs::write(private.path().join("sku-b/hero.png"), b"b").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, &|| false)
+            .unwrap()
+            .commit()
+            .unwrap();
+
+        assert_eq!(
+            fs::read(root.path().join("outputs/job/sku-a/hero.png")).unwrap(),
+            b"a"
+        );
+        assert_eq!(
+            fs::read(root.path().join("outputs/job/sku-b/hero.png")).unwrap(),
+            b"b"
+        );
+    }
+
+    #[test]
+    fn one_level_tree_rejects_deeper_or_noncontract_entries_and_cleans_staging() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::create_dir(private.path().join("sku-a")).unwrap();
+        fs::create_dir(private.path().join("sku-a/deeper")).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        let error = workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, &|| false)
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Render);
+        assert!(!root.path().join("outputs/job").exists());
         assert!(
             fs::read_dir(root.path().join("outputs"))
                 .unwrap()

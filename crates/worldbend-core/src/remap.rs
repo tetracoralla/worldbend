@@ -42,6 +42,19 @@ pub enum RemapOperation {
         #[serde(default)]
         boundary: RemapBoundary,
     },
+    /// Unit-domain displacement for 8-bit, 16-bit, or float control rasters.
+    /// The renderer samples the decoded channel precision before subtracting
+    /// this neutral value; it never quantizes the control map to u8 first.
+    DisplacementUnit {
+        x_channel: RemapChannel,
+        y_channel: RemapChannel,
+        scale_x_pixels: f64,
+        scale_y_pixels: f64,
+        #[serde(default = "default_unit_neutral")]
+        neutral: f64,
+        #[serde(default)]
+        boundary: RemapBoundary,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -169,6 +182,26 @@ pub fn plan_remap(spec: &RemapSpec) -> TransformResult<RemapPlan> {
             }
             true
         }
+        RemapOperation::DisplacementUnit {
+            scale_x_pixels,
+            scale_y_pixels,
+            neutral,
+            ..
+        } => {
+            if !scale_x_pixels.is_finite()
+                || !scale_y_pixels.is_finite()
+                || scale_x_pixels.abs() > f64::from(MAX_REMAP_AXIS)
+                || scale_y_pixels.abs() > f64::from(MAX_REMAP_AXIS)
+                || !neutral.is_finite()
+                || !(0.0..=1.0).contains(&neutral)
+            {
+                return Err(TransformError::new(
+                    ErrorCode::Schema,
+                    "unit displacement scales and neutral must be finite and within their supported domains",
+                ));
+            }
+            true
+        }
     };
     Ok(RemapPlan {
         schema: REMAP_PLAN_SCHEMA.to_owned(),
@@ -189,6 +222,10 @@ const fn default_lens_scale() -> LensScale {
 
 const fn default_neutral() -> u8 {
     128
+}
+
+const fn default_unit_neutral() -> f64 {
+    0.5
 }
 
 #[cfg(test)]
@@ -226,6 +263,18 @@ mod tests {
             ..lens
         };
         assert!(plan_remap(&displacement).unwrap().requires_map);
+        let high_precision = RemapSpec {
+            operation: RemapOperation::DisplacementUnit {
+                x_channel: RemapChannel::Red,
+                y_channel: RemapChannel::Green,
+                scale_x_pixels: 20.0,
+                scale_y_pixels: -10.0,
+                neutral: 0.5,
+                boundary: RemapBoundary::Clamp,
+            },
+            ..displacement
+        };
+        assert!(plan_remap(&high_precision).unwrap().requires_map);
     }
 
     #[test]

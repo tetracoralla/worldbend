@@ -100,6 +100,18 @@ for (const command of [
   "timeline-render",
   "program-inspect",
   "program-render",
+  "media-inspect",
+  "plane-candidates",
+  "psd-smart-objects",
+  "media-render",
+  "vector-render",
+  "tiled-media-render",
+  "template-inspect",
+  "variation-render",
+  "surface-inspect",
+  "surface-render",
+  "motion-inspect",
+  "motion-render",
 ]) {
   if (binaryHelp.includes(`  ${command}`)) {
     throw new Error(`ComfyUI runtime unexpectedly contains full CLI command: ${command}`);

@@ -7,6 +7,8 @@ import initWasm, {
   rectify_json as rectifyJson,
   solve_json as solveJson,
   solve_preview_f64 as solvePreviewF64,
+  spatial_template_inspect_json as spatialTemplateInspectJson,
+  variation_job_plan_json as variationJobPlanJson,
   warp_mesh_f64 as warpMeshF64,
   warp_mesh_json as warpMeshJson,
 } from "@worldbend/wasm";
@@ -29,6 +31,10 @@ import type {
   Size,
   SolveOutput,
   TransformRecipeInput,
+  SpatialTemplateInspectionOutput,
+  SpatialTemplateSpecInput,
+  VariationJobPlanOutput,
+  VariationJobSpecInput,
   WarpMesh,
   WarpSpec,
 } from "./types";
@@ -142,6 +148,26 @@ export async function planCanvasSetFromRgba(
       sourceSize.height,
       rgba,
     ),
+  );
+}
+
+/** Validate and summarize one reusable template through the Rust-owned contract. */
+export async function inspectSpatialTemplate(
+  spec: SpatialTemplateSpecInput,
+): Promise<SpatialTemplateInspectionOutput> {
+  await initializeWorldbend();
+  return invoke<SpatialTemplateInspectionOutput>(() =>
+    spatialTemplateInspectJson(JSON.stringify(spec)),
+  );
+}
+
+/** Resolve exact ordered bindings and output topology without rendering. */
+export async function planVariationJob(
+  spec: VariationJobSpecInput,
+): Promise<VariationJobPlanOutput> {
+  await initializeWorldbend();
+  return invoke<VariationJobPlanOutput>(() =>
+    variationJobPlanJson(JSON.stringify(spec)),
   );
 }
 

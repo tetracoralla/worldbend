@@ -85,9 +85,9 @@ export async function loadCarrierProfiles(file = carrierProfilesPath) {
   );
   if (
     JSON.stringify(value.carriers.figma.workspace.siblingWorkspaceIds) !==
-    JSON.stringify(["canvas", "mockup", "mesh", "remap"])
+    JSON.stringify(["templates", "canvas", "mockup", "mesh", "remap"])
   ) {
-    throw new Error("The current Figma sibling workspaces must remain canvas, mockup, mesh, remap");
+    throw new Error("The current Figma sibling workspaces must remain templates, canvas, mockup, mesh, remap");
   }
   return value;
 }

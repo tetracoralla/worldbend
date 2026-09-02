@@ -31,9 +31,14 @@ sampler and spatial index rather than introducing adapter-side geometry.
   subtracts the declared 8-bit neutral value, applies pixel scales, and uses
   one explicit `transparent`, `clamp`, or `wrap` source-boundary rule. Red,
   green, blue, alpha, and luminance channels are supported.
+- `displacementUnit` uses the same explicit geometry but declares neutral in
+  `[0,1]` and samples u8, u16, or f32 map channels before subtraction. It is
+  the high-precision control-raster route; no u8 conversion precedes the
+  mapping.
 
 Map presence is exact: displacement requires one map and lens rejects one.
-The map is sampled over normalized output coordinates. `preview` uses nearest
+The map is sampled over normalized output coordinates in its decoded channel
+precision. `preview` uses nearest
 source sampling, `standard` uses premultiplied-alpha linear sampling, and
 `high` uses premultiplied-alpha Catmull-Rom cubic reconstruction. Every path
 applies the declared transparent, clamp, or wrap source-boundary rule.
@@ -45,7 +50,9 @@ the granted-root, private-worker, dry-run, hash, cancellation, and atomic-file
 publication rules. The Agent `full` build exposes plan/render operations for
 both custom mesh and remap through the compact catalog. ComfyUI includes only
 the graph-native remap family: one reusable Remap value can drive a primary
-IMAGE, MASK, and compatible control images with the same map.
+IMAGE, MASK, and compatible control images with the same map. The current
+Comfy tensor adapter remains 8-bit; high-precision control-raster execution is
+presently a CLI and Agent source-superset capability.
 
 Figma includes bounded task-native projections for both families. Mesh accepts
 one selected source, keeps the boundary fixed, exposes a 2 through 16 grid and

@@ -9,17 +9,25 @@ description = "Structured CLI adapter for Worldbend"
 [features]
 default = ["full"]
 full = [
+    "dep:worldbend-interop",
+    "dep:worldbend-perception",
     "worldbend-core/css",
     "worldbend-core/place",
     "worldbend-core/deform",
     "worldbend-core/remap",
     "worldbend-core/timeline",
     "worldbend-core/program",
+    "worldbend-core/template",
+    "worldbend-core/surface-deformation",
+    "worldbend-core/motion",
     "worldbend-render/place",
     "worldbend-render/deform",
     "worldbend-render/remap",
     "worldbend-render/timeline",
     "worldbend-render/program",
+    "worldbend-render/template",
+    "worldbend-render/surface-deformation",
+    "worldbend-render/motion",
 ]
 comfy = [
     "worldbend-core/remap",
@@ -45,6 +53,8 @@ libc.workspace = true
 worldbend-agent-fs = { path = "../worldbend-agent-fs" }
 worldbend-core = { path = "../worldbend-core", default-features = false }
 worldbend-render = { path = "../worldbend-render", default-features = false }
+worldbend-perception = { path = "../worldbend-perception", optional = true }
+worldbend-interop = { path = "../worldbend-interop", optional = true }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

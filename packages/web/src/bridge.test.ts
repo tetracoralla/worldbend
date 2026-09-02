@@ -6,6 +6,8 @@ vi.mock("@worldbend/wasm", () => ({
   canvas_set_plan_json: vi.fn(),
   compose_json: vi.fn(),
   solve_json: vi.fn(),
+  spatial_template_inspect_json: vi.fn(),
+  variation_job_plan_json: vi.fn(),
   css_json: vi.fn(),
   rectify_json: vi.fn(),
   warp_mesh_json: vi.fn(),
@@ -17,11 +19,15 @@ import initWasm, {
   compose_json,
   rectify_json,
   solve_json,
+  spatial_template_inspect_json,
+  variation_job_plan_json,
 } from "@worldbend/wasm";
 import {
   composeAffineTransform,
   planCanvas,
   planCanvasSet,
+  inspectSpatialTemplate,
+  planVariationJob,
   rectifyPlane,
   TransformError,
   solveTransform,
@@ -199,5 +205,52 @@ describe("bridge error chain", () => {
       code: "E_SCHEMA",
     });
     expect(canvas_plan_json).not.toHaveBeenCalledWith(expect.anything(), -1, 480);
+  });
+
+  it("passes Spatial Template inspection and Variation Job planning through unchanged", async () => {
+    vi.mocked(initWasm).mockResolvedValue({} as never);
+    const template = {
+      schema: "worldbend.spatial-template" as const,
+      version: "0.1" as const,
+      operation: {
+        kind: "mockup" as const,
+        spec: {
+          schema: "worldbend.mockup" as const,
+          version: "0.1" as const,
+          canvas: { width: 640, height: 480 },
+          background: { kind: "transparent" as const },
+          seams: [],
+          planes: [{
+            id: "plane-1",
+            sourceId: "source-1",
+            opacity: 1,
+            transform: normalizedSpec(unitQuad()),
+          }],
+        },
+      },
+      output: { kind: "single" as const, id: "output" },
+    };
+    const inspection = {
+      schema: "worldbend.spatial-template-inspection",
+      version: "0.1",
+      operation: "mockup",
+      sourceSlots: ["source-1"],
+      output: "single",
+      outputs: [{ id: "output", filename: "output.png" }],
+    };
+    vi.mocked(spatial_template_inspect_json).mockReturnValue(JSON.stringify(inspection));
+    await expect(inspectSpatialTemplate(template)).resolves.toEqual(inspection);
+    expect(spatial_template_inspect_json).toHaveBeenCalledWith(JSON.stringify(template));
+
+    const job: Parameters<typeof planVariationJob>[0] = {
+      schema: "worldbend.variation-job" as const,
+      version: "0.1" as const,
+      template,
+      items: [{ id: "first", bindings: [{ slotId: "source-1", assetId: "hero" }] }],
+    };
+    const plan = { schema: "worldbend.variation-job-plan", version: "0.1", template: inspection, items: job.items, assetIds: ["hero"], outputCount: 1 };
+    vi.mocked(variation_job_plan_json).mockReturnValue(JSON.stringify(plan));
+    await expect(planVariationJob(job)).resolves.toEqual(plan);
+    expect(variation_job_plan_json).toHaveBeenCalledWith(JSON.stringify(job));
   });
 });

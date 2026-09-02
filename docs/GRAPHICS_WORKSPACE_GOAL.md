@@ -1,12 +1,13 @@
 # Worldbend graphics workspace goal
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
-This is the active recovery anchor for the owner-confirmed product direction.
-It distinguishes the long-term target from the current executable product and
-from the next bounded implementation stage. `docs/PRODUCT_MODEL.md` remains the
-authority for current implemented semantics; operation-family contracts remain
-the authority for their exact inputs, outputs, limits, and errors.
+This is the durable recovery and closeout anchor for the owner-confirmed product
+direction. It distinguishes the long-term target from the current executable
+product and from any later bounded implementation stage.
+`docs/PRODUCT_MODEL.md` remains the authority for current implemented semantics;
+operation-family contracts remain the authority for their exact inputs,
+outputs, limits, and errors.
 
 ## Owner-confirmed target
 
@@ -29,15 +30,78 @@ The target has two deliberately asymmetric surfaces:
 not a claim that arbitrary perception, generation, editing, or file formats are
 already supported. Current capabilities and exclusions remain explicit.
 
+## Authorized north-star campaign — 2026-09-02
+
+The owner authorized implementation of the complete reusable-production
+direction, not only another isolated operation. The target system state is a
+non-destructive, cross-carrier two-dimensional spatial graphics work system in
+which one explicit spatial intent can be saved, reopened, rebound to new
+sources, expanded into correlated variants, executed directly without repeated
+Agent relaying, and delivered at professional fidelity.
+
+The campaign finish line includes all of the following product results:
+
+1. a narrow persisted Spatial Template over current closed Raster Program or
+   Mockup roots plus current Canvas Set outputs, followed by an ordered,
+   bounded Variation Job with exact source bindings and atomic publication;
+2. quiet human authoring and source replacement for the template where current
+   Figma/Web tasks satisfy the admission rule, without a general editor panel;
+3. production image fidelity beyond the current 8-bit PNG slice, including
+   explicit color/bit-depth behavior, high-precision control rasters,
+   vector-preserving cases, large-output tiling, and loss disclosure;
+4. typed assisted-perception Providers that return explicit candidates,
+   confidence, uncertainty, and source facts without entering or weakening the
+   deterministic execution core;
+5. independently versioned advanced deformation and motion operations where
+   Split/Bezier control, anchored deformation, replayable strokes, easing,
+   timebase, and sequence publication have closed semantics;
+6. narrow interoperability that preserves the useful source-replacement and
+   transform meaning of current Figma, PSD/Smart Object, ordinary raster/vector,
+   and workflow carriers without implementing a second graphics model;
+7. current development regression, built Agent/direct execution, browser and
+   applicable installed-host runtime observations, with owner business and
+   experience acceptance kept separate.
+
+The completion standard is current source plus rerunnable checks and real
+runtime behavior for every promised carrier. A contract, generated schema,
+passing unit suite, package inventory, prior observation, or self-authored
+report cannot close an unobserved runtime or experience lane.
+
+The reusable-production foundation in `docs/SPATIAL_TEMPLATE_CONTRACT.md` now
+has core, native, CLI, compact-Agent, Web, and focused Figma consumers. The
+production-fidelity stage is implemented in the source superset as explicit
+high-precision media, ICC/loss disclosure, unit-domain control rasters,
+vector-preserving SVG/HTML carriers, and atomic destination tiling; its exact
+boundary is `docs/MEDIA_PIPELINE_CONTRACT.md`. The typed assisted-perception
+stage is also implemented in the Agent/full source superset: an explicitly
+selected local Provider returns bounded source-plane candidates, source facts,
+uncalibrated ranking scores, and typed uncertainty without applying a
+transform. Its exact boundary is `docs/PERCEPTION_PROVIDER_CONTRACT.md`. The
+advanced deformation, motion, and narrow PSD/Smart Object stage is now
+implemented in the Agent/full source superset. Its exact boundaries are
+`docs/SURFACE_DEFORMATION_CONTRACT.md`, `docs/MOTION_CONTRACT.md`, and
+`docs/PSD_SMART_OBJECT_INTEROP_CONTRACT.md`. Cross-carrier closeout is locally
+complete: fresh complete regression, built CLI/MCP behavior, package/legal
+inventory, and real built-Web interaction have passed, while unavailable
+installed-host and owner-experience lanes remain explicitly separate.
+
+Campaign autonomy is goal-runway. The Agent may plan and chain internal
+batches, repair ordinary in-repository failures, update contracts and status,
+and continue after self-review. Preserve the complete working tree. Do not
+commit, push, publish, upload, deploy, accept legal terms, or mutate an
+unapproved external document or account without separate owner authorization.
+
 ## Current executable product
 
 The source superset currently implements explicit affine/projective transform,
-rectification, Canvas, Place/Mockup, bounded custom Mesh, Lens/Displacement
-Remap, and ordered Timeline contracts. Carrier profiles intentionally expose
-different subsets.
+rectification, Canvas, Place/Mockup, bounded custom Mesh and cubic Surface
+Deformation, Lens/Displacement Remap, ordered Timeline and rational-time eased
+Motion, Spatial Templates and Variation Jobs, production media/vector/tiling,
+assisted plane candidates, and bounded read-only PSD Smart Object projection.
+Carrier profiles intentionally expose different subsets.
 
 The Figma carrier currently has a quiet Perspective workspace and a compact
-launcher for Sizes, Mockup, Mesh, and Remap. Those completed workspaces are a
+launcher for Templates, Sizes, Mockup, Mesh, and Remap. Those completed workspaces are a
 compatibility baseline, not a precedent for adding more persistent controls.
 No further human task is authorized by this goal alone.
 
@@ -70,7 +134,16 @@ unimplemented. Existing human workspaces may be simplified when current use
 shows that they fail this rule; they are not removed merely to satisfy an
 abstract minimalism preference.
 
-## Current productizable stage
+## Completed productizable stage — north-star closeout
+
+The implementation target is no longer another operation family. Closeout
+completed the current repository check, built compact-Agent and CLI
+success/negative paths for Surface, Motion, and PSD projection, refreshed
+dependency notices/SBOM, carrier absence checks, and documentation that names
+the remaining exclusions without denying implemented capability. No new Figma
+workspace was admitted by this closeout.
+
+## Completed productizable foundation
 
 The active stage is **continuous canvas and operation foundation**. It does not
 add another Figma workspace. It closes the smallest shared foundations required
@@ -205,26 +278,88 @@ and owner business/experience acceptance separate.
 
 ## Recovery state
 
-- Current segment: the continuous-canvas foundation and the first
-  dependency-backed Agent composition segment are locally closed. Preserve
-  both contracts and thresholds.
+- Current segment: all authorized north-star implementation families are in the
+  source superset; development, built-runtime, packaging, contract, and built-Web
+  closeout are complete.
 - Current source state at entry: `main` at
   `df9e879b7d739f3753c84c23dd33560c29531e8d`, three commits ahead of
   `origin/main`, with no task-created source changes.
 - Current observations: the real-browser workload and local threshold exist;
   Perspective stays inside the reference threshold; continuous mesh updates
   reuse one bounded CPU buffer; the Figma adapter has one persisted-operation
-  envelope; the full Agent route has one bounded, in-memory, single-raster
-  Program with one final publication boundary.
+  envelope; the full Agent route has bounded Program, Template/Variation,
+  production-media, assisted-perception, Surface, Motion, and PSD projection
+  contracts without widening the direct compatibility catalog.
 - Next action: require another named current consumer before defining a layer,
-  scene, multi-source, or effect-graph contract. Continue measuring the real
-  canvas and Agent paths; do not optimize an unmeasured bottleneck or add a
-  human workspace without satisfying the UI admission rule.
+  scene, multi-source, or effect-graph contract, and do not add a human
+  workspace without satisfying the UI admission rule. Installed-host checks
+  remain separate follow-up observations rather than unfinished local source
+  work.
 - Completed validation: focused and complete Web/Figma tests and typechecks;
-  browser short, repeated, Warp, and Dispose workloads before and after;
-  single-raster Program core/render/CLI/MCP regressions and built runtime
-  flows; complete `pnpm check`; current Agent runtime smoke; Capability,
-  carrier, package, and built-artifact checks.
+  browser short, repeated, Warp, Dispose, desktop, and narrow-layout flows;
+  Program, Template/Variation, media, perception, Surface, Motion, and PSD
+  core/render/CLI/MCP regressions and built runtime flows; complete
+  `pnpm check`; current Agent runtime smoke; Comfy native-boundary regression;
+  Capability, carrier, package, legal-inventory, and built-artifact checks.
 - External lanes currently not established by local work: installed Figma
   document mutation, Figma Community behavior, installed Codex plugin routing,
   and a real ComfyUI host.
+
+## North-star source-superset closeout — 2026-09-02
+
+The authorized reusable-production campaign is locally complete. The final
+dependency-ordered segment adds three closed Agent/full-only families without
+altering the deterministic base or widening the eight-tool direct compatibility
+surface:
+
+- Surface Deformation declares 1..4 horizontal and vertical cubic patches,
+  fixed canonical boundaries, bounded anchors and replayable strokes, and mesh
+  subdivisions divisible by the patch counts. Planning deterministically
+  resolves the surface into the existing Mesh contract before rendering.
+- Motion declares 1..240 rational-time frames, a reduced 1..240-fps timebase,
+  `linear`, `hold`, or bounded `cubicBezier` easing, deterministic keyframe
+  evaluation, and resolution into the existing Timeline contract. Publication
+  remains one ordered, atomic PNG sequence.
+- PSD/PSB interoperability is bounded, read-only inspection and projection. It
+  preflights 64 MiB before parsing, visits at most 256 layers through 32 nesting
+  levels, returns at most 64 Smart Object records, and projects at most 16
+  caller-selected eligible records into a Spatial Template. It neither extracts
+  embedded payloads nor edits, writes, or round-trips a PSD.
+
+The default Agent surface still exposes three progressive catalog tools. The
+catalog now describes 33 operations in 8,620 bytes; the frozen direct catalog
+remains 80,716 bytes. Rebuilt stdio smoke exercised real positive, dry-run,
+publication, path-rejection, and schema flows across the new and earlier
+families. The shared controller admission path was separately observed under
+overload, and ordinary Transform, Canvas, and Program renders were cancelled
+and followed by successful recovery calls; those observations do not claim one
+cancellation probe for every new operation. Representative complete response sizes
+were 1,556 bytes for perception, 936 for PSD inspection, 6,050 for Surface,
+3,024 for Motion, and 2,540 for tiled media. Admission stayed at two workers,
+two overload observations rejected fail-fast, and cancellation cleanup was
+observed at 6 ms in the final run. These are current local measurements, not
+cross-host SLAs.
+
+The final current-source `pnpm check` passed: 105 core tests plus five
+properties, 84 renderer tests, four interoperability tests, five perception
+tests, 11 CLI tests, 31 MCP tests, 167 Web tests, and 175 Figma tests, followed
+by typechecks, normal and Figma WASM builds, carrier/profile checks, package and
+staged-plugin validation, runtime smoke, conditional Capability conformance,
+and built-artifact checks. `pnpm test:comfyui` separately passed 28 tests through
+the real native binary. The staged Figma package measured 527,520 runtime bytes,
+484,067 archive bytes, and 1,103,031 unpacked bytes; its archive SHA-256 is
+`72f75f3f019cd3482ccc34d69e20ee0b83339493654ea66c5bb2c2a2bfb0e1e9`.
+
+The built Web application was then exercised in the in-app browser at 1280 x
+720 and 390 x 844. It loaded the real example, moved a corner by keyboard,
+opened and closed developer details, reset geometry, changed and refit zoom,
+kept the exact viewport width without horizontal overflow, and produced no
+console warning or error. This establishes the built Web task flow, not
+installed Figma selected-source mutation or a real installed ComfyUI host.
+
+Development regression and built Agent/Web runtime are `PASS`. The staged Figma
+package and native Comfy adapter regressions are `PASS`; installed Figma
+selected-source Apply and installed ComfyUI host execution remain unobserved.
+Business, visual, and task-fit acceptance remain `Pending` for the owner. No
+commit, push, publication, deployment, upload, installation, or existing-worktree
+discard occurred.

@@ -14,9 +14,9 @@ checks consume this file; it is not a future marketplace or plugin registry.
 
 | Carrier | Current product surface | Compiled or packaged runtime | Deliberately absent |
 | --- | --- | --- | --- |
-| Figma | The mature `perspective` workspace plus independent Sizes, Mockup, Mesh, and Remap workspaces behind one compact task launcher | One self-contained UI, main adapter, and a no-CSS WASM build with Canvas/Place/Deform/Remap planners | Timeline, Agent binaries, MCP schemas, Comfy Python, CSS emission, automatic perception/calibration |
-| Agent | Compact `search` / `describe` / `run` MCP projection by default, the eight direct headless tools as an explicit compatibility surface, plus CLI and the unchanged conditional Capability projection | Full stable native core and file renderer, including Place / Mockup, custom Mesh, Lens/Displacement Remap, Timeline, and the bounded single-raster Program, with no human UI | Figma HTML/CSS and Comfy Python |
-| ComfyUI | Nine V3 nodes: transform/rectification pairs, Canvas Set validation/application/plan replay, and Remap validation/application | A `comfy` CLI build containing only transform, rectification, Canvas, and Remap commands | Place, custom Mesh, Timeline, Compose/Solve/CSS/Schema, MCP/Skill/Capability files, Figma UI |
+| Figma | The mature `perspective` workspace plus independent Templates, Sizes, Mockup, Mesh, and Remap workspaces behind one compact task launcher | One self-contained UI, main adapter, and a no-CSS WASM build with Canvas/Place/Deform/Remap planners; Templates persists the bounded task-native values those planners consume | Timeline/Motion rendering, Agent binaries, MCP schemas, Comfy Python, CSS emission, automatic perception/calibration |
+| Agent | Compact `search` / `describe` / `run` MCP projection by default, the eight direct headless tools as an explicit compatibility surface, plus CLI and the unchanged conditional Capability projection | Full stable native source superset: Place/Mockup, custom Mesh and Surface Deformation, Lens/Displacement Remap, Timeline/Motion, Program, Spatial Template/Variation, production media/vector/tiling, assisted perception, and PSD projection, with no human UI | Figma HTML/CSS and Comfy Python |
+| ComfyUI | Nine V3 nodes: transform/rectification pairs, Canvas Set validation/application/plan replay, and Remap validation/application | A `comfy` CLI build containing only transform, rectification, Canvas, and Remap commands | Place, custom Mesh/Surface, Timeline/Motion, Program, Template/Variation, production media/vector/tiling, perception, PSD, Compose/Solve/CSS/Schema, MCP/Skill/Capability files, Figma UI |
 
 The Figma distribution remains one HTML file because Figma needs a local,
 self-contained plugin. That packaging rule does not require one permanent
@@ -24,8 +24,8 @@ product workspace. The existing Perspective workspace is an executable
 compatibility baseline: its operation order is stored in the profile and
 checked against the built UI. Canvas is recorded as its first sibling
 workspace and owns its controls and initialization in separate source modules.
-Mockup, Mesh, and Remap follow the same replacing-workspace boundary even
-though the release build inlines them into one offline HTML artifact. Only the
+Templates, Mockup, Mesh, and Remap follow the same replacing-workspace boundary
+even though the release build inlines them into one offline HTML artifact. Only the
 active workspace renders.
 
 The Web build retains CSS emission. The Figma alias consumes

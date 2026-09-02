@@ -16,11 +16,14 @@ use std::{
 #[cfg(feature = "full")]
 use worldbend_core::{
     AffineComposition, CanvasPlan, CanvasSpec, CssTransform, Flip2D, MeshWarpPlan, MeshWarpSpec,
-    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, Point, Quad,
-    RasterProgramInspection, RasterProgramSpec, RectifyPlan, RemapPlan, Scale2D, Skew2D,
-    SolveOutput, TimelinePlan, TimelineSpec, TransformRecipe, WarpMesh, WarpPreset, WarpSpec,
-    compose_affine, emit_css_transform, inspect_raster_program, plan_mesh_warp, plan_mockup,
-    plan_mockup_extract, plan_timeline, solve_spec,
+    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, MotionPlan, MotionSpec, Point,
+    Quad, RasterProgramInspection, RasterProgramSpec, RectifyPlan, RemapPlan, Scale2D, Skew2D,
+    SolveOutput, SpatialTemplateInspection, SpatialTemplateSpec, SurfaceDeformationPlan,
+    SurfaceDeformationSpec, TimelinePlan, TimelineSpec, TransformRecipe, VariationJobPlan,
+    VariationJobSpec, WarpMesh, WarpPreset, WarpSpec, compose_affine, emit_css_transform,
+    inspect_raster_program, inspect_spatial_template, plan_mesh_warp, plan_mockup,
+    plan_mockup_extract, plan_motion, plan_surface_deformation, plan_timeline, plan_variation_job,
+    solve_spec,
 };
 use worldbend_core::{
     CanvasBackground, CanvasSetPlan, CanvasSetSpec, ErrorCode, MAX_CANVAS_PIXELS,
@@ -29,6 +32,12 @@ use worldbend_core::{
 };
 #[cfg(any(feature = "full", feature = "comfy"))]
 use worldbend_core::{RemapSpec, plan_remap};
+#[cfg(feature = "full")]
+use worldbend_interop::{
+    MAX_PSD_SOURCE_BYTES, PsdSmartObjectRequest, execute_psd_smart_object_request,
+};
+#[cfg(feature = "full")]
+use worldbend_perception::{PlaneCandidateRequest, analyze_plane_candidates_file};
 use worldbend_render::{
     CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetProgram,
     CanvasSetRenderOptions, DEFAULT_MAX_AXIS, DEFAULT_MAX_PIXELS, DEFAULT_MAX_SOURCE_BYTES,
@@ -37,10 +46,15 @@ use worldbend_render::{
 };
 #[cfg(feature = "full")]
 use worldbend_render::{
-    MeshWarpRenderOptions, MockupExtractRenderOptions, MockupRenderOptions,
-    RasterProgramRenderOptions, TimelineRenderOptions, render_mesh_warp_file_with_cancel,
-    render_mockup_extract_files, render_mockup_files, render_raster_program_file,
-    render_timeline_files,
+    IccPolicy, MAX_MEDIA_PIXELS, MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS,
+    MAX_VECTOR_SOURCE_BYTES, MediaOutput, MediaRenderOptions, MeshWarpRenderOptions,
+    MockupExtractRenderOptions, MockupRenderOptions, OutputPrecision, RasterProgramRenderOptions,
+    TiledMediaRenderOptions, TimelineRenderOptions, VariationJobRenderOptions, VectorCarrier,
+    VectorRenderOptions, inspect_media_file, render_media_file, render_mesh_warp_file_with_cancel,
+    render_mockup_extract_files, render_mockup_files, render_motion_files,
+    render_raster_program_file, render_surface_deformation_file_with_cancel,
+    render_tiled_media_directory, render_timeline_files, render_variation_job_files,
+    render_vector_file,
 };
 #[cfg(any(feature = "full", feature = "comfy"))]
 use worldbend_render::{RemapFileMap, RemapRenderOptions, render_remap_file_with_cancel};
@@ -55,7 +69,7 @@ compile_error!("worldbend-cli requires either the full or comfy carrier feature"
 #[command(
     name = "worldbend",
     version,
-    about = "Deterministic transforms for explicit 2D planes"
+    about = "Deterministic 2D transforms and explicit assisted plane candidates"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -179,6 +193,164 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Inspect format, precision, alpha, orientation, digest, and ICC metadata.
+    #[cfg(feature = "full")]
+    MediaInspect {
+        /// PNG, JPEG, WebP, or TIFF source path.
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = MAX_MEDIA_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Ask one explicit local Provider for plane candidates without applying any transform.
+    #[cfg(feature = "full")]
+    PlaneCandidates {
+        /// PNG, JPEG, WebP, or TIFF source path.
+        #[arg(long)]
+        source: PathBuf,
+        /// Path to a worldbend.perception-plane-request JSON document.
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect PSD/PSB Smart Objects or project selected eligible objects into a Spatial Template.
+    #[cfg(feature = "full")]
+    PsdSmartObjects {
+        /// PSD or PSB source path. The file is read only and limited to 64 MiB.
+        #[arg(long)]
+        source: PathBuf,
+        /// Path to a worldbend.psd-smart-object-request JSON document.
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render a production raster with explicit format, precision, ICC, and loss disclosure.
+    #[cfg(feature = "full")]
+    MediaRender {
+        /// PNG, JPEG, WebP, or TIFF source path.
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum)]
+        format: MediaFormatArg,
+        /// PNG/TIFF output precision. Omit to preserve source precision where supported.
+        #[arg(long, value_enum)]
+        precision: Option<PrecisionArg>,
+        #[arg(long, value_enum, default_value_t = IccArg::Preserve)]
+        icc: IccArg,
+        /// Required for JPEG and rejected for other formats.
+        #[arg(long)]
+        jpeg_quality: Option<u8>,
+        /// Required for JPEG as R,G,B and rejected for other formats.
+        #[arg(long)]
+        matte: Option<String>,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, value_enum, default_value_t = CanvasArg::Tight)]
+        canvas: CanvasArg,
+        #[arg(long)]
+        target_size: Option<String>,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = MAX_MEDIA_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Preserve an SVG source through an affine SVG wrapper or projective HTML matrix3d carrier.
+    #[cfg(feature = "full")]
+    VectorRender {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum)]
+        carrier: VectorCarrierArg,
+        /// Intrinsic source element size as WIDTHxHEIGHT.
+        #[arg(long)]
+        element_size: String,
+        #[arg(long, value_enum, default_value_t = CanvasArg::Tight)]
+        canvas: CanvasArg,
+        #[arg(long)]
+        target_size: Option<String>,
+        #[arg(long, default_value_t = MAX_VECTOR_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render a large target as an atomic directory of independently encoded tiles and a manifest.
+    #[cfg(feature = "full")]
+    TiledMediaRender {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output_directory: PathBuf,
+        #[arg(long, value_enum)]
+        format: MediaFormatArg,
+        #[arg(long, value_enum)]
+        precision: Option<PrecisionArg>,
+        #[arg(long, value_enum, default_value_t = IccArg::Preserve)]
+        icc: IccArg,
+        #[arg(long)]
+        jpeg_quality: Option<u8>,
+        #[arg(long)]
+        matte: Option<String>,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, value_enum, default_value_t = CanvasArg::Tight)]
+        canvas: CanvasArg,
+        #[arg(long)]
+        target_size: Option<String>,
+        #[arg(long, default_value_t = 2048)]
+        tile_width: u32,
+        #[arg(long, default_value_t = 2048)]
+        tile_height: u32,
+        #[arg(long, default_value_t = MAX_TILED_OUTPUT_PIXELS)]
+        max_output_pixels: u64,
+        #[arg(long, default_value_t = MAX_TILED_ENCODED_BYTES)]
+        max_encoded_bytes: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_source_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_source_height: u32,
+        #[arg(long, default_value_t = MAX_MEDIA_PIXELS)]
+        max_source_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Validate and solve one explicit source quadrilateral into an output rectangle.
     Rectify {
         #[arg(long)]
@@ -259,6 +431,49 @@ enum Command {
         /// Run all stages and PNG encoding without publishing the output.
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate one reusable Spatial Template without decoding assets.
+    #[cfg(feature = "full")]
+    TemplateInspect {
+        /// Path to a worldbend.spatial-template JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// Accepted for explicit Agent scripting; command output is always JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render an ordered Variation Job and atomically publish its complete output directory.
+    #[cfg(feature = "full")]
+    VariationRender {
+        /// Repeat ASSET_ID=PATH once for every distinct assetId in the job.
+        #[arg(long, required = true)]
+        asset: Vec<String>,
+        /// Path to a worldbend.variation-job JSON document.
+        #[arg(long)]
+        spec: PathBuf,
+        /// New output directory; existing paths are rejected.
+        #[arg(long)]
+        output_directory: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long, default_value_t = worldbend_render::MAX_VARIATION_JOB_SOURCE_PIXELS)]
+        max_source_pixels: u64,
+        #[arg(long, default_value_t = worldbend_render::MAX_VARIATION_JOB_PROCESSED_PIXELS)]
+        max_processed_pixels: u64,
+        /// Execute all decoding, rendering, and encoding without publishing the directory.
+        #[arg(long)]
+        dry_run: bool,
+        /// Accepted for explicit Agent scripting; command output is always JSON.
         #[arg(long)]
         json: bool,
     },
@@ -425,6 +640,40 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Resolve one bounded cubic surface envelope plus ordered deformation strokes to a mesh.
+    #[cfg(feature = "full")]
+    SurfaceInspect {
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render one bounded cubic surface envelope plus ordered deformation strokes.
+    #[cfg(feature = "full")]
+    SurfaceRender {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long)]
+        overwrite: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Validate and plan one explicit lens or displacement remap.
     #[cfg(any(feature = "full", feature = "comfy"))]
     RemapInspect {
@@ -497,6 +746,41 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Validate and expand explicit motion keyframes with rational frame timing and easing.
+    #[cfg(feature = "full")]
+    MotionInspect {
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render explicit motion keyframes into one atomically published PNG directory.
+    #[cfg(feature = "full")]
+    MotionRender {
+        /// Repeat SOURCE_ID=PATH once for the exact sourceId in the motion document.
+        #[arg(long, required = true)]
+        source: Vec<String>,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output_directory: PathBuf,
+        #[arg(long, value_enum, default_value_t = QualityArg::Standard)]
+        quality: QualityArg,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_width: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_AXIS)]
+        max_height: u32,
+        #[arg(long, default_value_t = DEFAULT_MAX_PIXELS)]
+        max_pixels: u64,
+        #[arg(long, default_value_t = DEFAULT_MAX_SOURCE_BYTES)]
+        max_source_bytes: u64,
+        #[arg(long, default_value_t = worldbend_core::MAX_TIMELINE_PIXELS)]
+        max_cumulative_pixels: u64,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Emit a live-element CSS matrix3d transform.
     #[cfg(feature = "full")]
     Css {
@@ -536,6 +820,38 @@ enum QualityArg {
 enum CanvasArg {
     Tight,
     Reference,
+}
+
+#[cfg(feature = "full")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum MediaFormatArg {
+    Png,
+    Tiff,
+    Jpeg,
+    Webp,
+}
+
+#[cfg(feature = "full")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum PrecisionArg {
+    Preserve,
+    U8,
+    U16,
+    F32,
+}
+
+#[cfg(feature = "full")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum IccArg {
+    Preserve,
+    Discard,
+}
+
+#[cfg(feature = "full")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum VectorCarrierArg {
+    Svg,
+    Html,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -610,6 +926,10 @@ struct WebContract {
     mesh_warp_plan_output: MeshWarpPlan,
     remap_spec_input: RemapSpec,
     remap_plan_output: RemapPlan,
+    spatial_template_spec_input: SpatialTemplateSpec,
+    spatial_template_inspection_output: SpatialTemplateInspection,
+    variation_job_spec_input: VariationJobSpec,
+    variation_job_plan_output: VariationJobPlan,
     warp_mesh_output: WarpMesh,
     css_transform_output: CssTransform,
     transform_error: TransformError,
@@ -791,6 +1111,213 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 result,
             })
         }
+        #[cfg(feature = "full")]
+        Command::MediaInspect {
+            source,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            json: _,
+        } => {
+            let result = inspect_media_file(
+                &source,
+                RenderLimits {
+                    max_width,
+                    max_height,
+                    max_pixels,
+                    max_source_bytes,
+                },
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "mediaInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::PlaneCandidates {
+            source,
+            request,
+            json: _,
+        } => {
+            let request: PlaneCandidateRequest = read_json_file(&request, "perception request")?;
+            let result = analyze_plane_candidates_file(&source, &request)?;
+            to_value(Success {
+                ok: true,
+                operation: "planeCandidates",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::PsdSmartObjects {
+            source,
+            request,
+            json: _,
+        } => {
+            let request: PsdSmartObjectRequest = read_json_file(&request, "PsdSmartObjectRequest")?;
+            let bytes = read_bounded_binary(&source, "PSD/PSB source", MAX_PSD_SOURCE_BYTES)?;
+            let result = execute_psd_smart_object_request(&bytes, &request)?;
+            to_value(Success {
+                ok: true,
+                operation: "psdSmartObjects",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MediaRender {
+            source,
+            spec,
+            output,
+            format,
+            precision,
+            icc,
+            jpeg_quality,
+            matte,
+            quality,
+            canvas,
+            target_size,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec = read_spec(&spec)?;
+            let media_output =
+                parse_media_output(format, precision, icc, jpeg_quality, matte.as_deref())?;
+            let result = render_media_file(
+                &source,
+                &spec,
+                &output,
+                MediaRenderOptions {
+                    render: RenderOptions {
+                        quality: quality.into(),
+                        canvas: match canvas {
+                            CanvasArg::Tight => CanvasMode::Tight,
+                            CanvasArg::Reference => CanvasMode::Reference,
+                        },
+                        target_size: parse_optional_size(target_size, "targetSize")?,
+                        limits: RenderLimits {
+                            max_width,
+                            max_height,
+                            max_pixels,
+                            max_source_bytes,
+                        },
+                    },
+                    output: media_output,
+                },
+                overwrite,
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "mediaRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::VectorRender {
+            source,
+            spec,
+            output,
+            carrier,
+            element_size,
+            canvas,
+            target_size,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec = read_spec(&spec)?;
+            let result = render_vector_file(
+                &source,
+                &spec,
+                &output,
+                VectorRenderOptions {
+                    carrier: match carrier {
+                        VectorCarrierArg::Svg => VectorCarrier::Svg,
+                        VectorCarrierArg::Html => VectorCarrier::Html,
+                    },
+                    element_size: parse_size(&element_size, "elementSize")?,
+                    canvas: match canvas {
+                        CanvasArg::Tight => CanvasMode::Tight,
+                        CanvasArg::Reference => CanvasMode::Reference,
+                    },
+                    target_size: parse_optional_size(target_size, "targetSize")?,
+                    max_source_bytes,
+                },
+                overwrite,
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "vectorRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::TiledMediaRender {
+            source,
+            spec,
+            output_directory,
+            format,
+            precision,
+            icc,
+            jpeg_quality,
+            matte,
+            quality,
+            canvas,
+            target_size,
+            tile_width,
+            tile_height,
+            max_output_pixels,
+            max_encoded_bytes,
+            max_source_width,
+            max_source_height,
+            max_source_pixels,
+            max_source_bytes,
+            dry_run,
+            json: _,
+        } => {
+            let spec = read_spec(&spec)?;
+            let media_output =
+                parse_media_output(format, precision, icc, jpeg_quality, matte.as_deref())?;
+            let result = render_tiled_media_directory(
+                &source,
+                &spec,
+                &output_directory,
+                TiledMediaRenderOptions {
+                    quality: quality.into(),
+                    canvas: match canvas {
+                        CanvasArg::Tight => CanvasMode::Tight,
+                        CanvasArg::Reference => CanvasMode::Reference,
+                    },
+                    target_size: parse_optional_size(target_size, "targetSize")?,
+                    source_limits: RenderLimits {
+                        max_width: max_source_width,
+                        max_height: max_source_height,
+                        max_pixels: max_source_pixels,
+                        max_source_bytes,
+                    },
+                    tile_width,
+                    tile_height,
+                    max_output_pixels,
+                    max_encoded_bytes,
+                    max_tiles: worldbend_render::MAX_TILED_TILES,
+                    output: media_output,
+                },
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "tiledMediaRender",
+                result,
+            })
+        }
         Command::Rectify { spec, json: _ } => {
             let spec = read_rectify_spec(&spec)?;
             let result = rectify_plane(&spec)?;
@@ -876,6 +1403,57 @@ fn run(command: Command) -> Result<Value, TransformError> {
             to_value(Success {
                 ok: true,
                 operation: "programRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::TemplateInspect { spec, json: _ } => {
+            let spec: SpatialTemplateSpec = read_json_file(&spec, "SpatialTemplateSpec")?;
+            let result = inspect_spatial_template(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "templateInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::VariationRender {
+            asset,
+            spec,
+            output_directory,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            max_source_pixels,
+            max_processed_pixels,
+            dry_run,
+            json: _,
+        } => {
+            let spec: VariationJobSpec = read_json_file(&spec, "VariationJobSpec")?;
+            plan_variation_job(&spec)?;
+            let assets = parse_variation_assets(asset)?;
+            let result = render_variation_job_files(
+                &assets,
+                &spec,
+                &output_directory,
+                VariationJobRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                    max_source_pixels,
+                    max_processed_pixels,
+                },
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "variationRender",
                 result,
             })
         }
@@ -1121,6 +1699,55 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 result,
             })
         }
+        #[cfg(feature = "full")]
+        Command::SurfaceInspect { spec, json: _ } => {
+            let spec: SurfaceDeformationSpec = read_json_file(&spec, "SurfaceDeformationSpec")?;
+            let result = plan_surface_deformation(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "surfaceInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::SurfaceRender {
+            source,
+            spec,
+            output,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            overwrite,
+            dry_run,
+            json: _,
+        } => {
+            let spec: SurfaceDeformationSpec = read_json_file(&spec, "SurfaceDeformationSpec")?;
+            let result = render_surface_deformation_file_with_cancel(
+                &source,
+                None,
+                &spec,
+                &output,
+                MeshWarpRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                },
+                overwrite,
+                dry_run,
+                &|| false,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "surfaceRender",
+                result,
+            })
+        }
         #[cfg(any(feature = "full", feature = "comfy"))]
         Command::RemapInspect { spec, json: _ } => {
             let spec: RemapSpec = read_json_file(&spec, "RemapSpec")?;
@@ -1222,6 +1849,54 @@ fn run(command: Command) -> Result<Value, TransformError> {
             })
         }
         #[cfg(feature = "full")]
+        Command::MotionInspect { spec, json: _ } => {
+            let spec: MotionSpec = read_json_file(&spec, "MotionSpec")?;
+            let result = plan_motion(&spec)?;
+            to_value(Success {
+                ok: true,
+                operation: "motionInspect",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::MotionRender {
+            source,
+            spec,
+            output_directory,
+            quality,
+            max_width,
+            max_height,
+            max_pixels,
+            max_source_bytes,
+            max_cumulative_pixels,
+            dry_run,
+            json: _,
+        } => {
+            let spec: MotionSpec = read_json_file(&spec, "MotionSpec")?;
+            let sources = parse_mockup_sources(source)?;
+            let result = render_motion_files(
+                &sources,
+                &spec,
+                &output_directory,
+                TimelineRenderOptions {
+                    quality: quality.into(),
+                    limits: RenderLimits {
+                        max_width,
+                        max_height,
+                        max_pixels,
+                        max_source_bytes,
+                    },
+                    max_cumulative_pixels,
+                },
+                dry_run,
+            )?;
+            to_value(Success {
+                ok: true,
+                operation: "motionRender",
+                result,
+            })
+        }
+        #[cfg(feature = "full")]
         Command::Css {
             spec,
             element_size,
@@ -1270,6 +1945,9 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "meshWarpPlan": schema_for!(MeshWarpPlan),
                 "meshWarpRenderOptions": schema_for!(MeshWarpRenderOptions),
                 "meshWarpFileRenderResult": schema_for!(worldbend_render::MeshWarpFileRenderResult),
+                "surfaceDeformationSpec": schema_for!(SurfaceDeformationSpec),
+                "surfaceDeformationPlan": schema_for!(SurfaceDeformationPlan),
+                "surfaceDeformationFileRenderResult": schema_for!(worldbend_render::SurfaceDeformationFileRenderResult),
                 "remapSpec": schema_for!(RemapSpec),
                 "remapPlan": schema_for!(RemapPlan),
                 "remapRenderOptions": schema_for!(RemapRenderOptions),
@@ -1278,6 +1956,9 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "timelinePlan": schema_for!(TimelinePlan),
                 "timelineRenderOptions": schema_for!(TimelineRenderOptions),
                 "timelineFileRenderResult": schema_for!(worldbend_render::TimelineFileRenderResult),
+                "motionSpec": schema_for!(MotionSpec),
+                "motionPlan": schema_for!(MotionPlan),
+                "motionFileRenderResult": schema_for!(worldbend_render::MotionFileRenderResult),
                 "renderOptions": schema_for!(RenderOptions),
                 "fileRenderResult": schema_for!(worldbend_render::FileRenderResult),
                 "rectifyRenderOptions": schema_for!(RectifyRenderOptions),
@@ -1286,6 +1967,25 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "rasterProgramInspection": schema_for!(RasterProgramInspection),
                 "rasterProgramRenderOptions": schema_for!(RasterProgramRenderOptions),
                 "rasterProgramFileRenderResult": schema_for!(worldbend_render::RasterProgramFileRenderResult),
+                "spatialTemplateSpec": schema_for!(SpatialTemplateSpec),
+                "spatialTemplateInspection": schema_for!(SpatialTemplateInspection),
+                "variationJobSpec": schema_for!(VariationJobSpec),
+                "variationJobPlan": schema_for!(VariationJobPlan),
+                "variationJobRenderOptions": schema_for!(VariationJobRenderOptions),
+                "variationJobFileRenderResult": schema_for!(worldbend_render::VariationJobFileRenderResult),
+                "mediaOutput": schema_for!(MediaOutput),
+                "mediaRenderOptions": schema_for!(MediaRenderOptions),
+                "mediaSourceInfo": schema_for!(worldbend_render::MediaSourceInfo),
+                "mediaFileRenderResult": schema_for!(worldbend_render::MediaFileRenderResult),
+                "planeCandidateRequest": schema_for!(PlaneCandidateRequest),
+                "planeCandidateResponse": schema_for!(worldbend_perception::PlaneCandidateResponse),
+                "psdSmartObjectRequest": schema_for!(PsdSmartObjectRequest),
+                "psdSmartObjectResponse": schema_for!(worldbend_interop::PsdSmartObjectResponse),
+                "vectorRenderOptions": schema_for!(VectorRenderOptions),
+                "vectorFileResult": schema_for!(worldbend_render::VectorFileResult),
+                "tiledMediaRenderOptions": schema_for!(TiledMediaRenderOptions),
+                "tiledMediaManifest": schema_for!(worldbend_render::TiledMediaManifest),
+                "tiledMediaRenderResult": schema_for!(worldbend_render::TiledMediaRenderResult),
                 "cssTransform": schema_for!(CssTransform),
                 "transformError": schema_for!(TransformError),
                 "webContract": schema_for!(WebContract)
@@ -1296,23 +1996,134 @@ fn run(command: Command) -> Result<Value, TransformError> {
 
 #[cfg(feature = "full")]
 fn parse_mockup_sources(values: Vec<String>) -> Result<HashMap<String, PathBuf>, TransformError> {
+    parse_named_paths(values, "--source", "SOURCE_ID")
+}
+
+#[cfg(feature = "full")]
+fn parse_variation_assets(values: Vec<String>) -> Result<HashMap<String, PathBuf>, TransformError> {
+    parse_named_paths(values, "--asset", "ASSET_ID")
+}
+
+#[cfg(feature = "full")]
+fn parse_media_output(
+    format: MediaFormatArg,
+    precision: Option<PrecisionArg>,
+    icc: IccArg,
+    jpeg_quality: Option<u8>,
+    matte: Option<&str>,
+) -> Result<MediaOutput, TransformError> {
+    let icc = match icc {
+        IccArg::Preserve => IccPolicy::Preserve,
+        IccArg::Discard => IccPolicy::Discard,
+    };
+    let precision = precision.map(|value| match value {
+        PrecisionArg::Preserve => OutputPrecision::Preserve,
+        PrecisionArg::U8 => OutputPrecision::U8,
+        PrecisionArg::U16 => OutputPrecision::U16,
+        PrecisionArg::F32 => OutputPrecision::F32,
+    });
+    match format {
+        MediaFormatArg::Png | MediaFormatArg::Tiff => {
+            if jpeg_quality.is_some() || matte.is_some() {
+                return Err(TransformError::new(
+                    ErrorCode::Schema,
+                    "--jpeg-quality and --matte are accepted only with --format jpeg",
+                ));
+            }
+            let precision = precision.unwrap_or(OutputPrecision::Preserve);
+            Ok(match format {
+                MediaFormatArg::Png => MediaOutput::Png { precision, icc },
+                MediaFormatArg::Tiff => MediaOutput::Tiff { precision, icc },
+                _ => unreachable!("matched above"),
+            })
+        }
+        MediaFormatArg::Jpeg => {
+            if precision.is_some() {
+                return Err(TransformError::new(
+                    ErrorCode::Schema,
+                    "--precision is not accepted with JPEG; JPEG output is always u8",
+                ));
+            }
+            let quality = jpeg_quality.ok_or_else(|| {
+                TransformError::new(
+                    ErrorCode::Schema,
+                    "--jpeg-quality is required with --format jpeg",
+                )
+            })?;
+            if !(1..=100).contains(&quality) {
+                return Err(TransformError::new(
+                    ErrorCode::Schema,
+                    "--jpeg-quality must be in 1..100",
+                ));
+            }
+            let matte = matte.ok_or_else(|| {
+                TransformError::new(
+                    ErrorCode::Schema,
+                    "--matte R,G,B is required with --format jpeg",
+                )
+            })?;
+            Ok(MediaOutput::Jpeg {
+                quality,
+                matte: parse_rgb8(matte, "matte")?,
+                icc,
+            })
+        }
+        MediaFormatArg::Webp => {
+            if precision.is_some() || jpeg_quality.is_some() || matte.is_some() {
+                return Err(TransformError::new(
+                    ErrorCode::Schema,
+                    "WebP lossless does not accept --precision, --jpeg-quality, or --matte",
+                ));
+            }
+            Ok(MediaOutput::WebpLossless { icc })
+        }
+    }
+}
+
+#[cfg(feature = "full")]
+fn parse_rgb8(value: &str, label: &str) -> Result<[u8; 3], TransformError> {
+    let channels = value
+        .split(',')
+        .map(str::trim)
+        .map(|channel| channel.parse::<u8>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| {
+            TransformError::new(
+                ErrorCode::Schema,
+                format!("{label} must contain three integer channels in 0..255"),
+            )
+        })?;
+    channels.try_into().map_err(|_| {
+        TransformError::new(ErrorCode::Schema, format!("{label} must use R,G,B syntax"))
+    })
+}
+
+#[cfg(feature = "full")]
+fn parse_named_paths(
+    values: Vec<String>,
+    argument: &'static str,
+    id_label: &'static str,
+) -> Result<HashMap<String, PathBuf>, TransformError> {
     let mut sources = HashMap::with_capacity(values.len());
     for value in values {
         let (id, path) = value.split_once('=').ok_or_else(|| {
-            TransformError::new(ErrorCode::Schema, "--source must use SOURCE_ID=PATH syntax")
+            TransformError::new(
+                ErrorCode::Schema,
+                format!("{argument} must use {id_label}=PATH syntax"),
+            )
         })?;
         if id.is_empty() || path.is_empty() {
             return Err(TransformError::new(
                 ErrorCode::Schema,
-                "--source requires a non-empty SOURCE_ID and PATH",
+                format!("{argument} requires a non-empty {id_label} and PATH"),
             ));
         }
         if sources.insert(id.to_owned(), PathBuf::from(path)).is_some() {
             return Err(TransformError::new(
                 ErrorCode::OutputCollision,
-                "--source ids must be unique",
+                format!("{argument} ids must be unique"),
             )
-            .with_details(json!({ "sourceId": id })));
+            .with_details(json!({ "id": id })));
         }
     }
     Ok(sources)
@@ -1422,6 +2233,37 @@ fn read_json_file<T: serde::de::DeserializeOwned>(
             ),
         )
     })
+}
+
+#[cfg(feature = "full")]
+fn read_bounded_binary(
+    path: &PathBuf,
+    kind: &str,
+    maximum: usize,
+) -> Result<Vec<u8>, TransformError> {
+    let file = fs::File::open(path).map_err(|error| {
+        TransformError::new(
+            ErrorCode::Render,
+            format!("failed to open {kind} {}: {error}", path.display()),
+        )
+    })?;
+    let mut bytes = Vec::new();
+    file.take((maximum + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Render,
+                format!("failed to read {kind} {}: {error}", path.display()),
+            )
+        })?;
+    if bytes.len() > maximum {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            format!("{kind} exceeds its input byte limit"),
+        )
+        .with_details(json!({ "maximum": maximum })));
+    }
+    Ok(bytes)
 }
 
 impl From<QualityArg> for SamplingQuality {
@@ -1569,6 +2411,62 @@ mod tests {
             parse_point("1,2,3", "scale").unwrap_err().code,
             ErrorCode::Schema
         );
+    }
+
+    #[test]
+    #[cfg(feature = "full")]
+    fn media_format_options_are_a_closed_matrix() {
+        assert!(matches!(
+            parse_media_output(
+                MediaFormatArg::Png,
+                Some(PrecisionArg::U16),
+                IccArg::Preserve,
+                None,
+                None,
+            )
+            .unwrap(),
+            MediaOutput::Png {
+                precision: OutputPrecision::U16,
+                icc: IccPolicy::Preserve,
+            }
+        ));
+        assert!(matches!(
+            parse_media_output(
+                MediaFormatArg::Jpeg,
+                None,
+                IccArg::Discard,
+                Some(90),
+                Some("255,255,255"),
+            )
+            .unwrap(),
+            MediaOutput::Jpeg {
+                quality: 90,
+                matte: [255, 255, 255],
+                icc: IccPolicy::Discard,
+            }
+        ));
+        for error in [
+            parse_media_output(MediaFormatArg::Png, None, IccArg::Discard, Some(90), None)
+                .unwrap_err(),
+            parse_media_output(
+                MediaFormatArg::Jpeg,
+                Some(PrecisionArg::U8),
+                IccArg::Discard,
+                Some(90),
+                Some("0,0,0"),
+            )
+            .unwrap_err(),
+            parse_media_output(
+                MediaFormatArg::Webp,
+                Some(PrecisionArg::U8),
+                IccArg::Discard,
+                None,
+                None,
+            )
+            .unwrap_err(),
+        ] {
+            assert_eq!(error.code, ErrorCode::Schema);
+        }
     }
 
     #[test]

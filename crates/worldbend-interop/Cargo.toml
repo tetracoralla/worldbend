@@ -1,0 +1,15 @@
+[package]
+name = "worldbend-interop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Bounded read-only ecosystem interoperability for Worldbend"
+
+[dependencies]
+ag-psd.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+worldbend-core = { path = "../worldbend-core", default-features = false, features = ["place", "template"] }

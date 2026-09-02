@@ -35,9 +35,10 @@ not independently recompute content-dependent Trim geometry. See
 
 The headless source superset also contains explicit multi-plane Place/Mockup
 and reverse extraction, caller-authored custom meshes, lens/displacement
-remaps, and an ordered atomic Timeline. Each family has its own versioned
-contract and compile feature. Their presence does not authorize perception or
-make them appear in every carrier.
+remaps, bounded cubic surface deformation, an ordered atomic Timeline, and
+rational-time eased Motion. Each family has its own versioned contract and
+compile feature. Their presence does not authorize perception or make them
+appear in every carrier.
 
 The Agent/full carrier also accepts a bounded single-raster program. It chains
 1..8 existing Transform, Rectify, and Canvas stages in memory and publishes
@@ -45,6 +46,26 @@ only one final PNG, so a caller does not need to publish and re-decode
 intermediate rasters. It is orchestration over existing semantics, not a scene
 graph, layer model, public batch operation, or human workspace. See
 `docs/RASTER_PROGRAM_CONTRACT.md`.
+
+The headless production-media layer additionally supports explicit PNG/JPEG/
+WebP/TIFF precision and encoding, opaque ICC preservation or declared discard,
+u16/float displacement controls, bounded SVG/HTML vector-preserving carriers,
+and atomic large-destination tile sets. These routes reuse TransformSpec and
+RemapSpec; exact loss and resource boundaries are in
+`docs/MEDIA_PIPELINE_CONTRACT.md`.
+
+The separate Agent/full assisted-perception layer can ask one explicitly named
+local Provider for source-plane candidates. It returns source facts,
+uncalibrated confidence, typed uncertainty, and possibly no candidate; a caller
+must select and copy a candidate into a separately authored RectifySpec before
+deterministic execution. It never runs from the core or automatically applies
+the highest score. See `docs/PERCEPTION_PROVIDER_CONTRACT.md`.
+
+The Agent/full interoperability layer can inspect a bounded PSD/PSB and project
+caller-selected, eligible Smart Object transforms into the existing Spatial
+Template contract. It does not extract embedded assets, write Photoshop files,
+or approximate unsupported Photoshop warps. See
+`docs/PSD_SMART_OBJECT_INTEROP_CONTRACT.md`.
 
 The primary human user is a visual designer expecting a Photoshop-familiar
 Free Transform workflow for a screen, label, poster, package face, or other
@@ -60,6 +81,9 @@ Canvas(Set)Spec -> worldbend-core -> resolved source rectangles + placements
 MockupSpec -> worldbend-core -> ordered plane/seam/grid plan
 Mesh/RemapSpec -> worldbend-core -> explicit deformation/remap plan
 TimelineSpec -> worldbend-core -> ordered validated frame plan
+SurfaceDeformationSpec -> worldbend-core -> canonical Mesh plan
+MotionSpec -> worldbend-core -> rational timing + canonical Timeline plan
+PSD/PSB -> worldbend-interop -> selected SpatialTemplate projection
 RasterProgramSpec -> ordered existing single-raster stages
                                |-> native raster renderer
                                |-> CSS live-element adapter
@@ -80,7 +104,8 @@ profiles in `config/carrier-profiles.json` project the current semantic core
 into task-native distributions:
 
 - Figma ships the stable Perspective workspace and one compact source-level
-  task launcher for independent Sizes, Mockup, Mesh, and Remap workspaces. Its
+  task launcher for independent Templates, Sizes, Mockup, Mesh, and Remap
+  workspaces. Its
   no-CSS WASM build includes only the planners those human routes consume;
 - the Agent plugin ships the full stable headless implementation with no human
   UI, exposes a compact progressive catalog by default, and retains the current
@@ -106,15 +131,23 @@ and freshly verifies:
 2. strict convex-quad validation, stable errors, a numerically stable `f64`
    homography solver, inversion, reprojection diagnostics, bounds, and horizon
    detection in one Rust core;
-3. a native reference PNG renderer using inverse plane/mesh mapping and correct alpha;
+3. a native reference raster renderer using inverse plane/mesh mapping,
+   premultiplied alpha, PNG/JPEG/WebP/TIFF precision and loss disclosure,
+   high-precision control samples, vector-preserving SVG/HTML carriers, and
+   large-destination tiled publication;
 4. structured transform, rectification, Canvas, Place/Mockup, custom Mesh,
-   Lens/Displacement Remap, Timeline, single-raster Program, and CSS CLI operations;
+   bounded cubic Surface Deformation, Lens/Displacement Remap, Timeline,
+   rational-time Motion, single-raster Program, Spatial Template, Variation
+   Job, production media, vector, tiling, read-only PSD Smart Object
+   projection, and CSS CLI operations;
 5. the same eight direct MCP compatibility tools over the core plus one compact
    `search` / `describe` / `run` Agent projection, including one ordered atomic
-   Canvas Set renderer plus on-demand Place, Mesh, Remap, Timeline, and bounded
-   single-raster Program
-   operations, exact schemas, bounded catalogs and results, explicit workspace
-   authority, dry-run, and safe output publication;
+   Canvas Set renderer plus on-demand Place, Mesh, Surface Deformation, Remap,
+   Timeline, Motion, bounded single-raster Program, Template/Variation,
+   production media, vector, tiled-media, read-only PSD Smart Object projection,
+   and read-only assisted plane-candidate operations, with exact schemas,
+   bounded catalogs and results, explicit workspace authority, dry-run, and
+   safe output publication;
 6. a Rust-to-WASM geometry/mesh bridge, CSS adapter, WebGL2 preview, and minimal web
    playground;
 7. a local Figma development plugin that exports one selected node, composes
@@ -207,6 +240,28 @@ compatibility mode):
 - one local raster plus an explicit ordered Canvas Set to a new output
   directory: one `worldbend.run` call with operation `canvas_render`; the returned resolved plan can
   be replayed on a same-sized 8-bit control raster without re-running Trim;
+- one persisted Spatial Template can be inspected and rebound to an ordered
+  Variation Job; one `variation_render` call publishes all correlated outputs
+  atomically without an Agent relaying each transform;
+- `media_inspect` and `media_render` expose explicit input precision, ICC
+  policy, output format, loss, and digest facts; `vector_render` preserves SVG
+  source semantics where affine SVG or projective HTML can represent them;
+  `tiled_media_render` publishes one bounded large-destination tile set and
+  manifest without a full destination allocation;
+- `plane_candidates` asks exactly one contrast- or alpha-based local Provider
+  for zero to three source-plane assessments. It is read-only; scores are
+  uncalibrated, uncertainty is explicit, and a separate caller choice is
+  required before Rectify execution;
+- `surface_plan` and `surface_render` resolve a bounded cubic patch lattice,
+  explicit interior anchors, and ordered source-space strokes to the canonical
+  Mesh plan before native execution;
+- `motion_plan` and `motion_render` resolve explicit linear, hold, or
+  cubic-Bezier keyframe easing at one reduced rational frame rate into the
+  existing Timeline, preserving exact presentation times and atomic sequence
+  publication;
+- `psd_smart_objects` inspects one bounded PSD/PSB or projects an explicit
+  eligible Smart Object selection into a Spatial Template without extracting
+  or mutating the source document;
 - saved non-Warp mapping to live CSS: one `worldbend.run` call with operation
   `css`;
 - provider-neutral capability/procedure consumers use one `inspect` or `render`
@@ -242,22 +297,26 @@ Invalid input returns one stable structured error without speculative retries.
 
 ## Current non-goals
 
-- automatic plane, edge, object, screen, or vanishing-point detection;
-- arbitrary Bezier envelopes, Liquify, brush deformation, folded custom
-  meshes, or adapter-invented deformation beyond the explicit bounded Mesh and
-  Remap contracts;
+- automatic application of a perceived plane; semantic edge, object, screen,
+  or vanishing-point detection beyond the explicit contrast/alpha candidate
+  Providers;
+- unconstrained Bezier topology, freeform Liquify simulation, inferred brush
+  paths, folded custom meshes, or adapter-invented deformation beyond the
+  explicit bounded Mesh, Surface Deformation, and Remap contracts;
 - camera pose or 3D scene reconstruction;
 - vector-preserving Figma transforms in the current raster slice;
 - Comfy input IMAGE batches, Comfy video frame sequences, high-precision
-  control maps, and encoded video/audio rendering; the Agent-only Timeline
+  Comfy control maps, and encoded video/audio rendering; the Agent-only Timeline
   publishes an explicit atomic PNG sequence;
-- PSD compatibility;
+- PSD/PSB writing, embedded asset extraction, linked-asset fetching, Photoshop
+  effect preservation, or approximation of unsupported Smart Object warps;
 - cloud rendering, accounts, collaboration, or operating a marketplace;
-- 6K/8K Figma tiling. Figma's single-image API is capped at 4096 px per axis;
+- 6K/8K Figma tiling. The headless tiled-media route does not change Figma's
+  single-image API cap of 4096 px per axis;
   the current adapter can visibly reduce raster density to fit that boundary
   while preserving document geometry, and the CLI remains the full-density
   high-resolution route.
 
-Perception may later produce four proposed points, but it must remain an
-uncertain upstream capability. It must never be hidden inside deterministic
-`solve` or `render`.
+Perception produces only uncertain proposed points and source facts. It remains
+upstream and must never be hidden inside deterministic `solve`, `rectify`, or
+`render`.

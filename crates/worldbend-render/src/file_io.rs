@@ -132,6 +132,13 @@ impl<W> EvidenceWriter<W> {
     }
 }
 
+#[cfg(feature = "template")]
+impl EvidenceWriter<fs::File> {
+    pub(crate) fn sync_all(&self) -> std::io::Result<()> {
+        self.inner.sync_all()
+    }
+}
+
 impl<W: Write> Write for EvidenceWriter<W> {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         let written = self.inner.write(bytes)?;
@@ -379,6 +386,10 @@ pub fn preflight_destination(output: &Path, overwrite: bool) -> TransformResult<
             "render output path must use a .png extension",
         ));
     }
+    preflight_file_destination(output, overwrite)
+}
+
+pub(crate) fn preflight_file_destination(output: &Path, overwrite: bool) -> TransformResult<()> {
     let parent = output_parent(output);
     let metadata = fs::metadata(parent).map_err(|error| {
         TransformError::new(

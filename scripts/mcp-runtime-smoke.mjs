@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { deflateSync, gunzipSync } from "node:zlib";
 
 import { loadCarrierProfiles } from "./carrier-profiles.mjs";
 
@@ -51,6 +52,10 @@ let meshSpec;
 let remapSpec;
 let timelineSpec;
 let rasterProgramSpec;
+let spatialTemplateSpec;
+let variationJobSpec;
+let surfaceSpec;
+let motionSpec;
 let mcpComposeResult;
 let mcpFlippedComposeResult;
 let mcpWarpComposeResult;
@@ -59,7 +64,10 @@ let mcpSolveResult;
 let mcpInspectResult;
 let mcpCssResult;
 let mcpDryRunResult;
+let mcpPerceptionResult;
 const metrics = {};
+const SYNTHETIC_SMART_OBJECT_PSD_GZIP_BASE64 =
+  "H4sIANEgmGoCA+0VXU/bQMyUqQImGEI87iHStpdpeQCKxGMLazWkbo2a8vGwlzS5tkGXu+hyYcDTHvY39mP2y5jvcilJ1257gDFtseXYZ199Pp/tHhw6LixBBstIgaYVLRtYR936R71ry1Bfk96zVFMW/NbU9+Dw+D3jIrpFFwBrVu5juxNeyVQQy408Ia3e8IL4EvVqP01ZiOIbtQ06EMIVSEhBAAELXIjAQ1mi3IMhXKDWB6l/dx2qaJ8gvVZrh3Zxvfwlpn5X3ebljgF7F8HeQ7AbCPZ+AdQNDG0i1Zq7WcBTPvic8Ua+/rnewKbxieF98kSMfFWRkl15TQlhaVRSqGypxVGaSD41nXo0JQFPhwXXz5TBISKJMYXh5ax5e8bckxMiZvbok/pcejIPBHqCqfeAd+KGIasPecqCBN/Jn95kw6deknQo92Q/ez2Vehjw2DphsvPCuaLFFHTJSM7TH+L9cn3TudP3xxM5R19PeyIggnI2NifWL2c1W77OWptdEspjcoa3K0U+x25saxFJJg4PmcS7tkTp5daFJ0POPKrtqjjyBJ2wDjXX2szjbO6faGi2DXdKBfGg9lMh/XkxLYKpr0W8/Qtuzl7Es752uerH+vOEd9+ah7pLLrCUqlg3lHwcMDlon6sWegU7M2jDrkEb9gza0DBow/4C1MUTU88nwYP4Bmf8ITJFqEtJYkNRxxuTpKBdHQkvIq4k5YrMr69KahVbkGCt8bykFTwNCONRyO7UtXNUrwRpVpX34m1NB3eErS4LIUOLTde6lAbXMTFr3QIDwUantJvoeHCy5LPyB9nMSC03ivrf36O6l3HWGo1CRgbCY8kI/17+4Ol6fpeyXU30aqL/fxMdwL2xrPLYcZi08iyeBXJiHrCps4qPX1z3E5oVAwrN/tTpEtQeF7/dPi5WGagy8Hd0QoX/Jn69rbDC+8fvHP4MiDwSAAA=";
 
 async function main() {
   fixtureRoot = await mkdtemp(path.join(tmpdir(), "worldbend-mcp-smoke-"));
@@ -86,6 +94,16 @@ async function main() {
         "base64",
       ),
     );
+    await writeFile(path.join(fixtureRoot, "source16.png"), makePng16WithIcc());
+    await writeFile(path.join(fixtureRoot, "perception.png"), makePerceptionPng());
+    await writeFile(
+      path.join(fixtureRoot, "source.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h10v10z"/></svg>',
+    );
+    await writeFile(
+      path.join(fixtureRoot, "smart-object.psd"),
+      gunzipSync(Buffer.from(SYNTHETIC_SMART_OBJECT_PSD_GZIP_BASE64, "base64")),
+    );
 
     pixelSpec = makePixelSpec(64, 64);
     normalizedSpec = makeNormalizedSpec();
@@ -97,6 +115,10 @@ async function main() {
     remapSpec = makeRemapSpec();
     timelineSpec = makeTimelineSpec();
     rasterProgramSpec = makeRasterProgramSpec();
+    spatialTemplateSpec = makeSpatialTemplateSpec();
+    variationJobSpec = makeVariationJobSpec();
+    surfaceSpec = makeSurfaceSpec();
+    motionSpec = makeMotionSpec();
     await writeFile(
       path.join(fixtureRoot, "pixel.projective.json"),
       JSON.stringify(pixelSpec),
@@ -113,6 +135,40 @@ async function main() {
       path.join(fixtureRoot, "raster-program.json"),
       JSON.stringify(rasterProgramSpec),
     );
+    await writeFile(
+      path.join(fixtureRoot, "spatial-template.json"),
+      JSON.stringify(spatialTemplateSpec),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "variation-job.json"),
+      JSON.stringify(variationJobSpec),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "perception-request.json"),
+      JSON.stringify({
+        schema: "worldbend.perception-plane-request",
+        version: "0.1",
+        provider: "contrastQuadV1",
+        maxCandidates: 2,
+        analysisMaxAxis: 256,
+      }),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "psd-smart-object-request.json"),
+      JSON.stringify({
+        schema: "worldbend.psd-smart-object-request",
+        version: "0.1",
+        action: { operation: "inspect" },
+      }),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "surface-deformation.json"),
+      JSON.stringify(surfaceSpec),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "motion.json"),
+      JSON.stringify(motionSpec),
+    );
 
     catalogClient = new StdioClient(mcp, [
       "--root",
@@ -122,6 +178,8 @@ async function main() {
     ]);
     await catalogClient.initialize();
     await checkProgressiveCatalog(catalogClient);
+    await checkProductionMediaCatalog(catalogClient);
+    await checkAdvancedSpatialCatalog(catalogClient);
     await catalogClient.close();
     catalogClient = undefined;
 
@@ -139,7 +197,7 @@ async function main() {
     await checkBoundedConcurrency(client);
     checkCliAdapter();
     console.log(
-      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms)`,
+      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, variation=${metrics.variationResponseBytes}B, media=${metrics.mediaResponseBytes}B, perception=${metrics.perceptionResponseBytes}B, psd=${metrics.psdResponseBytes}B, surface=${metrics.surfaceResponseBytes}B, motion=${metrics.motionResponseBytes}B, tiled=${metrics.tiledResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms)`,
     );
   } finally {
     if (catalogClient) await catalogClient.close();
@@ -147,6 +205,440 @@ async function main() {
     if (fixtureValidated) await rm(fixtureRoot, { recursive: true, force: true });
     await rm(stagingRoot, { recursive: true, force: true });
   }
+}
+
+async function checkProductionMediaCatalog(activeClient) {
+  const mediaDescription = await activeClient.callTool("worldbend.describe", {
+    operation: "media_render",
+  });
+  assert.equal(mediaDescription.result.structuredContent.ok, true);
+  assert.equal(
+    mediaDescription.result.structuredContent.result.inputSchema.$defs.MediaLimitsInput
+      .properties.maxPixels.maximum,
+    12 * 1024 * 1024,
+  );
+
+  const perceptionDescription = await activeClient.callTool("worldbend.describe", {
+    operation: "plane_candidates",
+  });
+  assert.equal(perceptionDescription.result.structuredContent.ok, true);
+  assert.equal(
+    perceptionDescription.result.structuredContent.result.mutatesFiles,
+    false,
+  );
+  const perception = await activeClient.callTool("worldbend.run", {
+    operation: "plane_candidates",
+    arguments: {
+      source: "perception.png",
+      request: {
+        schema: "worldbend.perception-plane-request",
+        version: "0.1",
+        provider: "contrastQuadV1",
+        maxCandidates: 2,
+        analysisMaxAxis: 256,
+      },
+    },
+  });
+  assert.equal(
+    perception.result.structuredContent.ok,
+    true,
+    JSON.stringify(perception.result.structuredContent),
+  );
+  const perceptionResult = perception.result.structuredContent.result;
+  mcpPerceptionResult = perceptionResult;
+  assert.equal(perceptionResult.outcome, "candidates");
+  assert(perceptionResult.candidates.length >= 1);
+  assert.equal(perceptionResult.provider.automaticExecution, false);
+  assert.equal(
+    perceptionResult.provider.scoreCalibration,
+    "uncalibratedRankingScore",
+  );
+  assert.equal(perceptionResult.source.width, 96);
+  assert.equal(perceptionResult.source.height, 72);
+  assert.equal(
+    perceptionResult.source.sourceSha256,
+    sha256(await readFile(path.join(fixtureRoot, "perception.png"))),
+  );
+  assert.equal(perceptionResult.candidates[0].sourcePlane.space, "pixel");
+  assert.equal(perceptionResult.candidates[0].sourcePlane.reference.width, 96);
+  metrics.perceptionResponseBytes = perception.wireBytes;
+
+  const noAlphaCandidate = await activeClient.callTool("worldbend.run", {
+    operation: "plane_candidates",
+    arguments: {
+      source: "perception.png",
+      request: {
+        schema: "worldbend.perception-plane-request",
+        version: "0.1",
+        provider: "alphaQuadV1",
+      },
+    },
+  });
+  assert.equal(noAlphaCandidate.result.structuredContent.ok, true);
+  assert.equal(noAlphaCandidate.result.structuredContent.result.outcome, "noCandidate");
+  assert.deepEqual(noAlphaCandidate.result.structuredContent.result.candidates, []);
+
+  const inspection = await activeClient.callTool("worldbend.run", {
+    operation: "media_inspect",
+    arguments: { source: "source16.png" },
+  });
+  assert.equal(inspection.result.structuredContent.ok, true);
+  assert.equal(inspection.result.structuredContent.result.sampleFormat, "u16");
+  assert.equal(inspection.result.structuredContent.result.iccProfileBytes, 128);
+
+  const media = await activeClient.callTool("worldbend.run", {
+    operation: "media_render",
+    arguments: {
+      source: "source16.png",
+      spec: makePixelSpec(1, 1),
+      output: "out/media16.png",
+      options: {
+        quality: "standard",
+        canvas: "reference",
+        output: { format: "png", precision: "preserve", icc: "preserve" },
+      },
+    },
+  });
+  assert.equal(media.result.structuredContent.ok, true);
+  assert.equal(media.result.structuredContent.result.media.sampleFormat, "u16");
+  assert.equal(media.result.structuredContent.result.media.iccEmbedded, true);
+  const mediaBytes = await readFile(path.join(fixtureRoot, "out", "media16.png"));
+  assert.equal(media.result.structuredContent.result.evidence.outputSha256, sha256(mediaBytes));
+  metrics.mediaResponseBytes = media.wireBytes;
+
+  const vector = await activeClient.callTool("worldbend.run", {
+    operation: "vector_render",
+    arguments: {
+      source: "source.svg",
+      spec: makePixelSpec(20, 10),
+      output: "out/vector.svg",
+      options: {
+        carrier: "svg",
+        elementSize: { width: 10, height: 10 },
+        canvas: "reference",
+      },
+    },
+  });
+  assert.equal(
+    vector.result.structuredContent.ok,
+    true,
+    JSON.stringify(vector.result.structuredContent),
+  );
+  assert.equal(vector.result.structuredContent.result.projective, false);
+  const vectorBytes = await readFile(path.join(fixtureRoot, "out", "vector.svg"));
+  assert.equal(vector.result.structuredContent.result.outputSha256, sha256(vectorBytes));
+  assert(vectorBytes.includes(Buffer.from("data:image/svg+xml;base64,")));
+
+  const projective = makePixelSpec(20, 10);
+  projective.destination.quad.br.x = 17;
+  const invalidSvg = await activeClient.callTool("worldbend.run", {
+    operation: "vector_render",
+    arguments: {
+      source: "source.svg",
+      spec: projective,
+      output: "out/projective.svg",
+      options: {
+        carrier: "svg",
+        elementSize: { width: 10, height: 10 },
+        canvas: "reference",
+      },
+    },
+  });
+  expectToolError(invalidSvg, "E_SCHEMA");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "projective.svg")), false);
+
+  const tiled = await activeClient.callTool("worldbend.run", {
+    operation: "tiled_media_render",
+    arguments: {
+      source: "source.png",
+      spec: makePixelSpec(4, 4),
+      outputDirectory: "out/tiles",
+      options: {
+        quality: "standard",
+        canvas: "reference",
+        tileWidth: 2,
+        tileHeight: 2,
+        output: { format: "png", precision: "u8", icc: "discard" },
+      },
+    },
+  });
+  assert.equal(
+    tiled.result.structuredContent.ok,
+    true,
+    JSON.stringify(tiled.result.structuredContent),
+  );
+  assert.equal(tiled.result.structuredContent.result.status, "written");
+  assert.equal(tiled.result.structuredContent.result.manifest.rows, 2);
+  assert.equal(tiled.result.structuredContent.result.manifest.columns, 2);
+  assert.deepEqual(
+    (await readdir(path.join(fixtureRoot, "out", "tiles"))).sort(),
+    [
+      "tile-r0000-c0000.png",
+      "tile-r0000-c0001.png",
+      "tile-r0001-c0000.png",
+      "tile-r0001-c0001.png",
+      "worldbend.tiled-media.json",
+    ],
+  );
+  const manifest = JSON.parse(
+    await readFile(path.join(fixtureRoot, "out", "tiles", "worldbend.tiled-media.json"), "utf8"),
+  );
+  assert(manifest.tiles.every((tile) => !tile.filename.includes("/")));
+  for (const tile of tiled.result.structuredContent.result.manifest.tiles) {
+    const bytes = await readFile(path.join(fixtureRoot, "out", "tiles", tile.filename));
+    assert.equal(tile.sha256, sha256(bytes));
+  }
+  metrics.tiledResponseBytes = tiled.wireBytes;
+
+  const webpTiles = await activeClient.callTool("worldbend.run", {
+    operation: "tiled_media_render",
+    arguments: {
+      source: "source.png",
+      spec: makePixelSpec(2, 1),
+      outputDirectory: "out/tiles-webp",
+      options: {
+        quality: "standard",
+        canvas: "reference",
+        tileWidth: 1,
+        tileHeight: 1,
+        output: { format: "webpLossless", icc: "discard" },
+      },
+    },
+  });
+  assert.equal(
+    webpTiles.result.structuredContent.ok,
+    true,
+    JSON.stringify(webpTiles.result.structuredContent),
+  );
+  assert.deepEqual(
+    (await readdir(path.join(fixtureRoot, "out", "tiles-webp"))).sort(),
+    ["tile-r0000-c0000.webp", "tile-r0000-c0001.webp", "worldbend.tiled-media.json"],
+  );
+
+  const wrongMediaExtension = await activeClient.callTool("worldbend.run", {
+    operation: "media_render",
+    arguments: {
+      source: "source.png",
+      spec: makePixelSpec(1, 1),
+      output: "out/wrong-media.png",
+      options: {
+        output: {
+          format: "jpeg",
+          quality: 90,
+          matte: [255, 255, 255],
+          icc: "discard",
+        },
+      },
+    },
+  });
+  expectToolError(wrongMediaExtension, "E_SCHEMA");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "wrong-media.png")), false);
+
+  const wrongVectorExtension = await activeClient.callTool("worldbend.run", {
+    operation: "vector_render",
+    arguments: {
+      source: "source.svg",
+      spec: makePixelSpec(1, 1),
+      output: "out/wrong-vector.svg",
+      options: {
+        carrier: "html",
+        elementSize: { width: 10, height: 10 },
+      },
+    },
+  });
+  expectToolError(wrongVectorExtension, "E_SCHEMA");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "wrong-vector.svg")), false);
+
+  const missingTiledTarget = await activeClient.callTool("worldbend.run", {
+    operation: "tiled_media_render",
+    arguments: {
+      source: "source.png",
+      spec: normalizedSpec,
+      outputDirectory: "out/missing-tiled-target",
+      options: {
+        tileWidth: 1,
+        tileHeight: 1,
+        output: { format: "png", precision: "u8", icc: "discard" },
+      },
+    },
+  });
+  expectToolError(missingTiledTarget, "E_SCHEMA");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "missing-tiled-target")), false);
+}
+
+async function checkAdvancedSpatialCatalog(activeClient) {
+  for (const [operation, schemaName, schemaValue] of [
+    ["psd_smart_objects", "PsdSmartObjectRequest", "worldbend.psd-smart-object-request"],
+    ["surface_plan", "SurfaceDeformationSpec", "worldbend.surface-deformation"],
+    ["motion_plan", "MotionSpec", "worldbend.motion"],
+  ]) {
+    const description = await activeClient.callTool("worldbend.describe", {
+      operation,
+    });
+    assert.equal(description.result.structuredContent.ok, true);
+    assert.equal(
+      description.result.structuredContent.result.inputSchema.$defs[schemaName]
+        .properties.schema.const,
+      schemaValue,
+    );
+  }
+
+  for (const [query, expected] of [
+    ["PSD Smart Object template", "psd_smart_objects"],
+    ["cubic surface deformation", "surface_plan"],
+    ["motion easing timebase", "motion_plan"],
+  ]) {
+    const search = await activeClient.callTool("worldbend.search", { query });
+    assert.equal(search.result.structuredContent.ok, true);
+    assert(
+      search.result.structuredContent.result.operations.some(
+        (entry) => entry.operation === expected,
+      ),
+      `${query} must discover ${expected}`,
+    );
+  }
+
+  const psdInspection = await activeClient.callTool("worldbend.run", {
+    operation: "psd_smart_objects",
+    arguments: {
+      source: "smart-object.psd",
+      request: {
+        schema: "worldbend.psd-smart-object-request",
+        version: "0.1",
+        action: { operation: "inspect" },
+      },
+    },
+  });
+  assert.equal(
+    psdInspection.result.structuredContent.ok,
+    true,
+    JSON.stringify(psdInspection.result.structuredContent),
+  );
+  const inspection = psdInspection.result.structuredContent.result.inspection;
+  assert.equal(psdInspection.result.structuredContent.result.result, "inspection");
+  assert.equal(inspection.source.document.width, 100);
+  assert.equal(inspection.smartObjects.length, 1);
+  assert.equal(inspection.smartObjects[0].importability.status, "eligible");
+  metrics.psdResponseBytes = psdInspection.wireBytes;
+
+  const psdTemplate = await activeClient.callTool("worldbend.run", {
+    operation: "psd_smart_objects",
+    arguments: {
+      source: "smart-object.psd",
+      request: {
+        schema: "worldbend.psd-smart-object-request",
+        version: "0.1",
+        action: {
+          operation: "planTemplate",
+          smartObjectIds: [inspection.smartObjects[0].id],
+        },
+      },
+    },
+  });
+  assert.equal(psdTemplate.result.structuredContent.ok, true);
+  assert.equal(psdTemplate.result.structuredContent.result.result, "templatePlan");
+  assert.deepEqual(
+    psdTemplate.result.structuredContent.result.plan.templateInspection.sourceSlots,
+    ["source-0001"],
+  );
+  expectToolError(
+    await activeClient.callTool("worldbend.run", {
+      operation: "psd_smart_objects",
+      arguments: {
+        source: "../smart-object.psd",
+        request: {
+          schema: "worldbend.psd-smart-object-request",
+          version: "0.1",
+          action: { operation: "inspect" },
+        },
+      },
+    }),
+    "E_PATH_OUTSIDE_ROOT",
+  );
+
+  const surfacePlan = await activeClient.callTool("worldbend.run", {
+    operation: "surface_plan",
+    arguments: { spec: surfaceSpec },
+  });
+  assert.equal(surfacePlan.result.structuredContent.ok, true);
+  assert.equal(
+    surfacePlan.result.structuredContent.result.schema,
+    "worldbend.surface-deformation-plan",
+  );
+  assert.equal(surfacePlan.result.structuredContent.result.strokeSampleCount, 1);
+
+  const surfaceDry = await activeClient.callTool("worldbend.run", {
+    operation: "surface_render",
+    arguments: {
+      source: "source.png",
+      spec: surfaceSpec,
+      output: "out/surface-dry.png",
+      dryRun: true,
+    },
+  });
+  assert.equal(surfaceDry.result.structuredContent.ok, true);
+  assert.equal(surfaceDry.result.structuredContent.result.status, "ready");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "surface-dry.png")), false);
+
+  const surfaceWritten = await activeClient.callTool("worldbend.run", {
+    operation: "surface_render",
+    arguments: {
+      source: "source.png",
+      spec: surfaceSpec,
+      output: "out/surface.png",
+    },
+  });
+  assert.equal(surfaceWritten.result.structuredContent.ok, true);
+  const surfaceBytes = await readFile(path.join(fixtureRoot, "out", "surface.png"));
+  assert.equal(
+    surfaceWritten.result.structuredContent.result.evidence.outputSha256,
+    sha256(surfaceBytes),
+  );
+  metrics.surfaceResponseBytes = surfaceWritten.wireBytes;
+
+  const motionPlan = await activeClient.callTool("worldbend.run", {
+    operation: "motion_plan",
+    arguments: { spec: motionSpec },
+  });
+  assert.equal(motionPlan.result.structuredContent.ok, true);
+  assert.equal(motionPlan.result.structuredContent.result.schema, "worldbend.motion-plan");
+  assert.deepEqual(motionPlan.result.structuredContent.result.duration, {
+    numerator: 1001,
+    denominator: 15000,
+  });
+
+  const motionDry = await activeClient.callTool("worldbend.run", {
+    operation: "motion_render",
+    arguments: {
+      sources: [{ id: "still", source: "source.png" }],
+      spec: motionSpec,
+      outputDirectory: "out/motion-dry",
+      dryRun: true,
+    },
+  });
+  assert.equal(motionDry.result.structuredContent.ok, true);
+  assert.equal(motionDry.result.structuredContent.result.status, "ready");
+  assert.equal(await exists(path.join(fixtureRoot, "out", "motion-dry")), false);
+
+  const motionWritten = await activeClient.callTool("worldbend.run", {
+    operation: "motion_render",
+    arguments: {
+      sources: [{ id: "still", source: "source.png" }],
+      spec: motionSpec,
+      outputDirectory: "out/motion",
+    },
+  });
+  assert.equal(motionWritten.result.structuredContent.ok, true);
+  assert.equal(motionWritten.result.structuredContent.result.items.length, 3);
+  assert.deepEqual(
+    motionWritten.result.structuredContent.result.items[1].presentationTime,
+    { numerator: 1001, denominator: 30000 },
+  );
+  for (const item of motionWritten.result.structuredContent.result.items) {
+    const bytes = await readFile(path.join(fixtureRoot, item.output));
+    assert.equal(item.sha256, sha256(bytes));
+  }
+  metrics.motionResponseBytes = motionWritten.wireBytes;
 }
 
 async function checkProgressiveCatalog(activeClient) {
@@ -283,6 +775,109 @@ async function checkProgressiveCatalog(activeClient) {
     sha256(programBytes),
   );
   metrics.programResponseBytes = programWritten.wireBytes;
+
+  const variationSearch = await activeClient.callTool("worldbend.search", {
+    query: "variation job",
+  });
+  assert.equal(variationSearch.result.structuredContent.ok, true);
+  assert.deepEqual(
+    variationSearch.result.structuredContent.result.operations.map(
+      (entry) => entry.operation,
+    ),
+    ["variation_plan", "variation_render"],
+  );
+  const variationDescription = await activeClient.callTool("worldbend.describe", {
+    operation: "variation_render",
+  });
+  assert.equal(variationDescription.result.structuredContent.ok, true);
+  assert.equal(
+    variationDescription.result.structuredContent.result.inputSchema.$defs
+      .VariationJobSpec.properties.schema.const,
+    "worldbend.variation-job",
+  );
+  assert.equal(
+    variationDescription.result.structuredContent.result.inputSchema.$defs
+      .VariationRenderOptionsInput.properties.maxProcessedPixels.maximum,
+    64 * 1024 * 1024,
+  );
+
+  const templateInspection = await activeClient.callTool("worldbend.run", {
+    operation: "template_inspect",
+    arguments: { spec: spatialTemplateSpec },
+  });
+  assert.equal(templateInspection.result.structuredContent.ok, true);
+  assert.deepEqual(
+    templateInspection.result.structuredContent.result.sourceSlots,
+    ["artwork"],
+  );
+  assert.deepEqual(
+    templateInspection.result.structuredContent.result.outputs.map((output) => output.id),
+    ["hero", "thumbnail"],
+  );
+
+  const variationPlan = await activeClient.callTool("worldbend.run", {
+    operation: "variation_plan",
+    arguments: { spec: variationJobSpec },
+  });
+  assert.equal(variationPlan.result.structuredContent.ok, true);
+  assert.equal(variationPlan.result.structuredContent.result.outputCount, 4);
+  assert.deepEqual(variationPlan.result.structuredContent.result.assetIds, ["asset-a"]);
+
+  const variationDry = await activeClient.callTool("worldbend.run", {
+    operation: "variation_render",
+    arguments: {
+      assets: [{ id: "asset-a", source: "source.png" }],
+      spec: variationJobSpec,
+      outputDirectory: "out/variation-dry",
+      dryRun: true,
+    },
+  });
+  assert.equal(variationDry.result.structuredContent.ok, true);
+  assert.equal(variationDry.result.structuredContent.result.status, "ready");
+  assert.equal(variationDry.result.structuredContent.result.items.length, 2);
+  assert.equal(
+    await exists(path.join(fixtureRoot, "out", "variation-dry")),
+    false,
+  );
+
+  const variationWritten = await activeClient.callTool("worldbend.run", {
+    operation: "variation_render",
+    arguments: {
+      assets: [{ id: "asset-a", source: "source.png" }],
+      spec: variationJobSpec,
+      outputDirectory: "out/variations",
+    },
+  });
+  assert.equal(variationWritten.result.structuredContent.ok, true);
+  assert.equal(variationWritten.result.structuredContent.result.status, "written");
+  assert.equal(
+    variationWritten.result.structuredContent.result.items[0].outputs[0].output,
+    "out/variations/sku-a/hero.png",
+  );
+  for (const item of ["sku-a", "sku-b"]) {
+    for (const output of ["hero.png", "thumbnail.png"]) {
+      const bytes = await readFile(path.join(fixtureRoot, "out", "variations", item, output));
+      const reported = variationWritten.result.structuredContent.result.items
+        .find((entry) => entry.id === item)
+        .outputs.find((entry) => entry.output.endsWith(`/${output}`));
+      assert.equal(reported.sha256, sha256(bytes));
+    }
+  }
+  metrics.variationResponseBytes = variationWritten.wireBytes;
+
+  const missingVariationAsset = await activeClient.callTool("worldbend.run", {
+    operation: "variation_render",
+    arguments: {
+      assets: [],
+      spec: variationJobSpec,
+      outputDirectory: "out/variation-missing",
+    },
+  });
+  expectToolError(missingVariationAsset, "E_SCHEMA");
+  assert.equal(
+    await exists(path.join(fixtureRoot, "out", "variation-missing")),
+    false,
+  );
 
   const invalidLateStage = structuredClone(rasterProgramSpec);
   invalidLateStage.stages[1] = {
@@ -1400,6 +1995,16 @@ async function checkBoundedConcurrency(activeClient) {
 }
 
 function checkCliAdapter() {
+  const perception = runCli([
+    "plane-candidates",
+    "--source",
+    path.join(fixtureRoot, "perception.png"),
+    "--request",
+    path.join(fixtureRoot, "perception-request.json"),
+  ]);
+  assert.equal(perception.status, 0);
+  assert.deepEqual(perception.body.result, mcpPerceptionResult);
+
   const composed = runCli([
     "compose",
     "--spec",
@@ -1555,6 +2160,163 @@ function checkCliAdapter() {
   assert.equal(programDry.body.result.evidence.outputWidth, 3);
   assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-program-dry.png")), false);
 
+  const templateInspect = runCli([
+    "template-inspect",
+    "--spec",
+    path.join(fixtureRoot, "spatial-template.json"),
+  ]);
+  assert.equal(templateInspect.status, 0);
+  assert.deepEqual(templateInspect.body.result.sourceSlots, ["artwork"]);
+  assert.deepEqual(
+    templateInspect.body.result.outputs.map((output) => output.id),
+    ["hero", "thumbnail"],
+  );
+
+  const variationDry = runCli([
+    "variation-render",
+    "--asset",
+    `asset-a=${path.join(fixtureRoot, "source.png")}`,
+    "--spec",
+    path.join(fixtureRoot, "variation-job.json"),
+    "--output-directory",
+    path.join(fixtureRoot, "out", "cli-variation-dry"),
+    "--dry-run",
+  ]);
+  assert.equal(variationDry.status, 0);
+  assert.equal(variationDry.body.result.status, "ready");
+  assert.equal(variationDry.body.result.plan.outputCount, 4);
+  assert.equal(
+    existsSync(path.join(fixtureRoot, "out", "cli-variation-dry")),
+    false,
+  );
+
+  const mediaInspect = runCli([
+    "media-inspect",
+    "--source",
+    path.join(fixtureRoot, "source16.png"),
+  ]);
+  assert.equal(mediaInspect.status, 0);
+  assert.equal(mediaInspect.body.result.sampleFormat, "u16");
+
+  const mediaDry = runCli([
+    "media-render",
+    "--source",
+    path.join(fixtureRoot, "source16.png"),
+    "--spec",
+    path.join(fixtureRoot, "pixel.projective.json"),
+    "--output",
+    path.join(fixtureRoot, "out", "cli-media.png"),
+    "--format",
+    "png",
+    "--precision",
+    "preserve",
+    "--icc",
+    "preserve",
+    "--dry-run",
+  ]);
+  assert.equal(mediaDry.status, 0);
+  assert.equal(mediaDry.body.result.status, "ready");
+  assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-media.png")), false);
+
+  const vectorDry = runCli([
+    "vector-render",
+    "--source",
+    path.join(fixtureRoot, "source.svg"),
+    "--spec",
+    path.join(fixtureRoot, "pixel.projective.json"),
+    "--output",
+    path.join(fixtureRoot, "out", "cli-vector.svg"),
+    "--carrier",
+    "svg",
+    "--element-size",
+    "10x10",
+    "--dry-run",
+  ]);
+  assert.equal(vectorDry.status, 0);
+  assert.equal(vectorDry.body.result.status, "ready");
+  assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-vector.svg")), false);
+
+  const tiledDry = runCli([
+    "tiled-media-render",
+    "--source",
+    path.join(fixtureRoot, "source.png"),
+    "--spec",
+    path.join(fixtureRoot, "pixel.projective.json"),
+    "--output-directory",
+    path.join(fixtureRoot, "out", "cli-tiles"),
+    "--format",
+    "webp",
+    "--icc",
+    "discard",
+    "--tile-width",
+    "32",
+    "--tile-height",
+    "32",
+    "--dry-run",
+  ]);
+  assert.equal(tiledDry.status, 0);
+  assert.equal(tiledDry.body.result.status, "ready");
+  assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-tiles")), false);
+
+  const psdInspection = runCli([
+    "psd-smart-objects",
+    "--source",
+    path.join(fixtureRoot, "smart-object.psd"),
+    "--request",
+    path.join(fixtureRoot, "psd-smart-object-request.json"),
+  ]);
+  assert.equal(psdInspection.status, 0);
+  assert.equal(psdInspection.body.result.result, "inspection");
+  assert.equal(psdInspection.body.result.inspection.smartObjects.length, 1);
+
+  const surfaceInspection = runCli([
+    "surface-inspect",
+    "--spec",
+    path.join(fixtureRoot, "surface-deformation.json"),
+  ]);
+  assert.equal(surfaceInspection.status, 0);
+  assert.equal(surfaceInspection.body.result.schema, "worldbend.surface-deformation-plan");
+  assert.equal(surfaceInspection.body.result.strokeSampleCount, 1);
+
+  const surfaceDry = runCli([
+    "surface-render",
+    "--source",
+    path.join(fixtureRoot, "source.png"),
+    "--spec",
+    path.join(fixtureRoot, "surface-deformation.json"),
+    "--output",
+    path.join(fixtureRoot, "out", "cli-surface-dry.png"),
+    "--dry-run",
+  ]);
+  assert.equal(surfaceDry.status, 0);
+  assert.equal(surfaceDry.body.result.status, "ready");
+  assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-surface-dry.png")), false);
+
+  const motionInspection = runCli([
+    "motion-inspect",
+    "--spec",
+    path.join(fixtureRoot, "motion.json"),
+  ]);
+  assert.equal(motionInspection.status, 0);
+  assert.deepEqual(motionInspection.body.result.duration, {
+    numerator: 1001,
+    denominator: 15000,
+  });
+
+  const motionDry = runCli([
+    "motion-render",
+    "--source",
+    `still=${path.join(fixtureRoot, "source.png")}`,
+    "--spec",
+    path.join(fixtureRoot, "motion.json"),
+    "--output-directory",
+    path.join(fixtureRoot, "out", "cli-motion-dry"),
+    "--dry-run",
+  ]);
+  assert.equal(motionDry.status, 0);
+  assert.equal(motionDry.body.result.status, "ready");
+  assert.equal(existsSync(path.join(fixtureRoot, "out", "cli-motion-dry")), false);
+
   const schema = runCli(["schema"]);
   assert.equal(schema.status, 0);
   assert.equal(
@@ -1562,6 +2324,23 @@ function checkCliAdapter() {
     "worldbend.transform",
   );
   assert.equal(schema.body.result.transformSpec.properties.version.const, "0.1");
+  assert.equal(
+    schema.body.result.spatialTemplateSpec.properties.schema.const,
+    "worldbend.spatial-template",
+  );
+  assert.equal(
+    schema.body.result.variationJobSpec.properties.schema.const,
+    "worldbend.variation-job",
+  );
+  assert.equal(
+    schema.body.result.surfaceDeformationSpec.properties.schema.const,
+    "worldbend.surface-deformation",
+  );
+  assert.equal(schema.body.result.motionSpec.properties.schema.const, "worldbend.motion");
+  assert.equal(
+    schema.body.result.psdSmartObjectRequest.properties.schema.const,
+    "worldbend.psd-smart-object-request",
+  );
 
   const malformed = runCli([
     "solve",
@@ -1617,6 +2396,86 @@ function expectToolError(response, code) {
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function makePng16WithIcc() {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0);
+  ihdr.writeUInt32BE(1, 4);
+  ihdr[8] = 16;
+  ihdr[9] = 6;
+  const profile = Buffer.alloc(128);
+  profile.writeUInt32BE(128, 0);
+  profile.write("acsp", 36, "ascii");
+  const iccp = Buffer.concat([
+    Buffer.from("worldbend\0", "ascii"),
+    Buffer.from([0]),
+    deflateSync(profile),
+  ]);
+  const scanline = Buffer.alloc(9);
+  scanline[0] = 0;
+  scanline.writeUInt16BE(1000, 1);
+  scanline.writeUInt16BE(2000, 3);
+  scanline.writeUInt16BE(3000, 5);
+  scanline.writeUInt16BE(65535, 7);
+  return Buffer.concat([
+    signature,
+    pngChunk("IHDR", ihdr),
+    pngChunk("iCCP", iccp),
+    pngChunk("IDAT", deflateSync(scanline)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function makePerceptionPng() {
+  const width = 96;
+  const height = 72;
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  const scanlines = Buffer.alloc(height * (1 + width * 4));
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (1 + width * 4);
+    scanlines[row] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const offset = row + 1 + x * 4;
+      const inside = x >= 18 && x < 78 && y >= 14 && y < 58;
+      scanlines[offset] = inside ? 30 : 245;
+      scanlines[offset + 1] = inside ? 80 : 245;
+      scanlines[offset + 2] = inside ? 210 : 245;
+      scanlines[offset + 3] = 255;
+    }
+  }
+  return Buffer.concat([
+    signature,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(scanlines)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function pngChunk(type, data) {
+  const typeBytes = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 0);
+  return Buffer.concat([length, typeBytes, data, crc]);
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function makePixelSpec(width, height) {
@@ -1826,6 +2685,68 @@ function makeTimelineSpec(frameCount = 2) {
   };
 }
 
+function makeSurfaceSpec() {
+  const points = [];
+  for (let row = 0; row < 4; row += 1) {
+    for (let column = 0; column < 4; column += 1) {
+      points.push({ x: column / 3, y: row / 3 });
+    }
+  }
+  points[5].y += 0.03;
+  return {
+    schema: "worldbend.surface-deformation",
+    version: "0.1",
+    transform: makePixelSpec(4, 4),
+    targetSize: { width: 4, height: 4 },
+    meshSubdivisions: 4,
+    envelope: { columns: 1, rows: 1, points },
+    anchors: [{ id: "center", column: 2, row: 2 }],
+    strokes: [
+      {
+        id: "nudge",
+        samples: [
+          {
+            position: { x: 0.25, y: 0.5 },
+            delta: { x: 0.02, y: 0 },
+            radius: 0.3,
+            strength: 0.5,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function makeMotionSpec() {
+  const start = makePixelSpec(1, 1).destination.quad;
+  const end = structuredClone(start);
+  end.tl.x = 0.1;
+  end.bl.x = 0.1;
+  return {
+    schema: "worldbend.motion",
+    version: "0.1",
+    output: { width: 1, height: 1 },
+    timebase: { numerator: 30000, denominator: 1001 },
+    sourceId: "still",
+    frameCount: 3,
+    base: makePixelSpec(1, 1),
+    keyframes: [
+      {
+        frame: 0,
+        quad: start,
+        easingToNext: {
+          kind: "cubicBezier",
+          x1: 0.42,
+          y1: 0,
+          x2: 0.58,
+          y2: 1,
+        },
+      },
+      { frame: 2, quad: end },
+    ],
+  };
+}
+
 function makeRasterProgramSpec() {
   return {
     schema: "worldbend.raster-program",
@@ -1851,6 +2772,53 @@ function makeRasterProgramSpec() {
         },
       },
     ],
+  };
+}
+
+function makeSpatialTemplateSpec() {
+  return {
+    schema: "worldbend.spatial-template",
+    version: "0.1",
+    operation: {
+      kind: "rasterProgram",
+      sourceSlot: "artwork",
+      program: rasterProgramSpec,
+    },
+    output: {
+      kind: "canvasSet",
+      spec: {
+        schema: "worldbend.canvas-set",
+        version: "0.1",
+        variants: [
+          {
+            id: "hero",
+            operation: {
+              kind: "stretch",
+              output: { width: 4, height: 3 },
+            },
+          },
+          {
+            id: "thumbnail",
+            operation: {
+              kind: "stretch",
+              output: { width: 2, height: 2 },
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+function makeVariationJobSpec() {
+  return {
+    schema: "worldbend.variation-job",
+    version: "0.1",
+    template: spatialTemplateSpec,
+    items: ["sku-a", "sku-b"].map((id) => ({
+      id,
+      bindings: [{ slotId: "artwork", assetId: "asset-a" }],
+    })),
   };
 }
 

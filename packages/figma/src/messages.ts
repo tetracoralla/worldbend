@@ -26,6 +26,12 @@ import {
   isStoredDesignerTask,
   type StoredDesignerTask,
 } from "./stored-designer-task";
+import {
+  isFigmaSpatialTemplate,
+  normalizeTemplateName,
+  type FigmaSpatialTemplate,
+  type SavedSpatialTemplate,
+} from "./stored-template-library";
 
 export interface SourceRasterPayload {
   bytes: Uint8Array;
@@ -47,9 +53,24 @@ export interface SourcePayload extends SourceRasterPayload {
 
 export type Placement = SourcePayload["placement"];
 
+export interface TemplateMutationReceipt {
+  kind: "save" | "delete";
+  requestId: number;
+}
+
 export type MainToUiMessage =
   | { type: "locale"; preference: LocalePreference; locale: SupportedLocale }
   | { type: "preference-error"; message: UserMessage }
+  | {
+      type: "template-library";
+      templates: SavedSpatialTemplate[];
+      mutation?: TemplateMutationReceipt;
+    }
+  | {
+      type: "template-library-error";
+      message: UserMessage;
+      mutation?: TemplateMutationReceipt;
+    }
   | { type: "selection-loading"; generation: number; nodeIds: string[] }
   | { type: "source"; generation: number; payload: SourcePayload }
   | { type: "selection-error"; generation: number; message: UserMessage }
@@ -90,6 +111,13 @@ export type MainToUiMessage =
 export type UiToMainMessage =
   | { type: "ready"; systemLocales: string[] }
   | { type: "set-locale"; preference: LocalePreference }
+  | {
+      type: "save-template";
+      requestId: number;
+      name: string;
+      template: FigmaSpatialTemplate;
+    }
+  | { type: "delete-template"; requestId: number; id: string }
   | { type: "trigger-undo" }
   | {
       type: "request-source-raster";
@@ -164,6 +192,23 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
   if (value["type"] === "set-locale") {
     return Object.keys(value).length === 2 && isLocalePreference(value["preference"]);
   }
+  if (value["type"] === "save-template") {
+    return (
+      hasExactKeys(value, ["type", "requestId", "name", "template"]) &&
+      isRequestId(value["requestId"]) &&
+      typeof value["name"] === "string" &&
+      normalizeTemplateName(value["name"]) === value["name"] &&
+      isFigmaSpatialTemplate(value["template"])
+    );
+  }
+  if (value["type"] === "delete-template") {
+    return (
+      hasExactKeys(value, ["type", "requestId", "id"]) &&
+      isRequestId(value["requestId"]) &&
+      typeof value["id"] === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value["id"])
+    );
+  }
   if (value["type"] === "trigger-undo") return Object.keys(value).length === 1;
   if (value["type"] === "request-source-raster") {
     const allowed = new Set([
@@ -229,6 +274,10 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
     payload["targetNodeId"] === undefined ||
     (typeof payload["targetNodeId"] === "string" && payload["targetNodeId"].length > 0)
   );
+}
+
+function isRequestId(value: unknown): boolean {
+  return Number.isSafeInteger(value) && Number(value) >= 1;
 }
 
 function isApplyDesignerMessage(

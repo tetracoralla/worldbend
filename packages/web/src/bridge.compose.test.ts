@@ -6,6 +6,8 @@ import {
   buildWarpMeshPreview,
   composeAffineTransform,
   emitCssTransform,
+  inspectSpatialTemplate,
+  planVariationJob,
   rectifyPlane,
   TransformError,
   solveTransform,
@@ -41,6 +43,45 @@ function expectCloseToQuad(actual: Quad, expected: Quad): void {
 }
 
 describe("compose over the real WASM core", () => {
+  it("inspects templates and plans ordered variation bindings through real WASM", async () => {
+    const template = {
+      schema: "worldbend.spatial-template" as const,
+      version: "0.1" as const,
+      operation: {
+        kind: "mockup" as const,
+        spec: {
+          schema: "worldbend.mockup" as const,
+          version: "0.1" as const,
+          canvas: { width: 64, height: 48 },
+          background: { kind: "transparent" as const },
+          planes: [{
+            id: "plane-1",
+            sourceId: "source-1",
+            transform: normalizedSpec(unitQuad()),
+            opacity: 1,
+          }],
+          seams: [],
+        },
+      },
+      output: { kind: "single" as const, id: "output" },
+    };
+    const inspection = await inspectSpatialTemplate(template);
+    expect(inspection.sourceSlots).toEqual(["source-1"]);
+    expect(inspection.outputs).toEqual([{ id: "output", filename: "output.png" }]);
+
+    const plan = await planVariationJob({
+      schema: "worldbend.variation-job",
+      version: "0.1",
+      template,
+      items: [
+        { id: "first", bindings: [{ slotId: "source-1", assetId: "asset-a" }] },
+        { id: "second", bindings: [{ slotId: "source-1", assetId: "asset-b" }] },
+      ],
+    });
+    expect(plan.items.map((item) => item.id)).toEqual(["first", "second"]);
+    expect(plan.assetIds).toEqual(["asset-a", "asset-b"]);
+  });
+
   it("plans explicit plane rectification through the real core", async () => {
     const sourceQuad = {
       tl: { x: 0.1, y: 0.15 },

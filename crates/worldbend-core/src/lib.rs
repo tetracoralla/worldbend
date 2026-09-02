@@ -14,12 +14,18 @@ mod geometry;
 #[cfg(feature = "place")]
 mod mockup;
 mod model;
+#[cfg(feature = "motion")]
+mod motion;
 #[cfg(feature = "program")]
 mod raster_program;
 mod rectify;
 #[cfg(feature = "remap")]
 mod remap;
 mod solver;
+#[cfg(feature = "surface-deformation")]
+mod surface_deformation;
+#[cfg(feature = "template")]
+mod template;
 #[cfg(feature = "timeline")]
 mod timeline;
 mod transform;
@@ -57,6 +63,11 @@ pub use model::{
     Content, CoordinateSpace, Destination, FitMode, Point, Quad, SPEC_SCHEMA, SPEC_VERSION, Size,
     SourceOrientation, TransformSpec,
 };
+#[cfg(feature = "motion")]
+pub use motion::{
+    FrameRate, MOTION_PLAN_SCHEMA, MOTION_SCHEMA, MOTION_VERSION, MotionEasing, MotionFrameTiming,
+    MotionKeyframe, MotionPlan, MotionSpec, RationalTime, motion_timeline_spec, plan_motion,
+};
 #[cfg(feature = "program")]
 pub use raster_program::{
     MAX_RASTER_PROGRAM_PIXELS, MAX_RASTER_PROGRAM_STAGES, RASTER_PROGRAM_INSPECTION_SCHEMA,
@@ -77,6 +88,24 @@ pub use solver::{
     Homography, InspectOutput, MatrixDiagnostics, ReprojectionDiagnostics, ReprojectionPoint,
     SolveDiagnostics, SolveOutput, inspect_spec, inverse_transform_point, solve_quad, solve_spec,
     transform_point,
+};
+#[cfg(feature = "surface-deformation")]
+pub use surface_deformation::{
+    BezierEnvelope, DeformationAnchor, DeformationStroke, MAX_BEZIER_PATCHES_PER_AXIS,
+    MAX_DEFORMATION_ANCHORS, MAX_DEFORMATION_STROKE_SAMPLES, MAX_DEFORMATION_STROKES,
+    MAX_STROKE_SAMPLES_PER_STROKE, ResolvedDeformationAnchor, SURFACE_DEFORMATION_PLAN_SCHEMA,
+    SURFACE_DEFORMATION_SCHEMA, SURFACE_DEFORMATION_VERSION, StrokeSample, SurfaceDeformationPlan,
+    SurfaceDeformationSpec, plan_surface_deformation,
+};
+#[cfg(feature = "template")]
+pub use template::{
+    MAX_SPATIAL_TEMPLATE_OUTPUTS, MAX_SPATIAL_TEMPLATE_SLOTS, MAX_VARIATION_JOB_ITEMS,
+    MAX_VARIATION_JOB_OUTPUTS, SPATIAL_TEMPLATE_INSPECTION_SCHEMA, SPATIAL_TEMPLATE_SCHEMA,
+    SPATIAL_TEMPLATE_VERSION, SpatialTemplateInspection, SpatialTemplateOperation,
+    SpatialTemplateOperationKind, SpatialTemplateOutput, SpatialTemplateOutputKind,
+    SpatialTemplateOutputSummary, SpatialTemplateSpec, VARIATION_JOB_PLAN_SCHEMA,
+    VARIATION_JOB_SCHEMA, VariationBinding, VariationJobItem, VariationJobItemPlan,
+    VariationJobPlan, VariationJobSpec, inspect_spatial_template, plan_variation_job,
 };
 #[cfg(feature = "timeline")]
 pub use timeline::{

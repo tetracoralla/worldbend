@@ -116,6 +116,7 @@ import { createMeshWorkspace, type MeshWorkspaceCopy } from "./mesh-workspace";
 import { createMockupWorkspace, type MockupWorkspaceCopy } from "./mockup-workspace";
 import { createRemapWorkspace, type RemapWorkspaceCopy } from "./remap-workspace";
 import type { DesignerTaskWorkspace, DesignerWorkspaceSource } from "./designer-workspace-common";
+import { createTemplateWorkspace, type TemplateWorkspaceCopy } from "./template-workspace";
 
 const TRANSFORM_PREVIEW_TIMEOUT_MS = 5_000;
 const SOURCE_RASTER_TIMEOUT_MS = 10_000;
@@ -125,6 +126,7 @@ const canvasWorkspaceRoot = required<HTMLElement>("canvas-workspace");
 const mockupWorkspaceRoot = required<HTMLElement>("mockup-workspace");
 const meshWorkspaceRoot = required<HTMLElement>("mesh-workspace");
 const remapWorkspaceRoot = required<HTMLElement>("remap-workspace");
+const templatesWorkspaceRoot = required<HTMLElement>("templates-workspace");
 const selectionState = required<HTMLParagraphElement>("selection-state");
 const sourceName = required<HTMLElement>("source-name");
 const errorMessage = required<HTMLElement>("error");
@@ -390,27 +392,42 @@ const remapWorkspace = createRemapWorkspace({
   post,
   formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
 });
-const designerWorkspaces: Record<"mesh" | "mockup" | "remap", DesignerTaskWorkspace> = {
+const templateWorkspace = createTemplateWorkspace({
+  root: templatesWorkspaceRoot,
+  copy: templateWorkspaceCopy,
+  onBack() { productWorkspace.returnToPerspective(); },
+  onCreate() { productWorkspace.enter("mockup"); },
+  onUse(template) {
+    if (!mockupWorkspace.loadTemplate(template)) return false;
+    productWorkspace.enter("mockup");
+    return true;
+  },
+  post,
+  formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
+});
+const designerWorkspaces: Record<"mesh" | "mockup" | "remap" | "templates", DesignerTaskWorkspace> = {
   mesh: meshWorkspace,
   mockup: mockupWorkspace,
   remap: remapWorkspace,
+  templates: templateWorkspace,
 };
 const taskRoots = {
   canvas: canvasWorkspaceRoot,
   mockup: mockupWorkspaceRoot,
   mesh: meshWorkspaceRoot,
   remap: remapWorkspaceRoot,
+  templates: templatesWorkspaceRoot,
 } as const;
 productWorkspace = createProductWorkspaceRouter({
   onChange(previous, next) {
     if (previous === "canvas") canvasWorkspace.leave();
-    if (previous === "mesh" || previous === "mockup" || previous === "remap") designerWorkspaces[previous].leave();
+    if (previous === "mesh" || previous === "mockup" || previous === "remap" || previous === "templates") designerWorkspaces[previous].leave();
     if (previous !== "perspective") taskRoots[previous].hidden = true;
     controls.inert = next !== "perspective";
     controls.hidden = next !== "perspective" || !current;
     selectionState.hidden = next !== "perspective" || Boolean(current);
     if (next === "canvas") canvasWorkspace.enter();
-    if (next === "mesh" || next === "mockup" || next === "remap") designerWorkspaces[next].enter();
+    if (next === "mesh" || next === "mockup" || next === "remap" || next === "templates") designerWorkspaces[next].enter();
     if (next !== "perspective") taskRoots[next].hidden = false;
     if (next === "perspective") {
       renderMode();
@@ -440,6 +457,7 @@ canvasWorkspace.updateLocale();
 meshWorkspace.updateLocale();
 mockupWorkspace.updateLocale();
 remapWorkspace.updateLocale();
+templateWorkspace.updateLocale();
 
 function control(id: string): {
   numberInput: HTMLInputElement;
@@ -457,6 +475,18 @@ function control(id: string): {
 window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) => {
   const message = event.data.pluginMessage;
   if (!message) return;
+  if (message.type === "template-library" || message.type === "template-library-error") {
+    templateWorkspace.handleMainMessage(message);
+    if (message.mutation?.kind === "save") {
+      mockupWorkspace.finishTemplateSave(
+        message.mutation.requestId,
+        message.type === "template-library-error"
+          ? translate(activeLocale, message.message)
+          : undefined,
+      );
+    }
+    return;
+  }
   if (canvasWorkspace.handleMainMessage(message)) return;
   for (const workspace of Object.values(designerWorkspaces)) {
     if (workspace.handleMainMessage(message)) return;
@@ -476,6 +506,7 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
     meshWorkspace.updateLocale();
     mockupWorkspace.updateLocale();
     remapWorkspace.updateLocale();
+    templateWorkspace.updateLocale();
   }
   if (message.type === "preference-error") showError(message.message);
   if (message.type === "selection-loading") {
@@ -775,6 +806,7 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     for (const workspace of Object.values(designerWorkspaces)) workspace.setSource(designerSource);
     const sourceCount = loadedSources.length;
     taskLauncher.setAvailability({
+      templates: sourceCount >= 1 && sourceCount <= 8,
       canvas: sourceCount === 1,
       mesh: sourceCount === 1,
       mockup: sourceCount >= 1 && sourceCount <= 8,
@@ -2450,6 +2482,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
   localizeIconAction(actionTransformAgain, translate(locale, "transformAgain"));
   taskLauncher.setLabels(translate(locale, "openTools"), {
+    templates: translate(locale, "workspaceTemplates"),
     canvas: translate(locale, "canvasTitle"),
     mockup: translate(locale, "workspaceMockup"),
     mesh: translate(locale, "workspaceMesh"),
@@ -2560,6 +2593,24 @@ function mockupWorkspaceCopy(): MockupWorkspaceCopy {
     columns: translate(activeLocale, "mockupColumns"),
     rows: translate(activeLocale, "mockupRows"),
     corner: translate(activeLocale, "mockupCorner"),
+    templateName: translate(activeLocale, "templateName"),
+    templateNamePlaceholder: translate(activeLocale, "templateNamePlaceholder"),
+    saveTemplate: translate(activeLocale, "saveTemplate"),
+    savingTemplate: translate(activeLocale, "savingTemplate"),
+    templateSaved: translate(activeLocale, "templateSaved"),
+  };
+}
+
+function templateWorkspaceCopy(): TemplateWorkspaceCopy {
+  return {
+    ...designerCopy("templateTitle"),
+    empty: translate(activeLocale, "templateEmpty"),
+    create: translate(activeLocale, "templateCreate"),
+    use: translate(activeLocale, "templateUse"),
+    remove: translate(activeLocale, "templateRemove"),
+    confirmRemove: translate(activeLocale, "templateConfirmRemove"),
+    sourceCount: translate(activeLocale, "templateSourceCount"),
+    incompatible: translate(activeLocale, "templateIncompatible"),
   };
 }
 
@@ -2655,7 +2706,7 @@ function handleKeydown(event: KeyboardEvent): void {
     canvasWorkspace.handleKeydown(event);
     return;
   }
-  if (workspace === "mesh" || workspace === "mockup" || workspace === "remap") {
+  if (workspace === "mesh" || workspace === "mockup" || workspace === "remap" || workspace === "templates") {
     designerWorkspaces[workspace].handleKeydown(event);
     return;
   }

@@ -20,6 +20,12 @@ import {
   type LoadedDesignerSource,
 } from "./designer-workspace-common";
 import type { MainToUiMessage, UiToMainMessage } from "./messages";
+import {
+  normalizeTemplateName,
+  spatialTemplateFromMockup,
+  templateSourceCount,
+  type FigmaSpatialTemplate,
+} from "./stored-template-library";
 
 export interface MockupWorkspaceCopy extends DesignerWorkspaceCopy {
   width: string;
@@ -29,6 +35,16 @@ export interface MockupWorkspaceCopy extends DesignerWorkspaceCopy {
   columns: string;
   rows: string;
   corner: string;
+  templateName: string;
+  templateNamePlaceholder: string;
+  saveTemplate: string;
+  savingTemplate: string;
+  templateSaved: string;
+}
+
+export interface MockupTaskWorkspace extends DesignerTaskWorkspace {
+  loadTemplate(template: FigmaSpatialTemplate): boolean;
+  finishTemplateSave(requestId: number, error?: string): void;
 }
 
 export function createMockupWorkspace(input: {
@@ -37,14 +53,17 @@ export function createMockupWorkspace(input: {
   onBack(): void;
   post(message: UiToMainMessage): void;
   formatError(error: unknown): string;
-}): DesignerTaskWorkspace {
+}): MockupTaskWorkspace {
   const shell = createDesignerWorkspaceShell(input.root);
   shell.inspector.innerHTML = `<div class="designer-tabs" data-role="planes" role="tablist"></div>
     <div class="designer-row"><label class="designer-field"><span data-role="width-label"></span><input data-role="width" type="number" min="1" max="4096" step="1"></label><label class="designer-field"><span data-role="height-label"></span><input data-role="height" type="number" min="1" max="4096" step="1"></label></div>
     <div class="inspector-divider" aria-hidden="true"></div>
     <label class="designer-field"><span data-role="opacity-label"></span><input data-role="opacity" type="range" min="0" max="100" step="1"></label>
     <label class="designer-field"><span><input data-role="grid" type="checkbox"> <span data-role="grid-label"></span></span></label>
-    <div class="designer-row" data-role="grid-size"><label class="designer-field"><span data-role="columns-label"></span><input data-role="columns" type="number" min="1" max="64" step="1"></label><label class="designer-field"><span data-role="rows-label"></span><input data-role="rows" type="number" min="1" max="64" step="1"></label></div>`;
+    <div class="designer-row" data-role="grid-size"><label class="designer-field"><span data-role="columns-label"></span><input data-role="columns" type="number" min="1" max="64" step="1"></label><label class="designer-field"><span data-role="rows-label"></span><input data-role="rows" type="number" min="1" max="64" step="1"></label></div>
+    <div class="inspector-divider" aria-hidden="true"></div>
+    <label class="designer-field"><span data-role="template-name-label"></span><input data-role="template-name" type="text" maxlength="80"></label>
+    <button data-role="save-template" type="button"></button>`;
   const planes = role<HTMLDivElement>(shell.inspector, "planes");
   const width = role<HTMLInputElement>(shell.inspector, "width");
   const height = role<HTMLInputElement>(shell.inspector, "height");
@@ -53,6 +72,8 @@ export function createMockupWorkspace(input: {
   const gridSize = role<HTMLElement>(shell.inspector, "grid-size");
   const columns = role<HTMLInputElement>(shell.inspector, "columns");
   const rows = role<HTMLInputElement>(shell.inspector, "rows");
+  const templateName = role<HTMLInputElement>(shell.inspector, "template-name");
+  const saveTemplate = role<HTMLButtonElement>(shell.inspector, "save-template");
   const canvas = document.createElement("canvas");
   shell.preview.append(canvas);
   const maybeContext = canvas.getContext("2d");
@@ -67,6 +88,9 @@ export function createMockupWorkspace(input: {
   let generation = 0;
   let busy = false;
   let active = false;
+  let savingTemplate = false;
+  let pendingTemplateRequestId: number | undefined;
+  let nextTemplateRequestId = 1;
   // Continuous plan changes (opacity drags, corner moves) collapse to one
   // preview request per paint. Overlay moves never rebuild the point layer:
   // the moved point is already positioned by the overlay itself, and a
@@ -95,6 +119,8 @@ export function createMockupWorkspace(input: {
   });
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
+  templateName.addEventListener("input", renderTemplateSave);
+  saveTemplate.addEventListener("click", () => void saveCurrentTemplate());
 
   function commitCanvasSize(): void {
     if (!spec || !width.validity.valid || !height.validity.valid) return;
@@ -224,6 +250,34 @@ export function createMockupWorkspace(input: {
     }
   }
 
+  async function saveCurrentTemplate(): Promise<void> {
+    const name = normalizeTemplateName(templateName.value);
+    if (!spec || !name || savingTemplate) return;
+    savingTemplate = true;
+    renderTemplateSave();
+    shell.status.textContent = input.copy().savingTemplate;
+    try {
+      const template = spatialTemplateFromMockup(spec);
+      const plan = await planMockup(template.operation.spec);
+      const slots = new Set(plan.planes.map((plane) => plane.sourceId));
+      if (slots.size !== templateSourceCount(template)) {
+        throw new Error("The template is not compatible with this workspace");
+      }
+      const requestId = nextTemplateRequestId;
+      nextTemplateRequestId += 1;
+      pendingTemplateRequestId = requestId;
+      input.post({ type: "save-template", requestId, name, template });
+    } catch (error) {
+      savingTemplate = false;
+      renderTemplateSave();
+      shell.showError(input.formatError(error));
+    }
+  }
+
+  function renderTemplateSave(): void {
+    saveTemplate.disabled = busy || savingTemplate || !spec || !normalizeTemplateName(templateName.value);
+  }
+
   return {
     enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
     leave() { active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); },
@@ -234,24 +288,48 @@ export function createMockupWorkspace(input: {
       spec = next.task?.kind === "mockup" ? structuredClone(next.task.spec) : defaultMockup(next.sources);
       baseline = structuredClone(spec);
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
+      if (!normalizeTemplateName(templateName.value)) {
+        templateName.value = input.copy().templateNamePlaceholder;
+      }
       renderControls();
+      renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { busy = false; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { busy = false; savingTemplate = false; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
-      for (const [name, text] of [["width-label", copy.width], ["height-label", copy.height], ["opacity-label", copy.opacity], ["grid-label", copy.grid], ["columns-label", copy.columns], ["rows-label", copy.rows]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
+      for (const [name, text] of [["width-label", copy.width], ["height-label", copy.height], ["opacity-label", copy.opacity], ["grid-label", copy.grid], ["columns-label", copy.columns], ["rows-label", copy.rows], ["template-name-label", copy.templateName]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
+      templateName.placeholder = copy.templateNamePlaceholder;
+      saveTemplate.textContent = copy.saveTemplate;
       renderOverlay();
     },
     handleMainMessage(message: MainToUiMessage) {
       if (!busy || (message.type !== "apply-designer-complete" && message.type !== "apply-designer-error")) return false;
       if (!source || message.generation !== source.selectionGeneration) return true;
-      busy = false; shell.setBusy(false);
+      busy = false; shell.setBusy(false); renderTemplateSave();
       if (message.type === "apply-designer-error") shell.showError(input.formatError(message.message)); else shell.status.textContent = input.copy().applied;
       return true;
     },
     handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; },
+    loadTemplate(template) {
+      if (!source || templateSourceCount(template) !== source.sources.length) return false;
+      spec = structuredClone(template.operation.spec);
+      baseline = structuredClone(spec);
+      activePlaneId = spec.planes[0]?.id ?? "plane-1";
+      renderControls();
+      renderTemplateSave();
+      if (active) void render();
+      return true;
+    },
+    finishTemplateSave(requestId, error) {
+      if (!savingTemplate || pendingTemplateRequestId !== requestId) return;
+      savingTemplate = false;
+      pendingTemplateRequestId = undefined;
+      renderTemplateSave();
+      if (error) shell.showError(error);
+      else shell.status.textContent = input.copy().templateSaved;
+    },
     dispose() { previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }

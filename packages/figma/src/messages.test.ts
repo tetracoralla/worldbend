@@ -105,3 +105,22 @@ describe("Figma Canvas messages", () => {
     ).toBe(false);
   });
 });
+
+describe("Figma template mutation messages", () => {
+  it("requires a positive correlation id on save and delete", () => {
+    expect(isUiToMainMessage({
+      type: "delete-template",
+      requestId: 1,
+      id: "template-1",
+    })).toBe(true);
+    expect(isUiToMainMessage({
+      type: "delete-template",
+      id: "template-1",
+    })).toBe(false);
+    expect(isUiToMainMessage({
+      type: "delete-template",
+      requestId: 0,
+      id: "template-1",
+    })).toBe(false);
+  });
+});

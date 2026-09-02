@@ -1,11 +1,16 @@
 # Worldbend campaign anchor
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 > The owner-confirmed Agent-native graphics-workspace direction and its active
 > implementation recovery state are maintained in
 > `docs/GRAPHICS_WORKSPACE_GOAL.md`. This file retains the completed repository,
 > carrier, release, and designer-workspace campaign history below.
+
+The active owner-authorized north-star campaign and its current safe stage are
+recorded in `docs/GRAPHICS_WORKSPACE_GOAL.md`. The first new executable contract
+is `docs/SPATIAL_TEMPLATE_CONTRACT.md`; current source and runtime remain the
+authority for whether that contract has actually been implemented.
 
 ## Objective
 
@@ -38,6 +43,17 @@ workflow carriers.
 - `worldbend.raster-program@0.1` executes 1..8 explicit Transform, Rectify,
   and Canvas stages over one source in memory and publishes only one final
   PNG. It is not a scene graph, multi-source program, or public batch.
+- `worldbend.spatial-template@0.1` and its bounded Variation Job persist and
+  rebind current closed programs without creating a parallel scene model.
+- `worldbend.surface-deformation@0.1` deterministically resolves explicit
+  cubic patches, anchors, and replayable strokes into the existing Mesh
+  contract; `worldbend.motion@0.1` resolves rational-time eased keyframes into
+  the existing Timeline contract.
+- The production-media route has explicit precision, color-profile, loss,
+  vector, and tiled-publication contracts. The assisted-perception Provider
+  returns bounded candidates and typed uncertainty but never applies a
+  transform. PSD/PSB interoperability is read-only bounded Smart Object
+  inspection and projection into a Spatial Template.
 - Corner order is `TL -> TR -> BR -> BL`; source flips use the explicit source
   orientation contract and never mirrored destination order.
 - Native rasterization uses inverse mapping, pixel centers, premultiplied-alpha
@@ -45,10 +61,10 @@ workflow carriers.
   and atomic publication.
 - CLI, MCP, Web/WASM, Figma, the local ComfyUI nodes, and the conditional
   Capability projection adapt the same core.
-- Perception, camera estimation, content-aware expansion, 3D reconstruction,
-  arbitrary Bezier/Liquify/brush deformation, vector-preserving Figma output,
-  encoded video/audio, cloud services, and generic batch semantics remain
-  outside the current release.
+- Camera or motion estimation, content-aware generation, 3D reconstruction,
+  arbitrary Liquify or freeform brush editing, vector-preserving Figma output,
+  encoded video/audio, cloud services, PSD writing or payload extraction, and
+  generic batch semantics remain outside the current release.
 
 ## Current campaign state
 
@@ -540,7 +556,7 @@ task-fit acceptance remains separate from technical completion.
 
 Closeout on 2026-08-31 established the authorized local finish line:
 
-- one icon-only task launcher exposes Sizes, Mockup, Mesh, and Remap without
+- one icon-only task launcher exposes Templates, Sizes, Mockup, Mesh, and Remap without
   changing the familiar Perspective mode strip; availability follows the real
   selected-source count and keyboard navigation skips disabled tasks;
 - Sizes exposes Crop, Trim, Pad, Contain, Cover, and Stretch, keeps 1..8 named
@@ -619,3 +635,123 @@ selected-source drag and Apply remain unobserved rather than inferred from the
 built browser carrier. Business and visual acceptance remain owner decisions.
 No commit, push, publication, deployment, upload, plugin installation, or
 existing-worktree discard occurred.
+
+## Reusable production-media checkpoint
+
+On 2026-09-02 the owner authorized the complete graphics-workspace north-star
+campaign. Its production-fidelity dependency is now implemented in the source
+superset without widening the quiet human carrier:
+
+- the native media route decodes PNG, JPEG, WebP, and TIFF into u8, u16, or f32
+  samples, applies EXIF orientation before limits, filters in premultiplied
+  alpha, and emits explicit PNG u8/u16, TIFF u8/u16/f32, quality-bounded JPEG
+  with a required matte, or lossless WebP. ICC bytes are preserved or
+  discarded by explicit policy and reported by digest; no color conversion is
+  claimed;
+- `displacementUnit` samples u16/f32 control rasters in the normalized 0..1
+  domain before neutral subtraction, while the existing 8-bit displacement
+  contract remains unchanged;
+- the vector route preserves a bounded UTF-8 SVG source byte-for-byte inside a
+  data URL. SVG output accepts affine mappings; projective mappings require the
+  HTML `matrix3d` carrier, and nonzero Warp is rejected rather than flattened;
+- the tiled-media route renders global destination coordinates into a bounded
+  flat PNG tile set plus `worldbend.tiled-media@0.1` JSON manifest, so the
+  destination may exceed the single-frame axis ceiling without allocating a
+  complete destination raster. It does not claim arbitrary-size source decode;
+- media, vector, and tiled outputs retain descriptor-confined workspace paths,
+  private worker staging, cancellation, response preflight, digest rechecking,
+  and atomic file or directory publication. The filesystem layer keeps legacy
+  raster outputs PNG-only, admits other single-file formats only through their
+  caller-owned closed contracts, and stages tiled PNG+JSON sets through an
+  explicit extension allowlist.
+
+Focused current checks pass: 95 core tests plus five properties, 80 renderer
+tests, 11 CLI tests, 31 MCP tests, 167 Web tests, and 175 Figma tests. The
+rebuilt project plugin completed real stdio Agent calls for u16 PNG inspection
+and ICC-preserving output, affine SVG preservation, rejection of projective
+SVG, and a four-tile atomic directory whose manifest and every file digest were
+rechecked by the controller. The observed compact/direct tool catalogs were
+8,174/80,716 bytes; media and tiled successful responses were 2,139/2,540
+bytes. These are local development and built-Agent observations, not installed
+host or owner experience acceptance. The next dependency-ordered stage is a
+typed assisted-perception Provider that returns candidates and uncertainty but
+never enters deterministic execution implicitly.
+
+## Assisted-perception Provider checkpoint
+
+On 2026-09-02 the Agent/full source superset gained the separately versioned
+`worldbend.perception-plane-request@0.1` and
+`worldbend.perception-plane-candidates@0.1` boundary. It has two explicitly
+selected, local, deterministic-for-the-same-decoded-pixels heuristics:
+`contrastQuadV1` measures premultiplied color difference from the median border,
+while `alphaQuadV1` measures alpha support. Neither is a semantic detector,
+probability model, crop chooser, or transform executor.
+
+The Provider reuses the production decoder and its format, orientation, byte,
+axis, and pixel limits; downsamples into a bounded analysis raster; returns at
+most three canonical TL/TR/BR/BL pixel-space candidates plus normalized
+coordinates; and filters every candidate through the core convex-quad check.
+Each result retains source format, precision, dimensions, orientation, byte
+count, SHA-256 digest, analysis shape, uncalibrated ranking score, support
+measurements, and typed uncertainty. A fully opaque alpha source and a uniform
+contrast source return successful `noCandidate` assessments. All response
+floats are rounded to twelve decimal places at the Provider wire boundary so
+independently built CLI and MCP carriers serialize the same decoded assessment
+identically.
+
+The full CLI exposes `plane-candidates`; the compact Agent catalog exposes the
+read-only `plane_candidates` operation without changing the eight direct tools.
+MCP keeps descriptor-confined source access, private staging and digest
+verification, bounded admission and worker isolation, cancellation cleanup,
+closed input/output schemas, and complete-response preflight. The operation is
+absent from the deterministic core, Web, Figma, ComfyUI, and the conditional
+portable Capability projection. The installed skill requires explicit Provider
+selection, preserves `noCandidate` and uncertainty, and requires a separate
+caller-authored deterministic RectifySpec before execution.
+
+Current focused checks pass: five Provider tests, 11 CLI tests, 31 MCP tests,
+95 core tests plus five properties, 80 renderer tests, 167 Web tests, and 175
+Figma tests. A rebuilt project plugin completed real stdio calls for a contrast
+candidate and an opaque-alpha `noCandidate`, checked the non-mutating operation
+descriptor, and compared the CLI and MCP structured responses exactly. The
+observed compact/direct catalogs were 8,292/80,716 bytes and the successful
+perception response was 1,556 bytes. These are current development and built
+Agent observations, not installed-host or owner experience acceptance. The
+next dependency-ordered stage is advanced deformation, motion, and narrow
+PSD/Smart Object interoperability. That stage is closed below.
+
+## North-star source-superset closeout
+
+On 2026-09-02 the advanced dependency stage and final local closeout completed.
+The Agent/full source superset now implements cubic Surface Deformation,
+rational-time eased Motion, and bounded read-only PSD/PSB Smart Object
+inspection and Spatial Template projection. Surface plans resolve to the
+existing Mesh contract; Motion plans resolve to the existing Timeline contract;
+PSD projection preserves only explicit spatial/source-replacement meaning and
+does not extract payloads, edit PSD structure, or claim round-trip fidelity.
+
+The three families entered the progressive Agent catalog and full CLI only.
+They are absent from Web/Figma/Comfy carrier profiles, and the frozen eight
+direct compatibility tools remain unchanged. The staged plugin legal inventory
+now includes `ag-psd 0.2.0` and its complete locked transitive dependency notices
+and SPDX entries. Interoperability regression generates its own minimal PSD
+fixture through the dependency writer rather than redistributing an unclear
+upstream binary fixture.
+
+Fresh `pnpm check` is `PASS`: 105 core tests plus five properties, 84 renderer
+tests, four interoperability tests, five perception tests, 11 CLI tests, 31 MCP
+tests, 167 Web tests, and 175 Figma tests, plus types, real WASM builds,
+carrier/profile checks, package and staged-plugin validation, built stdio Agent
+smoke, conditional Capability conformance, and built-artifact checks. The
+rebuilt Agent catalog contained 33 operations in 8,620 bytes while the direct
+catalog remained 80,716 bytes. The staged Figma package measured 527,520 runtime
+bytes, 484,067 archive bytes, and 1,103,031 unpacked bytes. Separate
+`pnpm test:comfyui` execution passed 28 tests through the real native binary.
+
+The built Web task flow is also `PASS`: at 1280 x 720 and 390 x 844 it loaded,
+accepted keyboard corner movement, opened and closed developer details, reset,
+zoomed and refit, stayed within the viewport, and emitted no console warning or
+error. Installed Figma selected-source Apply and installed ComfyUI host execution
+remain unobserved; owner business and experience acceptance remains `Pending`.
+No commit, push, publication, deployment, upload, installation, or existing
+worktree discard occurred.

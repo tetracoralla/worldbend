@@ -3,14 +3,16 @@
 Worldbend is a deterministic 2D spatial-transform and raster-canvas utility for
 people and AI Agents. Give it four ordered corners, a saved `TransformSpec`, an
 explicit source-plane `RectifySpec`, an ordered `CanvasSetSpec`, or an explicit
-Place, Mesh, Remap, or Timeline program; it validates the program once and
-produces the same plan or raster result through its Rust, CLI, MCP, Web/WASM,
-Figma, and ComfyUI adapters.
+Place, Mesh, cubic Surface Deformation, Remap, Timeline, or eased Motion
+program; it validates the program once and produces the same plan or raster
+result through the carriers that explicitly declare that feature.
 
 Worldbend is intentionally deterministic. It does not detect planes, estimate
 a camera, choose a crop or output ratio, reconstruct 3D scenes, preserve
 editable Figma vectors after a perspective transform, or expose a speculative
-generic batch API. Timeline is a separate ordered, atomic frame contract.
+generic batch API. Timeline and Motion are separate ordered, atomic frame
+contracts. PSD interoperability is bounded, read-only Smart Object inspection
+and Spatial Template projection rather than a Photoshop document editor.
 
 > Project status: `0.1.0` is an experimental commercial pre-release. Source is
 > maintained in a private repository. The transform and error contracts are
@@ -22,13 +24,16 @@ generic batch API. Timeline is a separate ordered, atomic frame contract.
   `RectifySpec`, ordered `CanvasSetSpec`, affine composition,
   strict `TL -> TR -> BR -> BL` validation, homography solving, diagnostics,
   inversion, bounds, six closed Canvas operations, Place/Mockup and extraction,
-  bounded custom Mesh, Lens/Displacement Remap, Timeline, CSS geometry, and ten
-  fixed Warp presets;
+  bounded custom Mesh and cubic Surface Deformation, Lens/Displacement Remap,
+  Timeline and rational-time eased Motion, CSS geometry, and ten fixed Warp
+  presets;
 - `worldbend-render`: inverse-mapped PNG rendering with premultiplied-alpha
-  filtering, ordered multi-output Canvas and Timeline rendering, bounded resources,
-  cancellation, dry-run preflight, and atomic publication;
+  filtering, ordered multi-output Canvas, Timeline, Motion, and Surface
+  rendering, bounded resources, cancellation, dry-run preflight, and atomic
+  publication;
 - `worldbend`: a structured JSON CLI for transform, rectification, Canvas,
-  Place/Mockup, custom Mesh, Remap, Timeline, and CSS operations;
+  Place/Mockup, custom Mesh, cubic Surface, Remap, Timeline, eased Motion,
+  read-only PSD Smart Object, and CSS operations;
 - `worldbend-mcp`: a compact `search` / `describe` / `run` Agent projection by
   default in the plugin, plus the same eight direct tools as an explicit
   compatibility surface, with one granted file root and path-escape rejection;
@@ -117,9 +122,12 @@ cargo build --release -p worldbend-mcp
 ./target/release/worldbend-mcp --root /absolute/granted/workspace
 ```
 
-The server exposes exactly `worldbend.compose`, `worldbend.solve`,
-`worldbend.inspect`, `worldbend.render`, `worldbend.rectify`,
-`worldbend.rectify_render`, `worldbend.canvas_render`, and `worldbend.css`.
+The default server surface exposes exactly `worldbend.search`,
+`worldbend.describe`, and `worldbend.run`; advanced operations are loaded by ID
+through that compact catalog. `--surface direct` retains exactly
+`worldbend.compose`, `worldbend.solve`, `worldbend.inspect`, `worldbend.render`,
+`worldbend.rectify`, `worldbend.rectify_render`, `worldbend.canvas_render`, and
+`worldbend.css` for compatibility.
 File operations reject absolute paths, parent traversal, URIs, symlinks, and
 non-regular source files outside the granted root.
 
@@ -197,16 +205,27 @@ widening the portable contract. See
 - raster render limits are enforced before allocation and publication;
 - Figma output is a raster Rectangle with an Image fill; the original editable
   source stays intact;
-- arbitrary Bezier/Liquify/brush deformation, perception, camera estimation,
-  3D, content-aware crop or expansion, PSD compatibility, Comfy IMAGE batches,
-  encoded video/audio, cloud rendering, and generic batch semantics are not implemented;
+- arbitrary semantic plane detection or automatic candidate application,
+  unconstrained Liquify or inferred brush paths, camera estimation, 3D,
+  content-aware crop or expansion, PSD writing/asset extraction/effect
+  preservation, Comfy IMAGE batches, encoded video/audio, cloud rendering, and
+  generic batch semantics are not implemented;
 - performance probes are current measurements, not an SLA.
 
 The exact transform, raster, path, UI, and error semantics are in
 [`docs/CONTRACT.md`](docs/CONTRACT.md). Place / Mockup is specified in
 [`docs/MOCKUP_CONTRACT.md`](docs/MOCKUP_CONTRACT.md), deformation/remap in
 [`docs/DEFORMATION_CONTRACT.md`](docs/DEFORMATION_CONTRACT.md), and Timeline in
-[`docs/TIMELINE_CONTRACT.md`](docs/TIMELINE_CONTRACT.md). The product boundary is in
+[`docs/TIMELINE_CONTRACT.md`](docs/TIMELINE_CONTRACT.md). Production media and
+assisted plane candidates are specified in
+[`docs/MEDIA_PIPELINE_CONTRACT.md`](docs/MEDIA_PIPELINE_CONTRACT.md) and
+[`docs/PERCEPTION_PROVIDER_CONTRACT.md`](docs/PERCEPTION_PROVIDER_CONTRACT.md).
+Bounded cubic deformation, eased motion, and read-only Smart Object projection
+are specified in
+[`docs/SURFACE_DEFORMATION_CONTRACT.md`](docs/SURFACE_DEFORMATION_CONTRACT.md),
+[`docs/MOTION_CONTRACT.md`](docs/MOTION_CONTRACT.md), and
+[`docs/PSD_SMART_OBJECT_INTEROP_CONTRACT.md`](docs/PSD_SMART_OBJECT_INTEROP_CONTRACT.md).
+The product boundary is in
 [`docs/PRODUCT_MODEL.md`](docs/PRODUCT_MODEL.md).
 
 ## Collaboration and security

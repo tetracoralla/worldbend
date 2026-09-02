@@ -3,6 +3,8 @@ resolver = "2"
 members = [
   "crates/worldbend-agent-fs",
   "crates/worldbend-core",
+  "crates/worldbend-perception",
+  "crates/worldbend-interop",
   "crates/worldbend-render",
   "crates/worldbend-cli",
   "crates/worldbend-mcp",
@@ -17,10 +19,12 @@ authors = ["openAdam"]
 
 [workspace.dependencies]
 anyhow = "1.0.100"
+ag-psd = "0.2.0"
+base64 = "0.22.1"
 cap-fs-ext = { version = "4.0.3", default-features = false }
 cap-primitives = "4.0.3"
 clap = { version = "4.5.60", features = ["derive"] }
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "tiff"] }
 libc = "0.2.189"
 nalgebra = { version = "0.35.0", features = ["serde-serialize"] }
 proptest = "1.11.0"

@@ -22,9 +22,10 @@ describe("Figma product workspace markup", () => {
     expect(objectMarkup).toContain('id="source-name"');
     expect(objectMarkup).toContain('id="task-launcher-button"');
     expect(objectMarkup).toContain('id="task-menu"');
-    for (const workspace of ["canvas", "mockup", "mesh", "remap"]) {
+    for (const workspace of ["templates", "canvas", "mockup", "mesh", "remap"]) {
       expect(html).toContain(`data-workspace="${workspace}"`);
     }
+    expect(html).toContain('id="templates-workspace"');
     expect(popoverMarkup).not.toContain('id="task-launcher-button"');
   });
 

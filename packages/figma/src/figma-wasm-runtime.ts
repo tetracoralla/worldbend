@@ -4,6 +4,24 @@ import { decompressGzipBase64 } from "./wasm-compression";
 
 export * from "@worldbend/wasm-bindings";
 
+// The shared Web bridge exposes generic Template/Variation calls, while this
+// size-bounded human carrier links only the Mockup planner it actually uses.
+// Closed stubs preserve module linkage if another Web export is imported by
+// the bundle; the task-native Figma workflow never routes through them.
+export function spatial_template_inspect_json(): never {
+  throw JSON.stringify({
+    code: "E_SCHEMA",
+    message: "Generic Spatial Template inspection is not included in this carrier build",
+  });
+}
+
+export function variation_job_plan_json(): never {
+  throw JSON.stringify({
+    code: "E_SCHEMA",
+    message: "Variation Job planning is not included in this carrier build",
+  });
+}
+
 let decompressedWasm: Promise<Uint8Array> | undefined;
 
 /**

@@ -16,6 +16,10 @@ import type {
   MockupSpec,
   RemapPlan,
   RemapSpec,
+  SpatialTemplateInspection,
+  SpatialTemplateSpec,
+  VariationJobPlan,
+  VariationJobSpec,
 } from "./generated/core-contract";
 
 export type {
@@ -67,6 +71,10 @@ export type {
   RemapOperation,
   RemapPlan,
   RemapSpec,
+  SpatialTemplateInspection,
+  SpatialTemplateSpec,
+  VariationJobPlan,
+  VariationJobSpec,
 } from "./generated/core-contract";
 
 export type MeshWarpSpecInput = MeshWarpSpec;
@@ -75,6 +83,10 @@ export type MockupSpecInput = MockupSpec;
 export type MockupPlanOutput = MockupPlan;
 export type RemapSpecInput = RemapSpec;
 export type RemapPlanOutput = RemapPlan;
+export type SpatialTemplateSpecInput = SpatialTemplateSpec;
+export type SpatialTemplateInspectionOutput = SpatialTemplateInspection;
+export type VariationJobSpecInput = VariationJobSpec;
+export type VariationJobPlanOutput = VariationJobPlan;
 
 /** Exact Rust deserialization surface, including serde defaults and nulls. */
 export type TransformSpecInput = GeneratedTransformSpec;

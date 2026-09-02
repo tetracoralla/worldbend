@@ -107,6 +107,27 @@ keyframes are owned by `docs/TIMELINE_CONTRACT.md`. These are independent
 versioned programs, not optional TransformSpec fields, perception features, or
 adapter-local loops.
 
+Bounded cubic patch lattices, fixed boundaries, explicit interior anchors, and
+ordered source-space deformation strokes are owned by
+`docs/SURFACE_DEFORMATION_CONTRACT.md`. The resolved result is the existing
+canonical Mesh plan; the surface contract is not pointer replay or a second
+rasterizer. Rational frame rates, exact presentation times, and linear, hold,
+or cubic-Bezier keyframe easing are owned by `docs/MOTION_CONTRACT.md`. Motion
+resolves to the existing Timeline and keeps its cumulative resource,
+cancellation, and atomic directory semantics.
+
+Production raster precision/format behavior, opaque ICC preservation,
+high-precision displacement controls, vector-preserving carriers, and
+large-destination tiling are owned by `docs/MEDIA_PIPELINE_CONTRACT.md`. Those
+routes consume the same TransformSpec or RemapSpec semantics and do not weaken
+the stable geometry or publication boundaries above.
+
+Read-only PSD/PSB Smart Object inspection and caller-selected Spatial Template
+projection are owned by `docs/PSD_SMART_OBJECT_INTEROP_CONTRACT.md`. That
+adapter has its own bounded parser and source facts; it does not extract
+embedded assets, fetch linked files, write PSD/PSB, approximate unsupported
+warps, or move Photoshop document semantics into `worldbend-core`.
+
 ## Ordered single-raster program
 
 `worldbend.raster-program@0.1` composes 1..8 already-defined Transform,
@@ -326,6 +347,13 @@ workspace root is opened once; every descendant directory and source is opened
 without following symlinks, and the held source/output-parent descriptors stay
 authoritative through private staging and atomic publication. Replacing an
 authorized pathname after acquisition cannot redirect either read or write.
+The optional controller setting `WORLDBEND_PRIVATE_STAGING_ROOT` selects the
+parent of those private per-call staging directories. It defaults to the
+canonical operating-system temporary directory and is read exactly once when
+the MCP server starts. The resolved directory must already exist, be absolute,
+be writable, and be outside the granted workspace root; otherwise server
+startup fails. Requests and Agents cannot change this fixed process setting or
+address files beneath it through workspace-relative paths.
 Linux uses process resource limits, macOS combines the worker CPU limit with
 supervisor RSS enforcement, and Windows assigns each worker to a kill-on-close
 Job Object with process-memory and process-CPU limits.
@@ -592,6 +620,30 @@ of truth even when the result Rectangle's document dimensions are larger.
 Tiling would change the stored result from one replaceable Rectangle into a
 multi-node document object and is not fabricated inside the current contract.
 The CLI/native renderer remains the explicit larger-file route.
+
+Assisted plane perception is a separate upstream assessment contract in
+`docs/PERCEPTION_PROVIDER_CONTRACT.md`. Its full CLI and compact Agent routes
+return zero to three explicit pixel source-plane candidates, uncalibrated
+confidence, typed uncertainty, and orientation-aware source facts. They do not
+mutate files or automatically construct or execute a Transform/Rectify program.
+The deterministic core never calls a perception Provider.
+
+Advanced Surface and Motion are explicit deterministic programs, not
+perception. `worldbend.surface-deformation@0.1` validates a regular 1..4 by
+1..4 cubic patch lattice, fixed boundary controls, bounded interior controls,
+explicit anchors, and ordered strokes before resolving one canonical Mesh.
+`worldbend.motion@0.1` validates one reduced rational rate from 1 through 240
+fps plus first/last-covered keyframes and resolves every frame through a fixed
+easing procedure into one canonical Timeline. Their file routes inherit the
+same worker, dry-run, digest, cancellation, result-budget, and atomic
+publication boundaries as Mesh and Timeline.
+
+PSD Smart Object interoperability is a separate read-only adapter. It preflights
+the PSD/PSB header and 64 MiB source ceiling before parsing, disables bitmap,
+thumbnail, and linked payload loading, bounds layer count/depth and Smart Object
+count, and reports explicit importability reasons. Only a caller-selected
+eligible object can become a Spatial Template plane. Source access remains
+descriptor-confined in MCP and no source or output document is mutated.
 
 The first preview export is allowed to optimize for startup. Before Apply, the
 UI solves the final cumulative spec, estimates source texel density from the

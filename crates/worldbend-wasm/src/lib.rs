@@ -13,6 +13,10 @@ use worldbend_core::{
 use worldbend_core::{
     MeshWarpSpec, MockupSpec, RemapSpec, plan_mesh_warp, plan_mockup, plan_remap,
 };
+#[cfg(feature = "template")]
+use worldbend_core::{
+    SpatialTemplateSpec, VariationJobSpec, inspect_spatial_template, plan_variation_job,
+};
 
 #[wasm_bindgen]
 extern "C" {
@@ -139,6 +143,26 @@ pub fn canvas_set_plan_rgba_json(
         .collect::<Result<Vec<_>, _>>()
         .map_err(error_js)?;
     serialize_result(resolve_canvas_set(&spec, source_size, &resolved_trims))
+}
+
+/// Validate and summarize a reusable Spatial Template through the canonical
+/// core. Human carriers use this before persisting or opening a template; the
+/// bridge deliberately returns the compact inspection instead of re-encoding
+/// carrier-local conclusions.
+#[wasm_bindgen]
+#[cfg(feature = "template")]
+pub fn spatial_template_inspect_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_spatial_template_spec(spec_json)?;
+    serialize_result(inspect_spatial_template(&spec))
+}
+
+/// Resolve ordered item bindings and output topology without reading assets
+/// or rendering pixels.
+#[wasm_bindgen]
+#[cfg(feature = "template")]
+pub fn variation_job_plan_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_variation_job_spec(spec_json)?;
+    serialize_result(plan_variation_job(&spec))
 }
 
 #[wasm_bindgen]
@@ -272,6 +296,16 @@ fn parse_canvas_set_spec(value: &str) -> Result<CanvasSetSpec, JsValue> {
     })
 }
 
+#[cfg(feature = "template")]
+fn parse_spatial_template_spec(value: &str) -> Result<SpatialTemplateSpec, JsValue> {
+    parse_json(value, "SpatialTemplateSpec")
+}
+
+#[cfg(feature = "template")]
+fn parse_variation_job_spec(value: &str) -> Result<VariationJobSpec, JsValue> {
+    parse_json(value, "VariationJobSpec")
+}
+
 #[cfg(feature = "designer")]
 fn parse_mockup_spec(value: &str) -> Result<MockupSpec, JsValue> {
     parse_json(value, "MockupSpec")
@@ -287,7 +321,7 @@ fn parse_remap_spec(value: &str) -> Result<RemapSpec, JsValue> {
     parse_json(value, "RemapSpec")
 }
 
-#[cfg(feature = "designer")]
+#[cfg(any(feature = "designer", feature = "template"))]
 fn parse_json<T: serde::de::DeserializeOwned>(value: &str, label: &str) -> Result<T, JsValue> {
     serde_json::from_str(value).map_err(|error| {
         error_js(TransformError::new(

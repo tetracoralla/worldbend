@@ -9,9 +9,13 @@ and conditional Capability review; it is not a completion certificate.
 - This product is growing into a deterministic Photoshop-familiar transform
   utility for humans and Agents, not a general image editor. The productized
   source superset includes explicit affine/projective mapping, Canvas,
-  Place/Mockup, bounded custom Mesh, Lens/Displacement Remap, and ordered
-  Timeline contracts. Arbitrary deformation, perception, camera/motion
-  estimation, and adapter-local simulation remain outside those contracts.
+  Place/Mockup, bounded custom Mesh and Surface Deformation,
+  Lens/Displacement Remap, ordered Timeline and rational-time Motion, Spatial
+  Template/Variation, production media/vector/tiling, narrow PSD Smart Object
+  projection, and an explicitly selected assisted-perception Provider.
+  Unbounded arbitrary deformation, implicit perception application,
+  camera/motion estimation, and adapter-local simulation remain outside those
+  contracts.
 - `worldbend-core` owns `TransformSpec`, semantic affine composition, corner
   semantics, validation, homography solving, diagnostics, inversion, bounds,
   and CSS geometry. CLI, MCP, Web/WASM, and Figma are adapters; they must not

@@ -12,6 +12,15 @@
     "lens-displacement-remap",
     "timeline-motion",
     "single-raster-program",
+    "spatial-template",
+    "variation-job",
+    "production-media",
+    "vector-preserving-output",
+    "large-output-tiling",
+    "assisted-perception",
+    "cubic-surface-deformation",
+    "eased-motion",
+    "psd-smart-object-interop",
     "native-raster",
     "css-embedding"
   ],
@@ -25,6 +34,7 @@
         "planar-rectification",
         "canvas-multi-output",
         "place-mockup",
+        "spatial-template",
         "mesh-warp",
         "lens-displacement-remap"
       ],
@@ -38,7 +48,7 @@
           "mode-rectify",
           "more-options"
         ],
-        "siblingWorkspaceIds": ["canvas", "mockup", "mesh", "remap"]
+        "siblingWorkspaceIds": ["templates", "canvas", "mockup", "mesh", "remap"]
       },
       "package": {
         "runtimeEntries": [
@@ -66,6 +76,15 @@
         "lens-displacement-remap",
         "timeline-motion",
         "single-raster-program",
+        "spatial-template",
+        "variation-job",
+        "production-media",
+        "vector-preserving-output",
+        "large-output-tiling",
+        "assisted-perception",
+        "cubic-surface-deformation",
+        "eased-motion",
+        "psd-smart-object-interop",
         "native-raster",
         "css-embedding"
       ],

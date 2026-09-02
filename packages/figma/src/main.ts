@@ -1,4 +1,9 @@
-import type { MainToUiMessage, SourcePayload, UiToMainMessage } from "./messages";
+import type {
+  MainToUiMessage,
+  SourcePayload,
+  TemplateMutationReceipt,
+  UiToMainMessage,
+} from "./messages";
 import { isUiToMainMessage } from "./messages";
 import { withTimeout } from "./async-timeout";
 import { createLocalePreferenceSettings } from "./locale-preference";
@@ -33,6 +38,16 @@ import {
   type StoredOperation,
 } from "./stored-operation";
 import type { StoredDesignerTask } from "./stored-designer-task";
+import {
+  MAX_SAVED_SPATIAL_TEMPLATES,
+  TEMPLATE_LIBRARY_STORAGE_KEY,
+  checkedTemplateLibrary,
+  emptyTemplateLibrary,
+  parseTemplateLibrary,
+  spatialTemplateFromMockup,
+  type SavedSpatialTemplate,
+  type StoredTemplateLibrary,
+} from "./stored-template-library";
 
 figma.showUI(__html__, { width: 600, height: 720, themeColors: true });
 
@@ -41,10 +56,18 @@ const localeSettings = createLocalePreferenceSettings({
   write: (record) => figma.clientStorage.setAsync(LOCALE_STORAGE_KEY, record),
 });
 const storedLocalePreference = localeSettings.readStoredPreference();
+const storedTemplateLibrary = (
+  figma.clientStorage?.getAsync(TEMPLATE_LIBRARY_STORAGE_KEY) ?? Promise.resolve(undefined)
+)
+  .then((value) => ({ ok: true as const, value }))
+  .catch(() => ({ ok: false as const }));
 let localePreference: LocalePreference = "system";
 let activeLocale: SupportedLocale = "en";
 let systemLocales: string[] = [];
 let uiInitialized = false;
+let templateLibrary: StoredTemplateLibrary = emptyTemplateLibrary();
+let templateLibraryReadFailed = false;
+let templateMutation = Promise.resolve();
 
 let selectionGeneration = 0;
 let preparedSelection:
@@ -101,6 +124,46 @@ figma.ui.onmessage = (message: unknown) => {
     scheduleLoadSelection();
     return;
   }
+  if (message.type === "save-template") {
+    const mutation: TemplateMutationReceipt = {
+      kind: "save",
+      requestId: message.requestId,
+    };
+    queueTemplateMutation(mutation, async () => {
+      assertTemplateLibraryWritable();
+      if (templateLibrary.templates.length >= MAX_SAVED_SPATIAL_TEMPLATES) {
+        throw userError("templateLimitReached", { limit: MAX_SAVED_SPATIAL_TEMPLATES });
+      }
+      const record: SavedSpatialTemplate = {
+        id: createTemplateId(templateLibrary.templates),
+        name: message.name,
+        template: spatialTemplateFromMockup(message.template.operation.spec),
+      };
+      const next = checkedTemplateLibrary([...templateLibrary.templates, record]);
+      if (!next) throw userError("templateSaveFailed");
+      await figma.clientStorage.setAsync(TEMPLATE_LIBRARY_STORAGE_KEY, next);
+      templateLibrary = next;
+      postTemplateLibrary(mutation);
+    });
+    return;
+  }
+  if (message.type === "delete-template") {
+    const mutation: TemplateMutationReceipt = {
+      kind: "delete",
+      requestId: message.requestId,
+    };
+    queueTemplateMutation(mutation, async () => {
+      assertTemplateLibraryWritable();
+      const next = checkedTemplateLibrary(
+        templateLibrary.templates.filter((template) => template.id !== message.id),
+      );
+      if (!next) throw userError("templateSaveFailed");
+      await figma.clientStorage.setAsync(TEMPLATE_LIBRARY_STORAGE_KEY, next);
+      templateLibrary = next;
+      postTemplateLibrary(mutation);
+    });
+    return;
+  }
   if (message.type === "request-source-raster") {
     void refreshSourceRaster(message);
     return;
@@ -113,11 +176,62 @@ figma.ui.onmessage = (message: unknown) => {
 async function initializeUi(nextSystemLocales: string[]): Promise<void> {
   if (uiInitialized) return;
   systemLocales = [...nextSystemLocales];
-  localePreference = await storedLocalePreference;
+  const [nextPreference, savedLibraryRead] = await Promise.all([
+    storedLocalePreference,
+    storedTemplateLibrary,
+  ]);
+  localePreference = nextPreference;
+  if (!savedLibraryRead.ok) {
+    templateLibraryReadFailed = true;
+  } else if (savedLibraryRead.value === undefined) {
+    templateLibrary = emptyTemplateLibrary();
+  } else {
+    const parsed = parseTemplateLibrary(savedLibraryRead.value);
+    if (parsed) templateLibrary = parsed;
+    else templateLibraryReadFailed = true;
+  }
   activeLocale = resolveLocale(localePreference, systemLocales);
   uiInitialized = true;
   post({ type: "locale", preference: localePreference, locale: activeLocale });
+  postTemplateLibrary();
+  if (templateLibraryReadFailed) {
+    post({ type: "template-library-error", message: userMessage("templateLibraryInvalid") });
+  }
   loadSelectionNow();
+}
+
+function queueTemplateMutation(
+  mutation: TemplateMutationReceipt,
+  operation: () => Promise<void>,
+): void {
+  templateMutation = templateMutation.then(operation, operation).catch((error) => {
+    post({
+      type: "template-library-error",
+      message: toUserMessage(error, "templateSaveFailed"),
+      mutation,
+    });
+  });
+}
+
+function assertTemplateLibraryWritable(): void {
+  if (templateLibraryReadFailed) throw userError("templateLibraryInvalid");
+}
+
+function postTemplateLibrary(mutation?: TemplateMutationReceipt): void {
+  post({
+    type: "template-library",
+    templates: checkedTemplateLibrary(templateLibrary.templates)?.templates ?? [],
+    ...(mutation ? { mutation } : {}),
+  });
+}
+
+function createTemplateId(existing: readonly SavedSpatialTemplate[]): string {
+  const used = new Set(existing.map((template) => template.id));
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const id = `template-${Date.now().toString(36)}-${Math.floor(Math.random() * 0x1000000).toString(36)}`;
+    if (id.length <= 64 && !used.has(id)) return id;
+  }
+  throw userError("templateSaveFailed");
 }
 
 function setLocalePreference(preference: LocalePreference): void {

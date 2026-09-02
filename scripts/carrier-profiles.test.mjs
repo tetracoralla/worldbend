@@ -18,7 +18,7 @@ test("current carrier profiles are closed and reference existing features", asyn
     "more-options",
   ]);
   assert.deepEqual(profiles.carriers.figma.workspace.siblingWorkspaceIds, [
-    "canvas", "mockup", "mesh", "remap",
+    "templates", "canvas", "mockup", "mesh", "remap",
   ]);
   assert(profiles.carriers.figma.surfaceFeatureIds.includes("canvas-multi-output"));
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("canvas-multi-output"));
@@ -27,6 +27,15 @@ test("current carrier profiles are closed and reference existing features", asyn
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("lens-displacement-remap"));
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("timeline-motion"));
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("single-raster-program"));
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("spatial-template"));
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("variation-job"));
+  assert(
+    profiles.carriers.agent.surfaceFeatureIds.includes("cubic-surface-deformation"),
+  );
+  assert(profiles.carriers.agent.surfaceFeatureIds.includes("eased-motion"));
+  assert(
+    profiles.carriers.agent.surfaceFeatureIds.includes("psd-smart-object-interop"),
+  );
   assert(profiles.carriers.comfyui.surfaceFeatureIds.includes("canvas-multi-output"));
   assert.equal(profiles.carriers.agent.package.defaultToolSurface, "catalog");
   assert.equal(profiles.carriers.agent.package.maxToolCatalogBytes, 16 * 1024);
@@ -45,6 +54,18 @@ test("current carrier profiles are closed and reference existing features", asyn
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("timeline-motion"));
   assert(!profiles.carriers.figma.surfaceFeatureIds.includes("single-raster-program"));
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("single-raster-program"));
+  assert(profiles.carriers.figma.surfaceFeatureIds.includes("spatial-template"));
+  assert(!profiles.carriers.figma.surfaceFeatureIds.includes("variation-job"));
+  assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("spatial-template"));
+  assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("variation-job"));
+  for (const feature of [
+    "cubic-surface-deformation",
+    "eased-motion",
+    "psd-smart-object-interop",
+  ]) {
+    assert(!profiles.carriers.figma.surfaceFeatureIds.includes(feature));
+    assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes(feature));
+  }
 });
 
 test("byte budgets reject only values above the declared maximum", () => {

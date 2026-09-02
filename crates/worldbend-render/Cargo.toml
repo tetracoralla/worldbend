@@ -7,14 +7,27 @@ publish = false
 description = "Native reference raster renderer for Worldbend"
 
 [features]
-default = ["place", "deform", "remap", "timeline", "program"]
+default = [
+  "place",
+  "deform",
+  "remap",
+  "timeline",
+  "program",
+  "template",
+  "surface-deformation",
+  "motion",
+]
 place = ["worldbend-core/place"]
 deform = ["worldbend-core/deform"]
 remap = ["worldbend-core/remap"]
 timeline = ["worldbend-core/timeline"]
 program = ["worldbend-core/program"]
+template = ["worldbend-core/template", "place", "program"]
+surface-deformation = ["worldbend-core/surface-deformation", "deform"]
+motion = ["worldbend-core/motion", "timeline"]
 
 [dependencies]
+base64.workspace = true
 image.workspace = true
 libc.workspace = true
 worldbend-core = { path = "../worldbend-core", default-features = false }

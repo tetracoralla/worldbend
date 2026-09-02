@@ -3,7 +3,7 @@ use crate::{
     file_io::{decode_file_with_limits, persist_temporary, write_png},
     preflight_destination, validate_limits,
 };
-use image::{DynamicImage, Rgba, RgbaImage};
+use image::{DynamicImage, Rgba, Rgba32FImage, RgbaImage};
 use rayon::prelude::*;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
@@ -133,7 +133,10 @@ pub fn render_remap_with_cancel(
         validate_image(map, options.limits, "map")?;
     }
     let source = source.to_rgba8();
-    let map = map.map(DynamicImage::to_rgba8);
+    // Control rasters stay in their decoded unit-domain precision. This is
+    // intentionally distinct from the u8 source/output path: 16-bit and
+    // float displacement values must not collapse before neutral subtraction.
+    let map = map.map(DynamicImage::to_rgba32f);
     let mut output = RgbaImage::new(spec.output.width, spec.output.height);
     let row_stride = usize::try_from(spec.output.width)
         .unwrap()
@@ -176,6 +179,24 @@ pub fn render_remap_with_cancel(
                         let map = map.as_ref().expect("map presence validated above");
                         let map_pixel = sample_map(map, u, v);
                         let neutral = f64::from(neutral) / 255.0;
+                        let dx = (channel_value(map_pixel, x_channel) - neutral) * scale_x_pixels;
+                        let dy = (channel_value(map_pixel, y_channel) - neutral) * scale_y_pixels;
+                        (
+                            u * f64::from(source.width()) - 0.5 + dx,
+                            v * f64::from(source.height()) - 0.5 + dy,
+                            boundary,
+                        )
+                    }
+                    RemapOperation::DisplacementUnit {
+                        x_channel,
+                        y_channel,
+                        scale_x_pixels,
+                        scale_y_pixels,
+                        neutral,
+                        boundary,
+                    } => {
+                        let map = map.as_ref().expect("map presence validated above");
+                        let map_pixel = sample_map(map, u, v);
                         let dx = (channel_value(map_pixel, x_channel) - neutral) * scale_x_pixels;
                         let dy = (channel_value(map_pixel, y_channel) - neutral) * scale_y_pixels;
                         (
@@ -337,7 +358,7 @@ fn lens_output_to_source(
     )
 }
 
-fn sample_map(map: &RgbaImage, u: f64, v: f64) -> [f64; 4] {
+fn sample_map(map: &Rgba32FImage, u: f64, v: f64) -> [f64; 4] {
     let x = u * f64::from(map.width()) - 0.5;
     let y = v * f64::from(map.height()) - 0.5;
     let x0 = x.floor();
@@ -356,7 +377,7 @@ fn sample_map(map: &RgbaImage, u: f64, v: f64) -> [f64; 4] {
             py.clamp(0.0, f64::from(map.height() - 1)) as u32,
         );
         for channel in 0..4 {
-            output[channel] += f64::from(pixel[channel]) / 255.0 * weight;
+            output[channel] += f64::from(pixel[channel]) * weight;
         }
     }
     output
@@ -506,6 +527,7 @@ impl<W: Write> Write for HashingWriter<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{ImageBuffer, Rgba as ImageRgba};
     use worldbend_core::{PixelSize, Point, REMAP_SCHEMA, REMAP_VERSION};
 
     fn lens() -> RemapSpec {
@@ -624,5 +646,57 @@ mod tests {
         .image;
 
         assert_ne!(standard, high);
+    }
+
+    #[test]
+    fn unit_displacement_uses_u16_control_values_before_neutral_subtraction() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_fn(5, 1, |x, _| {
+            Rgba([(x * 50) as u8, 0, 0, 255])
+        }));
+        let precise_neutral = f64::from(32_768_u16) / f64::from(u16::MAX);
+        let map16 = DynamicImage::ImageRgba16(ImageBuffer::from_pixel(
+            1,
+            1,
+            ImageRgba([32_768_u16, 32_768, 0, u16::MAX]),
+        ));
+        let spec = RemapSpec {
+            schema: worldbend_core::REMAP_SCHEMA.to_owned(),
+            version: worldbend_core::REMAP_VERSION.to_owned(),
+            output: PixelSize::new(5, 1),
+            operation: RemapOperation::DisplacementUnit {
+                x_channel: RemapChannel::Red,
+                y_channel: RemapChannel::Green,
+                scale_x_pixels: 600.0,
+                scale_y_pixels: 0.0,
+                neutral: precise_neutral,
+                boundary: RemapBoundary::Clamp,
+            },
+        };
+        let precise = render_remap(
+            &source,
+            Some(&map16),
+            &spec,
+            RemapRenderOptions {
+                quality: SamplingQuality::Preview,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .image;
+        assert_eq!(precise, source.to_rgba8());
+
+        let quantized = DynamicImage::ImageRgba8(map16.to_rgba8());
+        let quantized_result = render_remap(
+            &source,
+            Some(&quantized),
+            &spec,
+            RemapRenderOptions {
+                quality: SamplingQuality::Preview,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .image;
+        assert_ne!(quantized_result, precise);
     }
 }

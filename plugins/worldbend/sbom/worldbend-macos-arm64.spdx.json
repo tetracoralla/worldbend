@@ -3,7 +3,7 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "worldbend-codex-plugin-macos-arm64",
-  "documentNamespace": "https://spdx.org/spdxdocs/worldbend-codex-plugin-macos-arm64-0.1.0-3e145d4561657a0a3105c1cb11638e1c10969b21e1e04cab9d54737d34e5395f",
+  "documentNamespace": "https://spdx.org/spdxdocs/worldbend-codex-plugin-macos-arm64-0.1.0-fd9ff0c64023fa09117287d0bc48aeb658af17e8230868da77b9a797912c77ce",
   "creationInfo": {
     "created": "1970-01-01T00:00:00Z",
     "creators": [
@@ -34,6 +34,22 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:cargo/adler2@2.0.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-ag-psd-0.2.0",
+      "name": "ag-psd",
+      "versionInfo": "0.2.0",
+      "downloadLocation": "https://crates.io/crates/ag-psd/0.2.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/ag-psd@0.2.0"
         }
       ]
     },
@@ -162,6 +178,22 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:cargo/autocfg@1.5.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-base64-0.22.1",
+      "name": "base64",
+      "versionInfo": "0.22.1",
+      "downloadLocation": "https://crates.io/crates/base64/0.22.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/base64@0.22.1"
         }
       ]
     },
@@ -662,6 +694,22 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Crate-fax-0.2.7",
+      "name": "fax",
+      "versionInfo": "0.2.7",
+      "downloadLocation": "https://crates.io/crates/fax/0.2.7",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/fax@0.2.7"
+        }
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Crate-fdeflate-0.3.7",
       "name": "fdeflate",
       "versionInfo": "0.3.7",
@@ -946,6 +994,22 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:cargo/glam@0.33.5"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-half-2.7.1",
+      "name": "half",
+      "versionInfo": "2.7.1",
+      "downloadLocation": "https://crates.io/crates/half/2.7.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/half@2.7.1"
         }
       ]
     },
@@ -1926,6 +1990,22 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Crate-tiff-0.11.3",
+      "name": "tiff",
+      "versionInfo": "0.11.3",
+      "downloadLocation": "https://crates.io/crates/tiff/0.11.3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/tiff@0.11.3"
+        }
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Crate-tokio-1.53.1",
       "name": "tokio",
       "versionInfo": "1.53.1",
@@ -2102,6 +2182,22 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Crate-weezl-0.1.12",
+      "name": "weezl",
+      "versionInfo": "0.1.12",
+      "downloadLocation": "https://crates.io/crates/weezl/0.1.12",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/weezl@0.1.12"
+        }
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Crate-wide-1.6.1",
       "name": "wide",
       "versionInfo": "1.6.1",
@@ -2114,6 +2210,38 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:cargo/wide@1.6.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-zerocopy-0.8.56",
+      "name": "zerocopy",
+      "versionInfo": "0.8.56",
+      "downloadLocation": "https://crates.io/crates/zerocopy/0.8.56",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/zerocopy@0.8.56"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-zerocopy-derive-0.8.56",
+      "name": "zerocopy-derive",
+      "versionInfo": "0.8.56",
+      "downloadLocation": "https://crates.io/crates/zerocopy-derive/0.8.56",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/zerocopy-derive@0.8.56"
         }
       ]
     },
@@ -2175,6 +2303,11 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-ag-psd-0.2.0"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-ambient-authority-0.0.2"
     },
     {
@@ -2211,6 +2344,11 @@
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-autocfg-1.5.1"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-base64-0.22.1"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2370,6 +2508,11 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-fax-0.2.7"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-fdeflate-0.3.7"
     },
     {
@@ -2456,6 +2599,11 @@
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-glam-0.33.5"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-half-2.7.1"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2765,6 +2913,11 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-tiff-0.11.3"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-tokio-1.53.1"
     },
     {
@@ -2820,7 +2973,22 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-weezl-0.1.12"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-wide-1.6.1"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-zerocopy-0.8.56"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-zerocopy-derive-0.8.56"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",

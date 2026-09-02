@@ -8,14 +8,23 @@ mod canvas;
 #[cfg(feature = "deform")]
 mod deform;
 mod file_io;
+mod media;
 #[cfg(feature = "place")]
 mod mockup;
+#[cfg(feature = "motion")]
+mod motion;
 #[cfg(feature = "program")]
 mod raster_program;
 #[cfg(feature = "remap")]
 mod remap;
+#[cfg(feature = "surface-deformation")]
+mod surface_deformation;
+#[cfg(feature = "template")]
+mod template;
+mod tiled;
 #[cfg(feature = "timeline")]
 mod timeline;
+mod vector;
 
 pub use canvas::{
     CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult, CanvasSetProgram,
@@ -26,6 +35,23 @@ pub use canvas::{
 pub use file_io::{
     preflight_destination, publish_staged_file, rectify_file, rectify_file_with_source_sha256,
     render_file, render_file_with_source_sha256,
+};
+pub use media::{
+    ColorManagement, IccPolicy, MAX_MEDIA_PIXELS, MediaAnalysisRaster, MediaColorModel,
+    MediaFileRenderResult, MediaFormat, MediaLoss, MediaOutput, MediaOutputInfo,
+    MediaRenderOptions, MediaSampleFormat, MediaSourceInfo, OutputPrecision,
+    decode_media_analysis_file_with_cancel, inspect_media_file, render_media_file,
+    render_media_file_with_cancel,
+};
+pub use tiled::{
+    MAX_TILED_AXIS, MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS, MAX_TILED_TILES,
+    TILED_MEDIA_SCHEMA, TILED_MEDIA_VERSION, TiledMediaManifest, TiledMediaRenderOptions,
+    TiledMediaRenderResult, TiledMediaStatus, TiledMediaTile, render_tiled_media_directory,
+    render_tiled_media_directory_with_cancel,
+};
+pub use vector::{
+    MAX_VECTOR_AXIS, MAX_VECTOR_OUTPUT_BYTES, MAX_VECTOR_SOURCE_BYTES, VectorCarrier,
+    VectorFileResult, VectorRenderOptions, render_vector_file, render_vector_file_with_cancel,
 };
 
 #[cfg(feature = "program")]
@@ -52,10 +78,27 @@ pub use mockup::{
     render_mockup_files, render_mockup_files_with_cancel, render_mockup_with_cancel,
 };
 
+#[cfg(feature = "motion")]
+pub use motion::{
+    MotionFileRenderResult, MotionRenderedItem, render_motion_files,
+    render_motion_files_with_cancel,
+};
 #[cfg(feature = "remap")]
 pub use remap::{
     RemapEvidence, RemapFileMap, RemapFileRenderResult, RemapRenderOptions, RenderedRemap,
     render_remap, render_remap_file_with_cancel, render_remap_with_cancel,
+};
+#[cfg(feature = "surface-deformation")]
+pub use surface_deformation::{
+    RenderedSurfaceDeformation, SurfaceDeformationFileRenderResult, render_surface_deformation,
+    render_surface_deformation_file_with_cancel, render_surface_deformation_with_cancel,
+};
+#[cfg(feature = "template")]
+pub use template::{
+    MAX_VARIATION_JOB_PROCESSED_PIXELS, MAX_VARIATION_JOB_SOURCE_PIXELS, VariationFileAsset,
+    VariationJobFileRenderResult, VariationJobRenderOptions, VariationJobRenderStatus,
+    VariationRenderedItem, VariationSourceEvidence, render_variation_job_files,
+    render_variation_job_files_with_cancel,
 };
 #[cfg(feature = "timeline")]
 pub use timeline::{
@@ -854,6 +897,12 @@ struct MipPyramid {
     levels: Vec<RgbaImage>,
 }
 
+pub(crate) trait PremultipliedPyramid: Sync {
+    fn base_width(&self) -> u32;
+    fn base_height(&self) -> u32;
+    fn sample(&self, uv: Point, quality: SamplingQuality, lod: f64) -> [f64; 4];
+}
+
 impl MipPyramid {
     /// `maximum_levels` caps pyramid depth at the deepest level any pixel can
     /// sample (see `conservative_maximum_lod`); `usize::MAX` builds the full
@@ -875,6 +924,20 @@ impl MipPyramid {
 
     fn base(&self) -> &RgbaImage {
         &self.levels[0]
+    }
+}
+
+impl PremultipliedPyramid for MipPyramid {
+    fn base_width(&self) -> u32 {
+        self.base().width()
+    }
+
+    fn base_height(&self) -> u32 {
+        self.base().height()
+    }
+
+    fn sample(&self, uv: Point, quality: SamplingQuality, lod: f64) -> [f64; 4] {
+        sample_mipmapped(self, uv, quality, lod)
     }
 }
 
@@ -1076,6 +1139,19 @@ fn render_pixel(
     y: u32,
     quality: SamplingQuality,
 ) -> TransformResult<Rgba<u8>> {
+    Ok(straight_alpha(render_pixel_premultiplied(
+        source, mapping, projector, x, y, quality,
+    )?))
+}
+
+pub(crate) fn render_pixel_premultiplied<P: PremultipliedPyramid>(
+    source: &P,
+    mapping: &PixelMapping<'_>,
+    projector: &InversePixelProjector,
+    x: u32,
+    y: u32,
+    quality: SamplingQuality,
+) -> TransformResult<[f64; 4]> {
     let pixel_origin = Point::new(
         mapping.canvas_origin.x + f64::from(x),
         mapping.canvas_origin.y + f64::from(y),
@@ -1085,7 +1161,7 @@ fn render_pixel(
         .map(|point| Point::new(point.x - pixel_origin.x, point.y - pixel_origin.y));
     let coverage = classify_pixel_coverage(local_quad);
     if coverage == PixelCoverage::Outside {
-        return Ok(Rgba([0, 0, 0, 0]));
+        return Ok([0.0; 4]);
     }
 
     let (coverage_fraction, representative) = match coverage {
@@ -1096,7 +1172,7 @@ fn render_pixel(
                 .abs()
                 .clamp(0.0, 1.0);
             if area <= f64::EPSILON {
-                return Ok(Rgba([0, 0, 0, 0]));
+                return Ok([0.0; 4]);
             }
             (area, polygon_centroid(clipped.as_slice()))
         }
@@ -1106,8 +1182,8 @@ fn render_pixel(
         projector,
         mapping.warp,
         representative,
-        source.base().width(),
-        source.base().height(),
+        source.base_width(),
+        source.base_height(),
     )?;
     let maximum_axis_samples = match quality {
         SamplingQuality::Preview => 1,
@@ -1165,7 +1241,7 @@ fn render_pixel(
             accumulated = sample_value;
             contributing = 1;
         } else {
-            return Ok(Rgba([0, 0, 0, 0]));
+            return Ok([0.0; 4]);
         }
     }
 
@@ -1173,11 +1249,11 @@ fn render_pixel(
     for channel in &mut accumulated {
         *channel *= scale;
     }
-    Ok(straight_alpha(accumulated))
+    Ok(accumulated)
 }
 
-fn sample_projected_destination(
-    source: &MipPyramid,
+fn sample_projected_destination<P: PremultipliedPyramid>(
+    source: &P,
     warp: &WarpSampler,
     projector: &InversePixelProjector,
     local: Point,
@@ -1190,7 +1266,7 @@ fn sample_projected_destination(
     if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
         return Ok(None);
     }
-    Ok(Some(sample_mipmapped(source, uv, quality, lod)))
+    Ok(Some(source.sample(uv, quality, lod)))
 }
 
 fn sample_mipmapped(

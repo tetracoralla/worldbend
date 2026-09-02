@@ -30,6 +30,26 @@ const spec = {
 const solved = JSON.parse(wasm.solve_json(JSON.stringify(spec), 640, 480));
 assert.deepEqual(solved.resolvedDestination.reference, { width: 640, height: 480 });
 
+const template = {
+  schema: "worldbend.spatial-template",
+  version: "0.1",
+  operation: {
+    kind: "mockup",
+    spec: {
+      schema: "worldbend.mockup",
+      version: "0.1",
+      canvas: { width: 640, height: 480 },
+      background: { kind: "transparent" },
+      planes: [{ id: "plane-1", sourceId: "source-1", transform: spec, opacity: 1 }],
+      seams: [],
+    },
+  },
+  output: { kind: "single", id: "output" },
+};
+const mockupPlan = JSON.parse(wasm.mockup_plan_json(JSON.stringify(template.operation.spec)));
+assert.deepEqual(mockupPlan.planes.map((plane) => plane.sourceId), ["source-1"]);
+assert.equal(wasm.spatial_template_inspect_json, undefined);
+
 let cssFailure;
 try {
   wasm.css_json(JSON.stringify(spec), 640, 480, 640, 480);
@@ -43,5 +63,5 @@ assert.deepEqual(JSON.parse(cssFailure), {
 });
 
 process.stdout.write(
-  `Figma WASM profile smoke passed (wasmBytes=${wasmBytes.length}, css=E_SCHEMA)\n`,
+  `Figma WASM profile smoke passed (wasmBytes=${wasmBytes.length}, template=mockup-only, css=E_SCHEMA)\n`,
 );

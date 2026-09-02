@@ -106,8 +106,57 @@ export type RemapOperation =
       scaleYPixels: number;
       xChannel: RemapChannel;
       yChannel: RemapChannel;
+    }
+  | {
+      boundary?: "transparent" | "clamp" | "wrap";
+      kind: "displacementUnit";
+      neutral?: number;
+      scaleXPixels: number;
+      scaleYPixels: number;
+      xChannel: RemapChannel;
+      yChannel: RemapChannel;
     };
 export type RemapChannel = "red" | "green" | "blue" | "alpha" | "luminance";
+export type SpatialTemplateOperationKind = "rasterProgram" | "mockup";
+export type SpatialTemplateOutputKind = "single" | "canvasSet";
+export type RasterProgramStageKind = "transform" | "rectify" | "canvas";
+export type SpatialTemplateOperation =
+  | {
+      kind: "rasterProgram";
+      program: RasterProgramSpec;
+      sourceSlot: string;
+    }
+  | {
+      kind: "mockup";
+      spec: MockupSpec;
+    };
+export type RasterProgramStage =
+  | {
+      canvas?: "tight" | "reference";
+      id: string;
+      kind: "transform";
+      spec: TransformSpec1;
+      target_size?: Size | null;
+    }
+  | {
+      id: string;
+      kind: "rectify";
+      spec: RectifySpec;
+    }
+  | {
+      id: string;
+      kind: "canvas";
+      spec: CanvasSpec;
+    };
+export type SpatialTemplateOutput =
+  | {
+      id: string;
+      kind: "single";
+    }
+  | {
+      kind: "canvasSet";
+      spec: CanvasSetSpec;
+    };
 export type ErrorCode =
   | "E_SCHEMA"
   | "E_NON_FINITE_COORDINATE"
@@ -158,9 +207,13 @@ export interface WebContract {
   remapPlanOutput: RemapPlan;
   remapSpecInput: RemapSpec;
   solveOutput: SolveOutput;
+  spatialTemplateInspectionOutput: SpatialTemplateInspection;
+  spatialTemplateSpecInput: SpatialTemplateSpec;
   transformError: TransformError;
   transformRecipeInput: TransformRecipe;
   transformSpecInput: TransformSpec1;
+  variationJobPlanOutput: VariationJobPlan;
+  variationJobSpecInput: VariationJobSpec;
   warpMeshOutput: WarpMesh;
 }
 export interface AffineComposition {
@@ -844,6 +897,334 @@ export interface LensScale {
   x: number;
   y: number;
 }
+export interface SpatialTemplateInspection {
+  operation: SpatialTemplateOperationKind;
+  output: SpatialTemplateOutputKind;
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  outputs:
+    | [SpatialTemplateOutputSummary]
+    | [SpatialTemplateOutputSummary, SpatialTemplateOutputSummary]
+    | [SpatialTemplateOutputSummary, SpatialTemplateOutputSummary, SpatialTemplateOutputSummary]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ]
+    | [
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary,
+        SpatialTemplateOutputSummary
+      ];
+  rasterProgram?: RasterProgramInspection | null;
+  schema: "worldbend.spatial-template-inspection";
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  sourceSlots:
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ];
+  version: "0.1";
+}
+export interface SpatialTemplateOutputSummary {
+  filename: string;
+  id: string;
+}
+export interface RasterProgramInspection {
+  schema: "worldbend.raster-program-inspection";
+  stageCount: number;
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  stages:
+    | [RasterProgramStageSummary]
+    | [RasterProgramStageSummary, RasterProgramStageSummary]
+    | [RasterProgramStageSummary, RasterProgramStageSummary, RasterProgramStageSummary]
+    | [RasterProgramStageSummary, RasterProgramStageSummary, RasterProgramStageSummary, RasterProgramStageSummary]
+    | [
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary
+      ]
+    | [
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary
+      ]
+    | [
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary
+      ]
+    | [
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary,
+        RasterProgramStageSummary
+      ];
+  version: "0.1";
+}
+export interface RasterProgramStageSummary {
+  id: string;
+  kind: RasterProgramStageKind;
+}
+export interface SpatialTemplateSpec {
+  operation: SpatialTemplateOperation;
+  output: SpatialTemplateOutput;
+  schema: "worldbend.spatial-template";
+  version: "0.1";
+}
+export interface RasterProgramSpec {
+  schema: "worldbend.raster-program";
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  stages:
+    | [RasterProgramStage]
+    | [RasterProgramStage, RasterProgramStage]
+    | [RasterProgramStage, RasterProgramStage, RasterProgramStage]
+    | [RasterProgramStage, RasterProgramStage, RasterProgramStage, RasterProgramStage]
+    | [RasterProgramStage, RasterProgramStage, RasterProgramStage, RasterProgramStage, RasterProgramStage]
+    | [
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage
+      ]
+    | [
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage
+      ]
+    | [
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage,
+        RasterProgramStage
+      ];
+  version: "0.1";
+}
 export interface TransformError {
   code: ErrorCode;
   details?: unknown;
@@ -905,4 +1286,187 @@ export interface Skew2D {
 export interface Point3 {
   x: number;
   y: number;
+}
+export interface VariationJobPlan {
+  /**
+   * @minItems 1
+   * @maxItems 1024
+   */
+  assetIds: [string, ...string[]];
+  /**
+   * @minItems 1
+   * @maxItems 64
+   */
+  items: [VariationJobItemPlan, ...VariationJobItemPlan[]];
+  outputCount: number;
+  schema: "worldbend.variation-job-plan";
+  template: SpatialTemplateInspection;
+  version: "0.1";
+}
+export interface VariationJobItemPlan {
+  bindings: VariationBinding[];
+  id: string;
+}
+export interface VariationBinding {
+  assetId: string;
+  slotId: string;
+}
+export interface VariationJobSpec {
+  /**
+   * @minItems 1
+   * @maxItems 64
+   */
+  items: [VariationJobItem, ...VariationJobItem[]];
+  schema: "worldbend.variation-job";
+  template: SpatialTemplateSpec;
+  version: "0.1";
+}
+export interface VariationJobItem {
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  bindings:
+    | [VariationBinding]
+    | [VariationBinding, VariationBinding]
+    | [VariationBinding, VariationBinding, VariationBinding]
+    | [VariationBinding, VariationBinding, VariationBinding, VariationBinding]
+    | [VariationBinding, VariationBinding, VariationBinding, VariationBinding, VariationBinding]
+    | [VariationBinding, VariationBinding, VariationBinding, VariationBinding, VariationBinding, VariationBinding]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ]
+    | [
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding,
+        VariationBinding
+      ];
+  id: string;
 }

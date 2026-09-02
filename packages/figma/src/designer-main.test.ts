@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMeshSpec } from "./mesh-workspace";
+import { defaultMockup } from "./mockup-workspace";
+import { spatialTemplateFromMockup } from "./stored-template-library";
 
 function sourceNode(id: string, x: number, page: object) {
   return {
@@ -93,5 +95,98 @@ describe("Figma designer task main boundary", () => {
       "worldbend", "task", expect.stringContaining('"kind":"mesh"'),
     );
     expect(figmaMock.commitUndo).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists and removes a validated Spatial Template through client storage", async () => {
+    const { figmaMock, posts } = setup(1);
+    await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
+    const template = spatialTemplateFromMockup(defaultMockup([{
+      sourceNodeId: "source-1",
+      sourceName: "Source",
+      renderWidth: 100,
+      renderHeight: 80,
+      placement: { x: 0, y: 20, width: 100, height: 80 },
+      image: {} as HTMLImageElement,
+    }]));
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      requestId: 11,
+      name: "Card",
+      template,
+    });
+    await vi.waitFor(() => {
+      expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(1);
+      expect(posts).toContainEqual(expect.objectContaining({
+        type: "template-library",
+        mutation: { kind: "save", requestId: 11 },
+        templates: [expect.objectContaining({ name: "Card", template })],
+      }));
+    });
+    const saved = posts.findLast((message) =>
+      (message as { type?: string; templates?: unknown[] }).type === "template-library" &&
+      (message as { templates?: unknown[] }).templates?.length === 1
+    ) as { templates: Array<{ id: string }> };
+    figmaMock.ui.onmessage?.({
+      type: "delete-template",
+      requestId: 12,
+      id: saved.templates[0]!.id,
+    });
+    await vi.waitFor(() => {
+      expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(2);
+      expect(posts.at(-1)).toEqual({
+        type: "template-library",
+        templates: [],
+        mutation: { kind: "delete", requestId: 12 },
+      });
+    });
+  });
+
+  it("keeps the UI usable but rejects mutations when template storage cannot be read", async () => {
+    const { figmaMock, posts } = setup(1);
+    figmaMock.clientStorage.getAsync
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("storage unavailable"));
+    await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    await vi.waitFor(() => {
+      expect(posts).toContainEqual({ type: "template-library", templates: [] });
+      expect(posts).toContainEqual(expect.objectContaining({
+        type: "template-library-error",
+      }));
+      expect(posts).toContainEqual(expect.objectContaining({ type: "source" }));
+    });
+
+    const template = spatialTemplateFromMockup(defaultMockup([{
+      sourceNodeId: "source-1",
+      sourceName: "Source",
+      renderWidth: 100,
+      renderHeight: 80,
+      placement: { x: 0, y: 20, width: 100, height: 80 },
+      image: {} as HTMLImageElement,
+    }]));
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      requestId: 21,
+      name: "Must not overwrite",
+      template,
+    });
+    figmaMock.ui.onmessage?.({
+      type: "delete-template",
+      requestId: 22,
+      id: "template-existing",
+    });
+    await vi.waitFor(() => {
+      expect(posts).toContainEqual(expect.objectContaining({
+        type: "template-library-error",
+        mutation: { kind: "save", requestId: 21 },
+      }));
+      expect(posts).toContainEqual(expect.objectContaining({
+        type: "template-library-error",
+        mutation: { kind: "delete", requestId: 22 },
+      }));
+    });
+    expect(figmaMock.clientStorage.setAsync).not.toHaveBeenCalled();
   });
 });
