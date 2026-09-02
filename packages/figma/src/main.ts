@@ -13,6 +13,7 @@ import {
   type UserMessage,
 } from "./i18n";
 import {
+  isFigmaImageAxis,
   MAX_FIGMA_IMAGE_AXIS,
   RENDER_HEIGHT_KEY,
   RENDER_WIDTH_KEY,
@@ -231,7 +232,12 @@ async function exportSources(
   const rasterTarget = storedOperation?.kind === "transform" || storedOperation?.kind === "rectify"
     ? target
     : undefined;
-  const rasters = await Promise.all(sources.map((source, index) => exportSourceRaster(source, index === 0 ? rasterTarget : undefined)));
+  const rasterTargetSize = rasterTarget ? storedRasterSize(rasterTarget) : undefined;
+  const rasters = await Promise.all(sources.map((source, index) => exportSourceRaster(
+    source,
+    index === 0 ? rasterTarget : undefined,
+    index === 0 ? rasterTargetSize : undefined,
+  )));
   const first = rasters[0];
   if (!first) throw userError("selectOneSource");
   const targetBox = target?.absoluteBoundingBox;
@@ -248,7 +254,11 @@ async function exportSources(
   };
 }
 
-async function exportSourceRaster(source: SceneNode, target?: RectangleNode): Promise<SourcePayload> {
+async function exportSourceRaster(
+  source: SceneNode,
+  target?: RectangleNode,
+  targetRasterSize?: { width: number; height: number },
+): Promise<SourcePayload> {
   const box = source.absoluteBoundingBox;
   if (!box || box.width <= 0 || box.height <= 0) {
     throw userError("sourceNeedsVisibleBounds");
@@ -258,8 +268,10 @@ async function exportSourceRaster(source: SceneNode, target?: RectangleNode): Pr
     throw userError("resultNeedsVisibleBounds");
   }
 
-  const desiredWidth = target ? target.width : Math.max(1, Math.round(box.width));
-  const desiredHeight = target ? target.height : Math.max(1, Math.round(box.height));
+  const desiredWidth = targetRasterSize?.width ??
+    (target ? target.width : Math.max(1, Math.round(box.width)));
+  const desiredHeight = targetRasterSize?.height ??
+    (target ? target.height : Math.max(1, Math.round(box.height)));
   const renderWidth = checkedOutputAxis(desiredWidth);
   const renderHeight = checkedOutputAxis(desiredHeight);
   const desiredScale = Math.max(1, renderWidth / box.width, renderHeight / box.height);
@@ -402,10 +414,14 @@ async function applyResult(
         throw userError("resultUnavailable");
       }
       const stored = readStoredOperation(target);
+      const targetRaster = storedRasterSize(target) ?? {
+        width: checkedOutputAxis(target.width),
+        height: checkedOutputAxis(target.height),
+      };
       if (
         stored.status !== "valid" ||
-        checkedOutputAxis(target.width) !== prepared.renderWidth ||
-        checkedOutputAxis(target.height) !== prepared.renderHeight
+        targetRaster.width !== prepared.renderWidth ||
+        targetRaster.height !== prepared.renderHeight
       ) {
         throw userError("resultChanged");
       }
@@ -735,13 +751,13 @@ async function publishResult(input: {
       // translation) by mapping it through the parent's affine transform.
       // This keeps nested results in their parent without silently ignoring
       // the newly composed placement.
-      result.resize(input.renderWidth, input.renderHeight);
+      result.resize(input.placement.width, input.placement.height);
       const center = parentPointFromAbsolute(result, {
         x: input.placement.x + input.placement.width / 2,
         y: input.placement.y + input.placement.height / 2,
       });
-      result.x = center.x - input.renderWidth / 2;
-      result.y = center.y - input.renderHeight / 2;
+      result.x = center.x - input.placement.width / 2;
+      result.y = center.y - input.placement.height / 2;
     }
     result.fills = [{ type: "IMAGE", imageHash: input.imageHash, scaleMode: "FILL" }];
     writeStoredOperation(result, input.storedOperation);
@@ -836,6 +852,16 @@ function checkedOutputAxis(value: number): number {
     throw userError("outputLimitExceeded", { limit: MAX_FIGMA_IMAGE_AXIS });
   }
   return rounded;
+}
+
+function storedRasterSize(
+  target: Pick<RectangleNode, "getPluginData">,
+): { width: number; height: number } | undefined {
+  const width = Number(target.getPluginData(RENDER_WIDTH_KEY));
+  const height = Number(target.getPluginData(RENDER_HEIGHT_KEY));
+  return isFigmaImageAxis(width) && isFigmaImageAxis(height)
+    ? { width, height }
+    : undefined;
 }
 
 class UserFacingError extends Error {

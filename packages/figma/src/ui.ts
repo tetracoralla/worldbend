@@ -97,6 +97,15 @@ import {
 import { parseWarpControls, warpAmountPercent, WARP_PRESETS } from "./warp-controls";
 import { sliderProgress } from "./slider-domain";
 import {
+  canApplyOutput,
+  outputSizeForQuad,
+  planFigmaOutput,
+  rasterSizeForPolicy,
+  type FigmaOutputPlan,
+  type OutputDensityPolicy,
+  type PixelSize,
+} from "./output-density";
+import {
   createProductWorkspaceRouter,
   type ProductWorkspaceRouter,
 } from "./product-workspace";
@@ -176,6 +185,16 @@ const rotationLabel = required<HTMLSpanElement>("rotation-label");
 const skewXLabel = required<HTMLSpanElement>("skew-x-label");
 const skewYLabel = required<HTMLSpanElement>("skew-y-label");
 const settingsTitle = required<HTMLParagraphElement>("settings-title");
+const outputSettingsTitle = required<HTMLParagraphElement>("output-settings-title");
+const outputPolicyFit = required<HTMLButtonElement>("output-policy-fit");
+const outputPolicyFitLabel = required<HTMLSpanElement>("output-policy-fit-label");
+const outputPolicyFitDetail = required<HTMLElement>("output-policy-fit-detail");
+const outputPolicyOriginal = required<HTMLButtonElement>("output-policy-original");
+const outputPolicyOriginalLabel = required<HTMLSpanElement>("output-policy-original-label");
+const outputPolicyOriginalDetail = required<HTMLElement>("output-policy-original-detail");
+const outputSize = required<HTMLOutputElement>("output-size");
+const outputSizeFlow = required<HTMLSpanElement>("output-size-flow");
+const outputSizeNote = required<HTMLSpanElement>("output-size-note");
 const localeSystem = required<HTMLSpanElement>("locale-system");
 const localeSystemDetail = required<HTMLElement>("locale-system-detail");
 const localeEnglish = required<HTMLSpanElement>("locale-en-label");
@@ -217,6 +236,7 @@ let composeInFlight = false;
 // latest-wins preview queue is running. Blocking compositions (mode switches,
 // reset, undo, apply preparation) retain the ordinary disabled state.
 let continuousPreviewInFlight = false;
+let outputDensityPolicy: OutputDensityPolicy = "fit";
 let transformInputsValid = true;
 // Distort changes are rendered immediately by the editor, then reframed once
 // through the core before mode switching or publication. Pointer-up can beat
@@ -286,7 +306,15 @@ const warpPreviewFrames = createLatestFrameCoalescer(
 const editor = createEditor();
 if (editor) editorMount.append(editor.element);
 const viewport: PreviewViewportHandle | undefined = editor
-  ? createPreviewViewport(editor, editorMount, { onScaleChange: renderZoomLevel })
+  ? createPreviewViewport(editor, editorMount, {
+      onScaleChange: renderZoomLevel,
+      onEdgePanChange(edge) {
+        if (edge.x) editorMount.dataset.edgePanX = edge.x;
+        else delete editorMount.dataset.edgePanX;
+        if (edge.y) editorMount.dataset.edgePanY = edge.y;
+        else delete editorMount.dataset.edgePanY;
+      },
+    })
   : undefined;
 const distortEndFrames = createFrameCoalescer(() => {
   if (phase !== "ready" || editorMode !== "distort" || !current || refreshInFlight) return;
@@ -483,6 +511,8 @@ modeWarpButton.addEventListener("click", () => void switchEditorMode("warp"));
 modeRectifyButton.addEventListener("click", () => void switchEditorMode("rectify"));
 distortFreeButton.addEventListener("click", () => void selectDistortMode("free"));
 distortPerspectiveButton.addEventListener("click", () => void selectDistortMode("perspective"));
+outputPolicyFit.addEventListener("click", () => selectOutputDensityPolicy("fit"));
+outputPolicyOriginal.addEventListener("click", () => selectOutputDensityPolicy("original"));
 // Route the preset through the same latest-wins coalescer as the amount
 // controls: a direct update here could be superseded by an older queued
 // sample that drains with a newer generation and resurrect the previous
@@ -577,6 +607,10 @@ function createEditor(): PerspectiveEditor | undefined {
           activeFrame = { ...activeFrame, spec: editor.captureSpec() };
           viewport?.handleCanvasResized();
         }
+        // Apply validity and the quiet output-size HUD both depend on live
+        // dimensions. Re-render after every coalesced geometry sample so a
+        // previously blocked Apply cannot stay stale once the user recovers.
+        renderState();
       },
       onValidityChange(next) {
         valid = next;
@@ -1930,6 +1964,16 @@ async function applyPerspective(duplicate = false): Promise<void> {
   const generation = activeGeneration;
   const spec = editor.captureSpec();
   const output = { ...cloneFrame(activeFrame), spec };
+  const outputPlan = planOutputForSize({
+    width: output.renderWidth,
+    height: output.renderHeight,
+  });
+  if (!outputPlan || !canApplyOutput(outputPlan, outputDensityPolicy)) {
+    showError(userMessage("transformOutputLimit", { limit: MAX_FIGMA_IMAGE_AXIS }));
+    renderState();
+    return;
+  }
+  const rasterSize = rasterSizeForPolicy(outputPlan, outputDensityPolicy);
   activeFrame = cloneFrame(output);
   transformGestureSession.cancel();
   // This remains pending until the main thread confirms the visible write.
@@ -1942,10 +1986,10 @@ async function applyPerspective(duplicate = false): Promise<void> {
   setStatus(userMessage(!duplicate && source.targetNodeId ? "replacing" : "applying"));
   renderState();
   try {
-    const prepared = await prepareFinalSourceRaster(source, output, spec);
+    const prepared = await prepareFinalSourceRaster(source, rasterSize, spec);
     const bytes = await editor.exportPng(
-      output.renderWidth,
-      output.renderHeight,
+      rasterSize.width,
+      rasterSize.height,
       spec,
       prepared.sourceOverride,
       {
@@ -1967,8 +2011,8 @@ async function applyPerspective(duplicate = false): Promise<void> {
         bytes,
         spec,
         sourceNodeId: source.sourceNodeId,
-        renderWidth: output.renderWidth,
-        renderHeight: output.renderHeight,
+        renderWidth: rasterSize.width,
+        renderHeight: rasterSize.height,
         placement: output.placement,
         ...(source.targetNodeId ? { targetNodeId: source.targetNodeId } : {}),
         ...(duplicate ? { duplicate: true } : {}),
@@ -2091,7 +2135,7 @@ function fittedRectificationPlacement(
 
 async function prepareFinalSourceRaster(
   source: ActiveSource,
-  output: TransformFrame,
+  output: Size,
   spec: TransformFrame["spec"],
 ): Promise<{
   sourceOverride?: HTMLImageElement;
@@ -2100,8 +2144,8 @@ async function prepareFinalSourceRaster(
 }> {
   if (!editor) throw new Error("The transform preview is unavailable");
   const solved = await solveTransform(spec, {
-    width: output.renderWidth,
-    height: output.renderHeight,
+    width: output.width,
+    height: output.height,
   });
   const warpMesh = spec.content.warp?.amount
     ? await buildWarpMesh(spec.content.warp)
@@ -2122,6 +2166,105 @@ async function prepareFinalSourceRaster(
     solved,
     ...(warpMesh ? { warpMesh } : {}),
   };
+}
+
+function selectOutputDensityPolicy(policy: OutputDensityPolicy): void {
+  if (outputDensityPolicy === policy) return;
+  outputDensityPolicy = policy;
+  clearError();
+  renderState();
+}
+
+function currentOutputPlan(): FigmaOutputPlan | undefined {
+  if (!initialFrame || !activeFrame) return undefined;
+  try {
+    let requested: PixelSize;
+    if (editorMode === "rectify") {
+      const output = readRectifyOutput();
+      if (!output) return undefined;
+      requested = output;
+    } else if (editorMode === "distort" && distortFrameDirty && editor && baseFrame) {
+      requested = outputSizeForQuad(editor.captureSpec().destination.quad, {
+        width: baseFrame.renderWidth,
+        height: baseFrame.renderHeight,
+      });
+    } else {
+      requested = {
+        width: activeFrame.renderWidth,
+        height: activeFrame.renderHeight,
+      };
+    }
+    return planOutputForSize(requested);
+  } catch {
+    return undefined;
+  }
+}
+
+function planOutputForSize(requested: Size): FigmaOutputPlan | undefined {
+  if (!initialFrame) return undefined;
+  try {
+    return planFigmaOutput(
+      { width: initialFrame.renderWidth, height: initialFrame.renderHeight },
+      requested,
+      MAX_FIGMA_IMAGE_AXIS,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function renderOutputPolicy(): void {
+  outputPolicyFit.setAttribute("aria-checked", String(outputDensityPolicy === "fit"));
+  outputPolicyOriginal.setAttribute("aria-checked", String(outputDensityPolicy === "original"));
+}
+
+function renderOutputSize(plan: FigmaOutputPlan | undefined): void {
+  if (!current || !plan || phase === "idle" || phase === "loading") {
+    outputSize.hidden = true;
+    outputSizeFlow.textContent = "";
+    outputSizeNote.textContent = "";
+    outputSize.removeAttribute("aria-label");
+    delete outputSize.dataset.blocked;
+    return;
+  }
+  const source = formatPixelSize(plan.source);
+  const requested = formatPixelSize(plan.requested);
+  const applied = formatPixelSize(plan.applied);
+  const fitted = plan.fitted && outputDensityPolicy === "fit";
+  const blocked = plan.fitted && outputDensityPolicy === "original";
+  outputSize.hidden = false;
+  outputSizeFlow.textContent = fitted
+    ? `${source} → ${requested} → ${applied} px`
+    : `${source} → ${requested} px`;
+  outputSizeNote.textContent = fitted
+    ? translate(activeLocale, "outputFitNote")
+    : blocked
+      ? translate(activeLocale, "outputOverLimitNote")
+      : "";
+  if (blocked) outputSize.dataset.blocked = "true";
+  else delete outputSize.dataset.blocked;
+  outputSize.setAttribute(
+    "aria-label",
+    translate(
+      activeLocale,
+      userMessage(
+        fitted
+          ? "outputSizeFittedAria"
+          : blocked
+            ? "outputSizeOverLimitAria"
+            : "outputSizeAria",
+        fitted
+          ? { source, requested, applied }
+          : blocked
+            ? { source, requested }
+            : { source, output: requested },
+      ),
+    ),
+  );
+}
+
+function formatPixelSize(size: PixelSize): string {
+  return `${size.width} × ${size.height}`;
 }
 
 function requestSourceRaster(source: ActiveSource, desired: Size): Promise<Uint8Array> {
@@ -2164,6 +2307,8 @@ function renderState(): void {
   const taskReady = ready && valid && Boolean(activeFrame) && !blockingCompose && !refreshInFlight;
   const sourceCount = current?.sources?.length ?? (current ? 1 : 0);
   const menuReady = taskReady && sourceCount === 1;
+  const outputPlan = currentOutputPlan();
+  const outputApplicable = canApplyOutput(outputPlan, outputDensityPolicy);
   const positionReady = menuReady && !transformInitializing && editorMode === "transform" && transformInputsValid;
   for (const button of [actionFlipX, actionFlipY, actionRotateCw]) {
     button.disabled = !positionReady;
@@ -2173,6 +2318,7 @@ function renderState(): void {
     // Without an existing result there is nothing to copy beside: the primary
     // Apply already publishes a new image, so the copy variant is redundant.
     !current?.targetNodeId ||
+    !outputApplicable ||
     (editorMode === "rectify" && !rectifyInputsValid);
   taskLauncher.setDisabled(!taskReady);
   actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
@@ -2190,6 +2336,7 @@ function renderState(): void {
     !ready ||
     !valid ||
     !transformInputsValid ||
+    !outputApplicable ||
     (editorMode === "rectify" && !rectifyInputsValid) ||
     blockingCompose ||
     refreshInFlight;
@@ -2209,6 +2356,8 @@ function renderState(): void {
   warpAmountInput.disabled = warpAmountDisabled;
   rectifyWidthInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
   rectifyHeightInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
+  renderOutputPolicy();
+  renderOutputSize(outputPlan);
   resetButton.textContent = translate(activeLocale, phase === "resetting" ? "resetting" : "reset");
   applyButton.textContent =
     phase === "applied"
@@ -2264,6 +2413,11 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   settingsPopover.setAttribute("aria-label", translate(locale, "moreOptions"));
   modeSwitch.setAttribute("aria-label", translate(locale, "modeGroupLabel"));
   distortKind.setAttribute("aria-label", translate(locale, "distortGroupLabel"));
+  outputSettingsTitle.textContent = translate(locale, "outputPixels");
+  outputPolicyFitLabel.textContent = translate(locale, "outputFitFigma");
+  outputPolicyFitDetail.textContent = translate(locale, "outputFitFigmaDetail");
+  outputPolicyOriginalLabel.textContent = translate(locale, "outputKeepOriginal");
+  outputPolicyOriginalDetail.textContent = translate(locale, "outputKeepOriginalDetail");
   settingsTitle.textContent = translate(locale, "language");
   localeSystem.textContent = translate(locale, "languageSystem");
   localeSystemDetail.textContent = translate(locale, "languageSystemDetail");

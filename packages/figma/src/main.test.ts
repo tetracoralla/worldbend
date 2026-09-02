@@ -598,7 +598,7 @@ describe("Figma selection generations", () => {
     expect(duplicate).toMatchObject({ x: -30, y: 5, width: 120, height: 96 });
   });
 
-  it("replaces an existing result with a transformed tight frame", async () => {
+  it("replaces a large result without conflating document placement and raster density", async () => {
     const pending = deferred<Uint8Array>();
     const posts: unknown[] = [];
     const page = {
@@ -611,6 +611,8 @@ describe("Figma selection generations", () => {
     const sharedData = new Map<string, string>();
     sharedData.set("worldbend:transform", JSON.stringify(identitySpec()));
     const privateData = new Map<string, string>();
+    privateData.set("worldbend.renderWidth", "4096");
+    privateData.set("worldbend.renderHeight", "3277");
     const target = {
       id: "target",
       name: "source · Worldbend",
@@ -618,11 +620,11 @@ describe("Figma selection generations", () => {
       visible: true,
       parent: page,
       fills: [{ type: "IMAGE", imageHash: "old", scaleMode: "FILL" }],
-      width: 100,
-      height: 80,
+      width: 5000,
+      height: 4000,
       x: 10,
       y: 20,
-      absoluteBoundingBox: { x: 10, y: 20, width: 100, height: 80 },
+      absoluteBoundingBox: { x: 10, y: 20, width: 5000, height: 4000 },
       resize: vi.fn(function (
         this: { width: number; height: number },
         width: number,
@@ -677,9 +679,9 @@ describe("Figma selection generations", () => {
         spec: identitySpec(),
         sourceNodeId: source.id,
         targetNodeId: target.id,
-        renderWidth: 80,
-        renderHeight: 100,
-        placement: { x: -30, y: 5, width: 80, height: 100 },
+        renderWidth: 4000,
+        renderHeight: 3200,
+        placement: { x: -30, y: 5, width: 5200, height: 4160 },
       },
     });
 
@@ -688,10 +690,10 @@ describe("Figma selection generations", () => {
         expect.objectContaining({ type: "apply-complete", operation: "replace" }),
       );
     });
-    expect(target.resize).toHaveBeenCalledWith(80, 100);
-    expect(target).toMatchObject({ x: -30, y: 5, width: 80, height: 100 });
-    expect(privateData.get("worldbend.renderWidth")).toBe("80");
-    expect(privateData.get("worldbend.renderHeight")).toBe("100");
+    expect(target.resize).toHaveBeenCalledWith(5200, 4160);
+    expect(target).toMatchObject({ x: -30, y: 5, width: 5200, height: 4160 });
+    expect(privateData.get("worldbend.renderWidth")).toBe("4000");
+    expect(privateData.get("worldbend.renderHeight")).toBe("3200");
   });
 
   it("maps a replacement's absolute placement into its frame coordinates", async () => {

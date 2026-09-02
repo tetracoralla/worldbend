@@ -73,4 +73,20 @@ describe("Figma product workspace markup", () => {
     expect(popoverMarkup).not.toContain('id="action-undo"');
     expect(popoverMarkup).not.toContain('id="action-redo"');
   });
+
+  it("keeps output density visible but unobtrusive in the preview corner", () => {
+    const editorStart = html.indexOf('<div id="editor"');
+    const editorEnd = html.indexOf("</div>", editorStart);
+    const editorMarkup = html.slice(editorStart, editorEnd);
+    expect(editorMarkup).toContain('id="output-size"');
+    expect(editorMarkup).toContain('aria-live="off"');
+    expect(html).toContain("#output-size { position: absolute;");
+    expect(html).toContain("pointer-events: none;");
+
+    const popoverStart = html.indexOf('<div id="settings-popover"');
+    const popoverEnd = html.indexOf("</div>", popoverStart);
+    const popoverMarkup = html.slice(popoverStart, popoverEnd);
+    expect(popoverMarkup).toContain('id="output-policy-fit"');
+    expect(popoverMarkup).toContain('id="output-policy-original"');
+  });
 });

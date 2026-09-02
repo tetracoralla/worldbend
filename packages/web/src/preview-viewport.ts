@@ -51,6 +51,11 @@ export interface PreviewViewportHandle {
 
 export interface PreviewViewportOptions {
   onScaleChange?: (scale: number) => void;
+  /** Quiet directional feedback while bounded edge assistance owns the camera. */
+  onEdgePanChange?: (edge: {
+    x?: "left" | "right";
+    y?: "top" | "bottom";
+  }) => void;
 }
 
 export function createPreviewViewport(
@@ -121,6 +126,7 @@ export function createPreviewViewport(
   let wheelAnchor = { x: 0, y: 0 };
   let cachedSpace = { width: 1, height: 1, left: 0, top: 0 };
   let cachedMountRect = { left: 0, top: 0, width: 1, height: 1 };
+  let edgePanCue: { x?: "left" | "right"; y?: "top" | "bottom" } = {};
 
   const notifyScale = (): void => options.onScaleChange?.(scale);
 
@@ -132,6 +138,17 @@ export function createPreviewViewport(
   function cancelAutoPan(): void {
     if (autoPanFrame !== undefined) cancelAnimationFrame(autoPanFrame);
     autoPanFrame = undefined;
+    publishEdgePanCue({ x: 0, y: 0 });
+  }
+
+  function publishEdgePanCue(velocity: { x: number; y: number }): void {
+    const next: { x?: "left" | "right"; y?: "top" | "bottom" } = {
+      ...(velocity.x > 0 ? { x: "left" as const } : velocity.x < 0 ? { x: "right" as const } : {}),
+      ...(velocity.y > 0 ? { y: "top" as const } : velocity.y < 0 ? { y: "bottom" as const } : {}),
+    };
+    if (next.x === edgePanCue.x && next.y === edgePanCue.y) return;
+    edgePanCue = next;
+    options.onEdgePanChange?.({ ...next });
   }
 
   function refreshMountGeometry(): void {
@@ -256,12 +273,16 @@ export function createPreviewViewport(
   }
 
   function scheduleAutoPan(): void {
-    if (autoPanFrame !== undefined || !distortGesture || disposed) return;
+    if (!distortGesture || disposed) return;
     const velocity = autoPanVelocity();
+    publishEdgePanCue(velocity);
     if (velocity.x === 0 && velocity.y === 0) {
+      if (autoPanFrame !== undefined) cancelAnimationFrame(autoPanFrame);
+      autoPanFrame = undefined;
       distortGesture.previousTime = undefined;
       return;
     }
+    if (autoPanFrame !== undefined) return;
     autoPanFrame = requestAnimationFrame(stepAutoPan);
   }
 
@@ -270,6 +291,7 @@ export function createPreviewViewport(
     const gesture = distortGesture;
     if (!gesture || disposed) return;
     const velocity = autoPanVelocity();
+    publishEdgePanCue(velocity);
     if (velocity.x === 0 && velocity.y === 0) {
       gesture.previousTime = undefined;
       return;

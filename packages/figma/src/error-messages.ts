@@ -58,10 +58,11 @@ export function messageFromError(error: unknown, fallback: MessageKey): UserMess
     return userMessage(key ?? fallback);
   }
   if (error instanceof TransformFrameError) {
-    if (error.code === "figmaImageAxisExceeded") {
-      return userMessage("transformOutputLimit", { limit: MAX_FIGMA_IMAGE_AXIS });
-    }
-    return userMessage("transformPlacementInvalid");
+    return userMessage(
+      error.code === "renderDimensionsInvalid"
+        ? "outputInvalidDimensions"
+        : "transformPlacementInvalid",
+    );
   }
   const text = error instanceof Error ? error.message : String(error);
   const exact = editorErrorMessages[text];

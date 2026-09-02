@@ -526,8 +526,8 @@ nested background containers must not compete with the canvas. Transform and
 Warp parameters remain visible while their operation is active so a designer
 can tune continuous values without reopening a popover.
 More follows Warp at the right edge of the operation choices and uses the same
-quiet control language; its popover is reserved for secondary session and
-language actions. The sibling Canvas task has a quiet `Sizes…` entry beside
+quiet control language; its popover is reserved for secondary session actions,
+the explicit output-density policy, and language. The sibling Canvas task has a quiet `Sizes…` entry beside
 the selected source identity, outside both the operation choices and More. It
 never hides an active Perspective operation or turns that operation into a
 nested mode.
@@ -576,10 +576,19 @@ Private plugin data is limited to adapter-local raster dimensions. One
 generation-tagged selection snapshot supplies source
 bytes, spec, target identity, and output dimensions for an apply. Selection or
 relevant node changes advance the generation on their leading edge and
-invalidate in-flight export/apply work before the debounced reload. Apply and
-replacement reject either output axis above 4096 px rather than silently
-downscaling the result. This is the owning Figma single-raster boundary, not a
-Web/core limit: `figma.createImage` rejects images above 4096 px per axis.
+invalidate in-flight export/apply work before the debounced reload. Logical
+transform geometry and Figma document placement remain distinct from raster
+density. The default `Fit to Figma` policy proportionally reduces only the
+published image pixels when either requested axis exceeds 4096 px; it preserves
+the normalized spec, tight document placement, aspect ratio, and replacement
+geometry. The editor's quiet lower-corner output readout always shows source ->
+requested pixels and, when fitted, requested -> applied pixels plus an explicit
+fit label. `Keep original pixels` is an explicit session alternative: an
+over-limit request disables Apply, and returning to a safe size re-enables it on
+the next accepted geometry sample. This is the owning Figma single-raster
+boundary, not a Web/core limit: `figma.createImage` rejects images above 4096 px
+per axis. Stored private raster dimensions remain the reload/replacement source
+of truth even when the result Rectangle's document dimensions are larger.
 Tiling would change the stored result from one replaceable Rectangle into a
 multi-node document object and is not fabricated inside the current contract.
 The CLI/native renderer remains the explicit larger-file route.
@@ -616,7 +625,9 @@ penetration; Free is capped at 720 CSS pixels per second and Perspective at
 360 CSS pixels per second.
 The editor consumes the viewport's total camera translation and re-samples the
 latest pointer in the frozen gesture frame, so the grabbed control stays under
-the pointer and release commits the exact geometry shown. Edge pan stops when
+the pointer and release commits the exact geometry shown. A low-emphasis
+directional edge wash is visible only while assistance is active; it is
+presentation feedback and never changes geometry. Edge pan stops when
 the pointer moves inward, returns to the center, releases, is cancelled, loses
 capture, or the host window is interrupted. It never auto-fits or auto-zooms
 during the drag. After release, the viewport may use an eased presentation-only
@@ -652,6 +663,13 @@ scene offset may still move to conserve tight-canvas geometry. After the exact
 final sample is rendered on release, camera recovery may zoom out as needed to
 keep all handles reachable, but it does not silently alter the canonical
 transform recipe.
+
+Distort keeps immediate overlay/control feedback separate from asynchronous
+solve/render work. Pointer samples are collapsed per paint, at most one WASM
+preview solve may be in flight, and only the newest waiting intermediate state
+is retained. A superseded result cannot publish. Pointer release still commits
+the exact final quad before history and recovery run, and the newest committed
+state is rendered when the single in-flight solve clears.
 
 The development plugin manifest resolves `dist/main.js` and `dist/ui.html`
 from one live directory. UI-only and main-only builds must preserve the sibling

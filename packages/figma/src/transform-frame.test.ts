@@ -66,7 +66,7 @@ describe("Figma transform frame", () => {
     expect(framed.spec.destination.quad.tl).toEqual({ x: 0, y: 0 });
   });
 
-  it("rejects a transformed Figma image axis above the host limit", () => {
+  it("keeps logical geometry above the host raster limit for density planning", () => {
     const base = {
       spec: identitySpec(),
       renderWidth: 100,
@@ -77,9 +77,30 @@ describe("Figma transform frame", () => {
       spec: identitySpec(),
       canvas: { origin: { x: 0, y: 0 }, size: { width: 4097, height: 100 } },
     } as AffineComposition;
+    expect(frameFromComposition(base, composition)).toMatchObject({
+      renderWidth: 4097,
+      renderHeight: 100,
+      placement: { width: 4097, height: 100 },
+    });
+  });
+
+  it("rejects a logical frame that cannot be represented exactly", () => {
+    const base = {
+      spec: identitySpec(),
+      renderWidth: 100,
+      renderHeight: 100,
+      placement: { x: 0, y: 0, width: 100, height: 100 },
+    };
+    const composition = {
+      spec: identitySpec(),
+      canvas: {
+        origin: { x: 0, y: 0 },
+        size: { width: Number.MAX_SAFE_INTEGER * 2, height: 100 },
+      },
+    } as AffineComposition;
     expect(() => frameFromComposition(base, composition)).toThrow(TransformFrameError);
     expect(() => frameFromComposition(base, composition)).toThrow(
-      expect.objectContaining({ code: "figmaImageAxisExceeded" }),
+      expect.objectContaining({ code: "renderDimensionsInvalid" }),
     );
   });
 

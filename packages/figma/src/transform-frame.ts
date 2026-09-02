@@ -5,9 +5,8 @@ import {
   type TransformSpec,
 } from "@worldbend/web";
 import type { Placement, SourcePayload } from "./messages";
-import { isFigmaImageAxis } from "./stored-plane";
 
-export type TransformFrameErrorCode = "figmaImageAxisExceeded" | "placementInvalid";
+export type TransformFrameErrorCode = "renderDimensionsInvalid" | "placementInvalid";
 
 /** Typed placement failure so the UI maps reasons without matching prose. */
 export class TransformFrameError extends Error {
@@ -38,8 +37,11 @@ export function frameFromComposition(
 ): TransformFrame {
   const renderWidth = Math.round(composition.canvas.size.width);
   const renderHeight = Math.round(composition.canvas.size.height);
-  if (!isFigmaImageAxis(renderWidth) || !isFigmaImageAxis(renderHeight)) {
-    throw new TransformFrameError("figmaImageAxisExceeded");
+  // The frame is logical geometry, not necessarily the final Figma image
+  // resource. Output density is planned separately so a large placement may
+  // remain intact while its raster is proportionally fitted to 4096 px.
+  if (!isLogicalRenderAxis(renderWidth) || !isLogicalRenderAxis(renderHeight)) {
+    throw new TransformFrameError("renderDimensionsInvalid");
   }
   const scaleX = base.placement.width / base.renderWidth;
   const scaleY = base.placement.height / base.renderHeight;
@@ -75,8 +77,8 @@ export function rebaseTransformFrame(
   const renderScaleY = nextInitial.renderHeight / previousInitial.renderHeight;
   const renderWidth = Math.max(1, Math.round(current.renderWidth * renderScaleX));
   const renderHeight = Math.max(1, Math.round(current.renderHeight * renderScaleY));
-  if (!isFigmaImageAxis(renderWidth) || !isFigmaImageAxis(renderHeight)) {
-    throw new TransformFrameError("figmaImageAxisExceeded");
+  if (!isLogicalRenderAxis(renderWidth) || !isLogicalRenderAxis(renderHeight)) {
+    throw new TransformFrameError("renderDimensionsInvalid");
   }
   const placement = {
     x:
@@ -97,6 +99,10 @@ export function rebaseTransformFrame(
     renderHeight,
     placement,
   };
+}
+
+function isLogicalRenderAxis(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 1;
 }
 
 function placementIsFinite(placement: Placement): boolean {

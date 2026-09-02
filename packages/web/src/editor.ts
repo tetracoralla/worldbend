@@ -127,8 +127,14 @@ export class PerspectiveEditor {
   private workspaceOrigin: Point = { x: 0, y: 0 };
   private workspaceSize: Size = { width: 1, height: 1 };
   private renderGeneration = 0;
+  private geometryRevision = 0;
+  private overlayRevision = -1;
   private sourceGeneration = 0;
   private animationFrame: number | undefined;
+  private renderInFlight = false;
+  private queuedRender:
+    | { generation: number; resolve: (rendered: boolean) => void }
+    | undefined;
   private disabled = false;
   private disposed = false;
   private dragCleanup: (() => void) | undefined;
@@ -423,6 +429,7 @@ export class PerspectiveEditor {
     this.assertAvailable();
     this.renderGeneration += 1;
     this.cancelScheduledRender();
+    this.cancelQueuedRender();
   }
 
   clearSource(): void {
@@ -432,6 +439,7 @@ export class PerspectiveEditor {
     this.sourceGeneration += 1;
     this.renderGeneration += 1;
     this.cancelScheduledRender();
+    this.cancelQueuedRender();
     this.source = undefined;
     this.discardPreviewSource();
     this.canvas.width = 1;
@@ -661,6 +669,7 @@ export class PerspectiveEditor {
     this.sourceGeneration += 1;
     this.renderGeneration += 1;
     this.cancelScheduledRender();
+    this.cancelQueuedRender();
     this.surface.removeEventListener("pointerdown", this.onSurfacePointerDown);
     this.surface.removeEventListener("pointermove", this.onSurfacePointerMove);
     this.element.removeEventListener("keydown", this.onElementKeydown);
@@ -1105,8 +1114,11 @@ export class PerspectiveEditor {
           [corner]: { ...position },
         } as Quad);
       this.quad = cloneQuad(moved);
-      if (updateOverlayImmediately) this.updateOverlay();
       this.scheduleFrame();
+      // Edge assistance and camera translation are painted in the same frame.
+      // Marking this revision as positioned lets the editor rAF skip a second
+      // full overlay write unless a newer pointer sample arrives first.
+      if (updateOverlayImmediately) this.updateOverlay();
     };
     this.distortCameraUpdate = (pointerId, translation): boolean => {
       if (finished || pointerId !== event.pointerId || this.disabled || this.disposed) {
@@ -1355,6 +1367,7 @@ export class PerspectiveEditor {
       }
     }
     this.updateTransformPivot();
+    this.overlayRevision = this.geometryRevision;
   }
 
   private updateTransformPivot(): void {
@@ -1374,19 +1387,49 @@ export class PerspectiveEditor {
   // overlay, change notification, and render work is coalesced per rAF tick.
   private scheduleFrame(): void {
     this.renderGeneration += 1;
+    this.geometryRevision += 1;
     if (this.animationFrame !== undefined || this.disposed) return;
     this.animationFrame = requestAnimationFrame(() => {
       this.animationFrame = undefined;
-      this.updateOverlay(this.dragCleanup === undefined);
+      if (this.overlayRevision !== this.geometryRevision) {
+        this.updateOverlay(this.dragCleanup === undefined);
+      }
       this.options.onChange?.(this.captureSpec());
-      void this.render(this.renderGeneration);
+      void this.requestRender(this.renderGeneration);
     });
   }
 
   private async renderImmediately(): Promise<boolean> {
     this.cancelScheduledRender();
     const generation = ++this.renderGeneration;
-    return this.render(generation);
+    return this.requestRender(generation);
+  }
+
+  /**
+   * WebAssembly solve work cannot be interrupted once it enters the bridge.
+   * Keep exactly one solve/render in flight and replace only the queued
+   * intermediate sample, so pointer frequency cannot build a backlog.
+   */
+  private requestRender(generation: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.queuedRender?.resolve(false);
+      this.queuedRender = { generation, resolve };
+      this.pumpRenderQueue();
+    });
+  }
+
+  private pumpRenderQueue(): void {
+    if (this.renderInFlight || this.disposed) return;
+    const request = this.queuedRender;
+    if (!request) return;
+    this.queuedRender = undefined;
+    this.renderInFlight = true;
+    void this.render(request.generation)
+      .then(request.resolve)
+      .finally(() => {
+        this.renderInFlight = false;
+        this.pumpRenderQueue();
+      });
   }
 
   private async render(generation: number): Promise<boolean> {
@@ -1478,6 +1521,12 @@ export class PerspectiveEditor {
     if (this.animationFrame === undefined) return;
     cancelAnimationFrame(this.animationFrame);
     this.animationFrame = undefined;
+  }
+
+  private cancelQueuedRender(): void {
+    const queued = this.queuedRender;
+    this.queuedRender = undefined;
+    queued?.resolve(false);
   }
 
   private assertAvailable(): void {

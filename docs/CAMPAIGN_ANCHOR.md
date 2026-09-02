@@ -571,3 +571,51 @@ The exact build was not installed into Figma Desktop and no live document was
 mutated, so installed-host human runtime remains unobserved. Timeline remains
 excluded for the stated product-contract reason. No commit, push, publication,
 deployment, upload, or existing-worktree discard occurred.
+
+## Figma perspective interaction and output-density closeout
+
+On 2026-09-02 the owner authorized repair of the Perspective drag path, the
+4096-pixel Figma raster boundary, post-error Apply recovery, and a quiet live
+pixel-size readout. The implemented carrier keeps logical transform geometry
+separate from raster density: `Fit to Figma` is the default and proportionally
+caps the rendered raster at 4096 pixels per axis without changing placement;
+`Keep original pixels` is an explicit session policy that blocks Apply only
+while the requested raster is over the limit. The lower-right readout shows
+source, requested, and—when fitted—actual raster dimensions, so growth,
+shrinkage, and automatic fitting are visible before Apply.
+
+The drag path now keeps direct handle and overlay feedback frame-coalesced while
+allowing only one expensive Distort preview render in flight; the newest queued
+geometry replaces older queued work and stale renders cannot publish. Edge
+auto-pan exposes a temporary directional wash and clears it immediately when
+the pointer returns. Every accepted geometry change recomputes validity and
+output density, so moving an over-limit result back under the limit re-enables
+Apply without reopening the plugin. Stored Figma results retain both logical
+placement and raster dimensions, and reload uses the stored raster dimensions
+rather than conflating them with the document rectangle size.
+
+Fresh `pnpm check` is PASS, including formatting, clippy, the complete Rust
+workspace, 166 Web tests, 159 Figma tests, carrier compilation and schema drift,
+type checks, Figma builds, package/stage validation, live CLI/MCP smoke,
+Capability conformance, and built-artifact checks. The current Figma package is
+511,246 runtime bytes, 479,004 archive bytes, and 1,086,757 unpacked bytes,
+inside the declared ceilings.
+
+Rendered built-UI observations covered the 4000 x 3000 source sequence: an
+outward drag requested 5316 x 3000 pixels and visibly fitted it to 4096 x 2312;
+the original-pixel policy disabled Apply; the first inward drag returned to
+4000 x 3000, cleared the limit state, and re-enabled Apply. The fitted Apply
+carrier emitted a 4096 x 2415 raster with independent 5089 x 3000 placement.
+The Web performance page recorded 501 pointer inputs with input-to-draw p95
+15.8 ms, no frames over 20 ms, and no long tasks. A 228-input built Figma-panel
+run recorded input-to-draw p95 1.0 ms, one frame over 20 ms, no frames over
+34 ms, and no long tasks. Clean runs produced no console warnings or errors.
+
+The already-installed Development entry was opened successfully in Figma
+Desktop against the current built files and reached the no-selection state. It
+was then closed without selecting a layer or mutating the owner's active
+document. Installed-host startup is therefore observed; installed-host
+selected-source drag and Apply remain unobserved rather than inferred from the
+built browser carrier. Business and visual acceptance remain owner decisions.
+No commit, push, publication, deployment, upload, plugin installation, or
+existing-worktree discard occurred.

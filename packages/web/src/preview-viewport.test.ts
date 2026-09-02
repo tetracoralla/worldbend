@@ -469,6 +469,40 @@ describe("createPreviewViewport", () => {
     });
   });
 
+  it("reports a quiet directional edge cue only while assistance is active", () => {
+    const mount = fakeMount();
+    const { editor } = fakeEditor(400, 200);
+    const onEdgePanChange = vi.fn();
+    const viewport = createPreviewViewport(editor, mount as unknown as HTMLElement, {
+      onEdgePanChange,
+    });
+    viewport.resetScale();
+    viewport.handleDistortGesture({
+      phase: "start",
+      corner: "br",
+      pointerId: 41,
+      client: { x: 400, y: 200 },
+      perspective: false,
+    });
+    viewport.handleDistortGesture({
+      phase: "update",
+      corner: "br",
+      pointerId: 41,
+      client: { x: 490, y: 290 },
+      perspective: false,
+    });
+    expect(onEdgePanChange).toHaveBeenLastCalledWith({ x: "right", y: "bottom" });
+
+    viewport.handleDistortGesture({
+      phase: "update",
+      corner: "br",
+      pointerId: 41,
+      client: { x: 250, y: 150 },
+      perspective: false,
+    });
+    expect(onEdgePanChange).toHaveBeenLastCalledWith({});
+  });
+
   it("auto-pans only the captured Perspective axis", () => {
     const mount = fakeMount();
     const { editor } = fakeEditor(400, 200);

@@ -184,7 +184,17 @@
       .transform-icon-button:last-child .action-tooltip { right: 0; left: auto; transform: translate(0, -2px); }
       .transform-icon-button:last-child:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
       #error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; max-height: 72px; margin: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
-      #editor { position: relative; min-width: 0; min-height: 0; flex: 1; padding: 20px; background: var(--figma-color-bg-secondary, #f3f3f3); overflow: hidden; }
+      #editor { --edge-pan-left: transparent; --edge-pan-right: transparent; --edge-pan-top: transparent; --edge-pan-bottom: transparent; position: relative; min-width: 0; min-height: 0; flex: 1; padding: 20px; background: var(--figma-color-bg-secondary, #f3f3f3); overflow: hidden; }
+      #editor::after { position: absolute; z-index: 1; inset: 0; content: ""; background: linear-gradient(to right, var(--edge-pan-left), transparent 46px), linear-gradient(to left, var(--edge-pan-right), transparent 46px), linear-gradient(to bottom, var(--edge-pan-top), transparent 46px), linear-gradient(to top, var(--edge-pan-bottom), transparent 46px); opacity: .72; pointer-events: none; transition: opacity 100ms ease-out; }
+      #editor[data-edge-pan-x="left"] { --edge-pan-left: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #editor[data-edge-pan-x="right"] { --edge-pan-right: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #editor[data-edge-pan-y="top"] { --edge-pan-top: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #editor[data-edge-pan-y="bottom"] { --edge-pan-bottom: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #output-size { position: absolute; z-index: 2; right: 9px; bottom: 8px; display: grid; justify-items: end; max-width: calc(100% - 18px); border-radius: 5px; padding: 3px 5px; color: var(--figma-color-text-tertiary, #8a8a8a); background: color-mix(in srgb, var(--figma-color-bg, #fff) 76%, transparent); font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1.25; pointer-events: none; }
+      #output-size[hidden] { display: none; }
+      #output-size-flow { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #output-size-note { color: var(--figma-color-text-brand, #0d99ff); font-size: 9px; }
+      #output-size[data-blocked="true"] #output-size-note { color: var(--figma-color-text-danger, #d32f2f); }
       .worldbend-editor { position: relative; width: fit-content; max-width: 100%; max-height: 100%; }
       .worldbend-editor:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 3px; }
       .worldbend-editor__canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
@@ -192,7 +202,7 @@
       .worldbend-editor__reference { fill: none; stroke: var(--figma-color-border, #bdbdbd); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
       .worldbend-editor__grid-line { fill: none; stroke: var(--figma-color-border-brand-strong, #0d99ff); stroke-width: 1; stroke-opacity: .42; vector-effect: non-scaling-stroke; }
       .worldbend-editor__polygon { fill: none; stroke: var(--figma-color-border-brand-strong, #0d99ff); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-      .worldbend-editor__handle { position: absolute; left: 0; top: 0; width: 32px; height: 32px; margin: 0; padding: 0; transform: translate3d(var(--worldbend-control-x, 0), var(--worldbend-control-y, 0), 0) translate(-50%, -50%) scale(var(--worldbend-viewport-control-scale, 1)); transform-origin: center; border: 0; border-radius: 50%; background: transparent; cursor: move; touch-action: none; will-change: transform; }
+      .worldbend-editor__handle { position: absolute; z-index: 3; left: 0; top: 0; width: 32px; height: 32px; margin: 0; padding: 0; transform: translate3d(var(--worldbend-control-x, 0), var(--worldbend-control-y, 0), 0) translate(-50%, -50%) scale(var(--worldbend-viewport-control-scale, 1)); transform-origin: center; border: 0; border-radius: 50%; background: transparent; cursor: move; touch-action: none; will-change: transform; }
       .worldbend-editor__handle::after { position: absolute; inset: 10px; content: ""; border: 2px solid var(--figma-color-border-brand-strong, #0d99ff); border-radius: 50%; background: var(--figma-color-bg, #fff); }
       .worldbend-editor[data-dragging="true"] .worldbend-editor__handle[data-active="true"] { z-index: 3; cursor: grabbing; }
       .worldbend-editor[data-dragging="true"] .worldbend-editor__handle[data-active="true"]::after { border-color: var(--figma-color-bg, #fff); background: var(--figma-color-bg-brand, #0d99ff); box-shadow: 0 0 0 2px var(--figma-color-border-brand-strong, #0d99ff), 0 2px 8px rgb(0 0 0 / 24%); }
@@ -259,6 +269,17 @@
             <div id="settings-popover" role="menu" aria-label="More options" hidden>
               <button id="action-apply-copy" class="menu-option" type="button" role="menuitem">Apply as New Image</button>
               <p id="shortcut-help" class="menu-shortcuts">Shift switches Distort · Space pans · ⌘/Ctrl 0 fits · ⌘/Ctrl 1 shows 100%</p>
+              <p id="output-settings-title" class="menu-section-title">Output pixels</p>
+              <button id="output-policy-fit" class="menu-option" type="button" role="menuitemradio" aria-checked="true">
+                <span id="output-policy-fit-label">Fit to Figma</span>
+                <small id="output-policy-fit-detail">Reduce pixel density only when an axis exceeds 4096 px</small>
+                <span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              </button>
+              <button id="output-policy-original" class="menu-option" type="button" role="menuitemradio" aria-checked="false">
+                <span id="output-policy-original-label">Keep original pixels</span>
+                <small id="output-policy-original-detail">Disable Apply when the requested raster is too large</small>
+                <span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              </button>
               <p id="settings-title" class="menu-section-title">Language</p>
               <button class="menu-option" type="button" role="menuitemradio" data-locale="system" aria-checked="true">
                 <span id="locale-system">Automatic</span>
@@ -380,7 +401,7 @@
           </div>
         </div>
       </header>
-      <div id="editor"></div>
+      <div id="editor"><output id="output-size" aria-live="off" hidden><span id="output-size-flow"></span><span id="output-size-note"></span></output></div>
       <footer id="action-dock">
         <div id="session-actions">
           <button id="reset" type="button">Reset</button>

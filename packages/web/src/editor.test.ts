@@ -240,11 +240,46 @@ describe("PerspectiveEditor interaction pipeline", () => {
 
     const late = editor.setSpec(candidate, { width: 200, height: 100 });
     editor.invalidatePendingRender();
-    await editor.setSpec(fallback, { width: 200, height: 100 });
+    const restored = editor.setSpec(fallback, { width: 200, height: 100 });
+    // A superseded bridge call is allowed to finish, but the latest request
+    // waits behind it instead of starting a second solve concurrently.
     releaseCandidate?.(solvedOutput);
+    await restored;
 
     await expect(late).resolves.toBe(false);
     expect(editor.captureSpec()).toEqual(fallback);
+  });
+
+  it("keeps one preview solve in flight and renders the latest queued spec", async () => {
+    const editor = await createEditorWithSource({});
+    solveTransform.mockClear();
+    let releaseFirst: ((value: typeof solvedOutput) => void) | undefined;
+    solveTransform.mockImplementationOnce(
+      () => new Promise<typeof solvedOutput>((resolve) => { releaseFirst = resolve; }),
+    );
+    solveTransform.mockResolvedValueOnce(solvedOutput);
+    const firstSpec = normalizedSpec({
+      tl: { x: 0.05, y: 0.05 },
+      tr: { x: 1, y: 0 },
+      br: { x: 1, y: 1 },
+      bl: { x: 0, y: 1 },
+    });
+    const latestSpec = normalizedSpec({
+      tl: { x: 0.1, y: 0.1 },
+      tr: { x: 0.95, y: 0.05 },
+      br: { x: 1, y: 1 },
+      bl: { x: 0, y: 1 },
+    });
+
+    const first = editor.setSpec(firstSpec, { width: 200, height: 100 });
+    const latest = editor.setSpec(latestSpec, { width: 200, height: 100 });
+    expect(solveTransform).toHaveBeenCalledTimes(1);
+    releaseFirst?.(solvedOutput);
+
+    await expect(first).resolves.toBe(false);
+    await expect(latest).resolves.toBe(true);
+    expect(solveTransform).toHaveBeenCalledTimes(2);
+    expect(solveTransform.mock.calls[1]?.[0]).toEqual(latestSpec);
   });
 
   it("rejects a pixel-space spec on both source and spec entry points", async () => {
@@ -621,11 +656,12 @@ describe("PerspectiveEditor interaction pipeline", () => {
     handle.emit("pointerdown", pointerEvent({ currentTarget: handle }));
 
     const fail = async (message: string): Promise<void> => {
+      const previousCount = onError.mock.calls.length;
       solveTransform.mockRejectedValueOnce(new Error(message));
       handle.emit("pointermove", pointerEvent({ clientX: 200, clientY: 60 }));
       flushFrame();
       await vi.waitFor(() => {
-        expect(onError).toHaveBeenCalled();
+        expect(onError.mock.calls.length).toBe(previousCount + 1);
       });
     };
 

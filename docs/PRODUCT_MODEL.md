@@ -254,7 +254,8 @@ Invalid input returns one stable structured error without speculative retries.
 - PSD compatibility;
 - cloud rendering, accounts, collaboration, or operating a marketplace;
 - 6K/8K Figma tiling. Figma's single-image API is capped at 4096 px per axis;
-  the current adapter rejects larger results while the CLI remains the
+  the current adapter can visibly reduce raster density to fit that boundary
+  while preserving document geometry, and the CLI remains the full-density
   high-resolution route.
 
 Perception may later produce four proposed points, but it must remain an
