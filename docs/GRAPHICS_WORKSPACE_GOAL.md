@@ -1,6 +1,6 @@
 # Worldbend graphics workspace goal
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 This is the durable recovery and closeout anchor for the owner-confirmed product
 direction. It distinguishes the long-term target from the current executable
@@ -363,3 +363,127 @@ selected-source Apply and installed ComfyUI host execution remain unobserved.
 Business, visual, and task-fit acceptance remain `Pending` for the owner. No
 commit, push, publication, deployment, upload, installation, or existing-worktree
 discard occurred.
+
+## Active reliability and installed-runtime campaign — 2026-09-03
+
+The owner authorized continuation from the source-superset closeout to a
+trustworthy release candidate and then to further product value justified by
+current runtime facts. This campaign does not treat the preceding aggregate
+green run or review reports as completion authority. Current source, rerunnable
+checks, installed carriers, real-host flows, and owner experience acceptance
+remain separate.
+
+The campaign finish line is:
+
+1. close every engineering debt retained by the third review, including output
+   digest verification, blocking-work isolation, operation-specific timeout
+   reporting, PSD parser-boundary disclosure, the named stateful Figma
+   sequences, tiled-format coverage, PSD limit coverage, per-family
+   cancellation/recovery coverage, and the small mapping/budget/parser hygiene
+   items;
+2. rebuild and exercise the installed Agent route through its actual plugin and
+   live tool registry, including dominant valid, invalid, cancellation, and
+   recovery paths without relying on a generic fallback;
+3. exercise an installed Figma selected-source flow and a real ComfyUI host
+   flow when those hosts and an owner-authorized document/workflow are
+   available, without mutating an unapproved external document;
+4. calibrate the narrow PSD/PSB boundary against Photoshop-produced fixtures,
+   including Smart Object and PSB variants, when an authoritative corpus is
+   available; and
+5. use those current observations to choose and implement only the next
+   source-backed improvements in PSD compatibility, Figma production work,
+   Comfy sequence execution, or the explicitly selected assisted-perception
+   Provider. Competitor behavior and prior reports remain discovery inputs,
+   not product authority.
+
+The in-repository P3 closure preceded installed runtime work so that the tested
+runtime target remained stable. The campaign is technically closed below only
+because focused negative regressions, the full repository check, rebuilt
+distributions, and the reachable installed-host flows all completed against
+the resulting source. Wider Photoshop-authoring and owner acceptance lanes
+remain separately named rather than being inferred from those checks.
+
+Recovery state:
+
+- baseline: `main` at `0f2332248f3526a2b23ae0be601bb7b74fae5cb3`, seven
+  commits ahead of `origin/main`, clean at campaign entry;
+- final owner-authorized re-review: current source and runtime inspection found
+  that ordinary single-file renders plus Canvas and Mockup Extract still
+  trusted some worker-reported digests, and ordinary render timeout/cancellation
+  text still used a generic operation label. The controller now re-hashes every
+  published file family, moves the remaining directory validation off the
+  async executor, reports the active operation, and retains same-length digest
+  mismatch regressions before publication;
+- current segment: the complete third-review P3 list is implemented with
+  focused regressions. Installed Agent execution, an isolated official ComfyUI
+  host, an authorized new Figma draft, and traced Photoshop PSD/PSB bytes have
+  now replaced the previously unobserved local runtime claims;
+- installed Agent observation: the locally installed `0.1.0` plugin matched
+  all 297 staged files, exposed the three-tool compact and eight-tool direct
+  registries, passed installed-schema/Capability checks, and completed the
+  full MCP runtime smoke. A repeated local installation passed, establishing
+  the refresh path rather than only the first copy;
+- installed Figma observation: in the dedicated draft `Worldbend Installed
+  Runtime 2026-09-03`, the registered development plugin applied a corner edit,
+  replaced the prior result in place, restored the preceding geometry through
+  host Undo, rejected a 5000 by 5000 source with the explicit 4096-axis error,
+  recovered at exactly 4096, and returned the source to 449 by 337. This is a
+  current primary-flow observation, not owner visual or business acceptance;
+- real Comfy observation: official ComfyUI `v0.34.2` at commit
+  `169fcf35a2fc163fec31338b816503ddac0d3fcf` loaded the packaged nodes in an
+  isolated Python 3.11 CPU host. Its RGB `LoadImage` exposed an undocumented
+  all-zero 64 by 64 MASK sentinel, which initially failed against a 1536 by
+  1024 IMAGE. The adapter now expands only that exact empty sentinel, rejects a
+  non-empty mismatch, and the same real workflow succeeded immediately after
+  the negative sequence. A second fresh host then exposed an outputless Remap
+  API example; the example now previews both reused outputs and packaging
+  rejects every example without a Preview or Save node. Transform,
+  Rectification, Canvas, and Remap examples all executed from the rebuilt
+  package. Three quality levels, tight/reference canvas, explicit dimensions,
+  returned MASK visualization, invalid geometry, `B = 2`, cancellation, and
+  immediate recovery were also exercised; cancellation left no native child
+  or adapter temporary directory. The final local archive is 1,750,277 bytes
+  with SHA-256
+  `687db15d131af668afba2b2c6f66b6154f4ee69749cbc36137232e5ba1d825d0`.
+  Both temporary hosts were stopped and removed;
+- Photoshop corpus observation: traced Photoshop CC 2014/2017 PSD and PSB
+  Smart Object fixtures from `psd-tools` were inspected and projected by the
+  full CLI. Both formats produced three eligible, correlated planes. The
+  smallest PSD/PSB pair, upstream commit, hashes, and MIT license are now a
+  repository regression rather than a prose-only dependency. The PSD also
+  crossed the installed/staged Agent distribution through an explicit granted
+  root, private staging, isolated worker, and digest verification; inspection
+  and three-slot planning passed with zero private-staging residue;
+- final development validation: current `pnpm check` exited zero with 287 Rust
+  tests, 14 script tests, 168 Web tests, and 180 Figma tests, plus clippy,
+  property checks, schema/contract drift, real normal/Figma WASM builds,
+  package isolation, performance smoke, staged-plugin validation, built MCP
+  runtime smoke, Capability conformance, and built-artifact checks. Separate
+  `pnpm test:comfyui` passed 32 tests and the rebuilt Comfy archive passed its
+  executable-example packaging check;
+- final installed Agent refresh: the plugin was reinstalled from this exact
+  post-check source and again matched 297 staged files. Direct compose used no
+  model calls or tokens across 25 samples (observed p50 2.636 ms, p95 5.585 ms),
+  and the installed runtime smoke again passed all six extended-family queued
+  cancellation/recovery sequences with 6 ms observed cleanup. The final
+  post-review refresh and readback observed direct-compose p50
+  2.121–4.034 ms and p95 2.658–5.816 ms across two 25-sample runs;
+- current blockers: Photoshop is not installed, so custom/quilt Warp and
+  Smart Filter authoring cannot be freshly produced here. The real corpus
+  closes ordinary placed-layer PSD/PSB calibration only; widening that claim
+  requires owner- or CI-supplied traced Photoshop fixtures for the named
+  variants. Figma owner visual/business acceptance remains owner-only;
+- source-backed expansion decision: this campaign implemented the two defects
+  exposed by the current Comfy host and promoted the traced Photoshop corpus
+  into executable compatibility checks. The installed assisted-perception
+  route passed its existing explicit-provider runtime sequence; no new
+  perception behavior or Figma workspace was invented without a current user
+  requirement or failing runtime fact;
+- next closeout target: capture this owner-reviewed stable worktree in one local
+  commit. A future
+  compatibility campaign starts from new traced Photoshop variants, a
+  persistent supported Comfy installation on another platform, or a concrete
+  Figma production task rather than broadening claims from this run;
+- commit policy: the latest owner instruction authorizes this one local closeout
+  commit after verification. Push, publication, deployment, upload, and
+  mutation of an unapproved external document remain unauthorized.

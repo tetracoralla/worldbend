@@ -211,6 +211,44 @@ class AdapterIntegrationTests(unittest.TestCase):
             adapter.apply_transform(image, transform, mask=mask)
         self.assertEqual(raised.exception.code, "E_SCHEMA")
 
+    def test_comfy_load_image_empty_mask_sentinel_expands_to_source(self) -> None:
+        transform = adapter.create_transform(IDENTITY_SPEC)
+        image = torch.ones((1, 2, 3, 3), dtype=torch.float32)
+        load_image_mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+
+        output_image, output_mask, _ = adapter.apply_transform(
+            image,
+            transform,
+            canvas="reference",
+            mask=load_image_mask,
+        )
+
+        self.assertEqual(tuple(output_image.shape), (1, 2, 3, 3))
+        self.assertEqual(tuple(output_mask.shape), (1, 2, 3))
+        self.assertTrue(torch.equal(output_mask, torch.zeros_like(output_mask)))
+
+    def test_nonempty_mismatched_mask_is_not_treated_as_a_host_sentinel(self) -> None:
+        transform = adapter.create_transform(IDENTITY_SPEC)
+        image = torch.zeros((1, 2, 3, 3), dtype=torch.float32)
+        mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+        mask[0, 0, 0] = 1.0
+
+        with self.assertRaises(adapter.WorldbendNodeError) as raised:
+            adapter.apply_transform(image, transform, mask=mask)
+
+        self.assertEqual(raised.exception.code, "E_SCHEMA")
+
+    def test_mismatched_mask_reports_its_shape_before_value_range(self) -> None:
+        transform = adapter.create_transform(IDENTITY_SPEC)
+        image = torch.zeros((1, 2, 3, 3), dtype=torch.float32)
+        mask = torch.full((1, 64, 64), 2.0, dtype=torch.float32)
+
+        with self.assertRaises(adapter.WorldbendNodeError) as raised:
+            adapter.apply_transform(image, transform, mask=mask)
+
+        self.assertEqual(raised.exception.code, "E_SCHEMA")
+        self.assertIn("shape", raised.exception.message)
+
     def test_target_dimensions_are_all_or_nothing(self) -> None:
         with self.assertRaises(adapter.WorldbendNodeError) as raised:
             adapter.create_transform(IDENTITY_SPEC, 512, 0)

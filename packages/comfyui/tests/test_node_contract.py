@@ -102,6 +102,20 @@ class NodeContractTests(unittest.TestCase):
         self.assertEqual(workflow["6"]["inputs"]["remap"], ["3", 0])
         self.assertEqual(workflow["4"]["inputs"]["displacement_map"], ["2", 0])
         self.assertEqual(workflow["6"]["inputs"]["displacement_map"], ["2", 0])
+        self.assertEqual(workflow["7"]["inputs"]["images"], ["4", 0])
+        self.assertEqual(workflow["8"]["inputs"]["images"], ["6", 0])
+
+    def test_every_api_example_contains_a_comfy_output_node(self) -> None:
+        for example in sorted((PACKAGE_ROOT / "examples").glob("*-api-workflow.json")):
+            with self.subTest(example=example.name):
+                workflow = json.loads(example.read_text(encoding="utf-8"))
+                self.assertTrue(
+                    any(
+                        node.get("class_type") in {"PreviewImage", "SaveImage"}
+                        for node in workflow.values()
+                    ),
+                    f"{example.name} must be executable through Comfy's prompt API",
+                )
 
 
 if __name__ == "__main__":

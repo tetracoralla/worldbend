@@ -47,7 +47,10 @@ See Comfy's official [V3 migration reference](https://docs.comfy.org/custom-node
   control images on the same deterministic geometry.
 
 The MASK convention matches ComfyUI `LoadImage`: `1` is transparent/masked and
-therefore becomes source alpha `0`. The native renderer currently publishes
+therefore becomes source alpha `0`. When `LoadImage` supplies its all-zero
+64 x 64 sentinel for an image without alpha, Worldbend expands that sentinel
+to an all-visible mask at the IMAGE dimensions; a non-empty mismatched mask is
+still rejected. The native renderer currently publishes
 8-bit RGBA PNG, so tensor conversion is intentionally 8-bit. Inputs and outputs
 are capped at 8192 pixels per axis and 32 Mi pixels per image. A Canvas Set is
 further capped at 16 Mi output pixels cumulatively because all heterogeneous

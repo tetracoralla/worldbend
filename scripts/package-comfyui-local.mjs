@@ -58,7 +58,18 @@ for (const entry of comfyPackageProfile.sourceEntries) {
   await copyFile(path.join(sourceRoot, entry), path.join(outputRoot, entry));
 }
 for (const entry of comfyPackageProfile.exampleEntries) {
-  await copyFile(path.join(sourceRoot, entry), path.join(outputRoot, entry));
+  const source = path.join(sourceRoot, entry);
+  const destination = path.join(outputRoot, entry);
+  const workflow = JSON.parse(await readFile(source, "utf8"));
+  if (
+    !Object.values(workflow).some(
+      (node) =>
+        node?.class_type === "PreviewImage" || node?.class_type === "SaveImage",
+    )
+  ) {
+    throw new Error(`ComfyUI API example has no executable output node: ${entry}`);
+  }
+  await copyFile(source, destination);
 }
 const stagedBinary = path.join(outputRoot, "bin", binaryName);
 await copyFile(path.join(root, "target", "release", binaryName), stagedBinary);

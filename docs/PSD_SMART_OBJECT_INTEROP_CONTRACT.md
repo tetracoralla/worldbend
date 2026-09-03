@@ -50,6 +50,32 @@ Smart Object may also be present. This is a fail-closed parser limitation, not
 a claim that such Photoshop documents contain no eligible object; calibration
 requires real Photoshop-produced PSD/PSB fixtures.
 
+The current parser gives `SoLd` metadata precedence over `PlLd`: `PlLd` only
+populates an empty placed-layer record, while `SoLd` replaces the record. An
+unusual document containing a useful `SoLd` transform without Warp plus a
+separate `PlLd` Warp can therefore hide that Warp before Worldbend classifies
+the final projected object, regardless of the two blocks' order. This is a
+narrow parser limitation, not permission to treat the source as warp-free;
+real Photoshop fixtures and adversarial dual-block inputs remain required
+before broadening the compatibility claim.
+
+## Traced Photoshop calibration
+
+The regression corpus includes exact `placedLayer.psd` and `placedLayer.psb`
+bytes from `psd-tools/psd-tools` commit
+`6fb7bd5215069ed63cbe009e921c3f33aa97a3ec`. The upstream suite uses the PSD
+as a Smart Object fixture; embedded XMP names Adobe Photoshop CC 2014
+(Macintosh) as creator, and the PSB history also records Photoshop CC 2017.
+Their origin, MIT license, and SHA-256 values are retained beside the fixtures.
+
+Both containers must inspect as 256 by 256 RGB/8 documents with four visited
+layers and three eligible Smart Objects named `linked-png`, `linked-psd`, and
+`embedded-png`. Selecting all three in order must produce three correlated
+source slots and planes plus one validated `composite` Spatial Template output.
+This is real-byte calibration for those named Photoshop versions and ordinary
+placed layers; it is not broad acceptance of every Photoshop release, custom
+or quilt Warp, Smart Filter, color mode, or adversarial descriptor combination.
+
 ## Spatial Template projection
 
 Template planning accepts 1..16 unique eligible adapter IDs in caller-declared

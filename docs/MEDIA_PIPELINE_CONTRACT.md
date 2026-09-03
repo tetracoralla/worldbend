@@ -83,7 +83,7 @@ Every tile samples in the same global coordinate system; tile boundaries do
 not restart projection or filtering.
 
 The engine bounds the virtual canvas to 262,144 pixels per axis, 1 billion
-output pixels, 4,096 tiles, 16 Mi pixels per independently allocated tile, and
+output pixels, 4,096 tiles, 12 Mi pixels per independently allocated tile, and
 8 GiB encoded output. The Agent projection is narrower: 64 MiP, 512 tiles, and
 512 MiB. Its 512-tile ceiling is passed into the worker and checked before tile
 rendering rather than imposed only on the returned manifest. A normalized

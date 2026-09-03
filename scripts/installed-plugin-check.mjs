@@ -255,12 +255,12 @@ try {
         input: `${JSON.stringify({
           id: "installed-check",
           operationId: "inspect",
-          input: { spec: makePixelSpec() },
+          input: { spec: makeCapabilitySpec() },
         })}\n`,
       })
     ).stdout,
   );
-  assert.equal(capabilityInspect.ok, true);
+  assert.equal(capabilityInspect.ok, true, JSON.stringify(capabilityInspect.error));
   assert.equal(capabilityInspect.result.bounds.width, 100);
   const durations = [];
   let result;
@@ -369,6 +369,13 @@ function makePixelSpec() {
         bl: { x: 0, y: 50 },
       },
     },
+  };
+}
+
+function makeCapabilitySpec() {
+  return {
+    ...makePixelSpec(),
+    schema: "projective.transform",
   };
 }
 

@@ -233,7 +233,7 @@ pub fn execute_psd_smart_object_request(
 
 pub fn inspect_psd_smart_objects(bytes: &[u8]) -> TransformResult<PsdSmartObjectInspection> {
     let header = inspect_header(bytes)?;
-    if contains_descriptor_key(bytes, b"filterFX") {
+    if smart_object_descriptor_contains_key(bytes, b"filterFX") {
         return Err(TransformError::new(
             ErrorCode::UnsupportedMedia,
             "PSD Smart Filter descriptors are unsupported",
@@ -751,14 +751,46 @@ fn map_read_error(error: ReadError) -> TransformError {
         .with_details(json!({ "reason": bounded_text(&error.to_string(), 256) }))
 }
 
-fn contains_descriptor_key(bytes: &[u8], key: &[u8]) -> bool {
+fn smart_object_descriptor_contains_key(bytes: &[u8], key: &[u8]) -> bool {
     let Ok(length) = u32::try_from(key.len()) else {
         return false;
     };
     let mut marker = Vec::with_capacity(4 + key.len());
     marker.extend_from_slice(&length.to_be_bytes());
     marker.extend_from_slice(key);
-    bytes.windows(marker.len()).any(|window| window == marker)
+    bytes.windows(8).enumerate().any(|(offset, header)| {
+        let (length_bytes, payload_signature): (usize, &[u8]) = match header {
+            b"8BIMSoLd" | b"8BIMSoLE" => (4, b"soLD"),
+            b"8BIMPlLd" => (4, b"plcL"),
+            b"8B64SoLd" | b"8B64SoLE" => (8, b"soLD"),
+            b"8B64PlLd" => (8, b"plcL"),
+            _ => return false,
+        };
+        let length_start = offset + 8;
+        let payload_start = length_start + length_bytes;
+        let Some(length_slice) = bytes.get(length_start..payload_start) else {
+            return false;
+        };
+        let payload_len = match length_bytes {
+            4 => u32::from_be_bytes(length_slice.try_into().expect("length checked")) as usize,
+            8 => {
+                let length = u64::from_be_bytes(length_slice.try_into().expect("length checked"));
+                let Ok(length) = usize::try_from(length) else {
+                    return false;
+                };
+                length
+            }
+            _ => unreachable!("additional-info lengths are four or eight bytes"),
+        };
+        let Some(payload_end) = payload_start.checked_add(payload_len) else {
+            return false;
+        };
+        let Some(payload) = bytes.get(payload_start..payload_end) else {
+            return false;
+        };
+        payload.starts_with(payload_signature)
+            && payload.windows(marker.len()).any(|window| window == marker)
+    })
 }
 
 fn near_zero(value: f64) -> bool {
@@ -862,6 +894,62 @@ mod tests {
     }
 
     #[test]
+    fn inspects_and_plans_photoshop_generated_psd_and_psb_fixtures() {
+        let fixtures: [(&[u8], PsdContainerFormat, &str); 2] = [
+            (
+                include_bytes!("../tests/fixtures/photoshop-cc-placed-layer.psd"),
+                PsdContainerFormat::Psd,
+                "69ea01bf88cb85c48d3a78c3bb9e06ae141c9c9fc6a88267eae95c315e16180e",
+            ),
+            (
+                include_bytes!("../tests/fixtures/photoshop-cc-placed-layer.psb"),
+                PsdContainerFormat::Psb,
+                "066eeb1bce9c123ffcb57f380d9a51e0687024fdd264904ed3a44c3d5666490c",
+            ),
+        ];
+
+        for (bytes, expected_format, expected_sha256) in fixtures {
+            let inspection = inspect_psd_smart_objects(bytes).unwrap();
+            assert_eq!(inspection.source.format, expected_format);
+            assert_eq!(inspection.source.sha256, expected_sha256);
+            assert_eq!(inspection.source.document, PixelSize::new(256, 256));
+            assert_eq!(inspection.visited_layer_count, 4);
+            assert_eq!(inspection.smart_objects.len(), 3);
+            assert!(
+                inspection
+                    .smart_objects
+                    .iter()
+                    .all(|object| object.importability == PsdSmartObjectImportability::Eligible)
+            );
+            assert_eq!(
+                inspection
+                    .smart_objects
+                    .iter()
+                    .map(|object| object.layer_path.as_slice())
+                    .collect::<Vec<_>>(),
+                vec![
+                    ["linked-png"].as_slice(),
+                    ["linked-psd"].as_slice(),
+                    ["embedded-png"].as_slice(),
+                ]
+            );
+
+            let selected = inspection
+                .smart_objects
+                .iter()
+                .map(|object| object.id.clone())
+                .collect::<Vec<_>>();
+            let plan = plan_psd_smart_object_template(&inspection, &selected).unwrap();
+            assert_eq!(plan.bindings.len(), 3);
+            assert_eq!(
+                plan.template_inspection.source_slots,
+                vec!["source-0001", "source-0002", "source-0003"]
+            );
+            assert_eq!(plan.template_inspection.outputs[0].id, "composite");
+        }
+    }
+
+    #[test]
     fn malformed_and_oversized_sources_fail_before_parser_use() {
         let error = inspect_psd_smart_objects(b"not a psd").unwrap_err();
         assert_eq!(error.code, ErrorCode::UnsupportedMedia);
@@ -891,12 +979,88 @@ mod tests {
     }
 
     #[test]
-    fn smart_filter_marker_fails_closed_before_parser_projection() {
+    fn smart_filter_scan_is_limited_to_framed_smart_object_descriptors() {
         let mut source = fixture();
         source.extend_from_slice(&8_u32.to_be_bytes());
         source.extend_from_slice(b"filterFX");
-        let error = inspect_psd_smart_objects(&source).unwrap_err();
-        assert_eq!(error.code, ErrorCode::UnsupportedMedia);
+        assert!(!smart_object_descriptor_contains_key(&source, b"filterFX"));
+        assert!(inspect_psd_smart_objects(&source).is_ok());
+
+        let mut payload = b"soLD".to_vec();
+        payload.extend_from_slice(&4_u32.to_be_bytes());
+        payload.extend_from_slice(&8_u32.to_be_bytes());
+        payload.extend_from_slice(b"filterFX");
+        // ag-psd reads the `SoLE` alias through the same `SoLd` reader, so the
+        // guard must cover every framed key the parser can project.
+        for prefix in [
+            &b"8BIMSoLd"[..],
+            &b"8BIMSoLE"[..],
+            &b"8B64SoLd"[..],
+            &b"8B64SoLE"[..],
+        ] {
+            let length_bytes = if prefix.starts_with(b"8B64") { 8 } else { 4 };
+            let framed = frame_smart_object_block(prefix, length_bytes, &payload);
+            assert!(smart_object_descriptor_contains_key(&framed, b"filterFX"));
+            let mut document = fixture();
+            document.extend_from_slice(&framed);
+            let error = inspect_psd_smart_objects(&document).unwrap_err();
+            assert_eq!(error.code, ErrorCode::UnsupportedMedia);
+        }
+
+        let mut placed_payload = b"plcL".to_vec();
+        placed_payload.extend_from_slice(&4_u32.to_be_bytes());
+        placed_payload.extend_from_slice(&8_u32.to_be_bytes());
+        placed_payload.extend_from_slice(b"filterFX");
+        for prefix in [&b"8BIMPlLd"[..], &b"8B64PlLd"[..]] {
+            let length_bytes = if prefix.starts_with(b"8B64") { 8 } else { 4 };
+            let framed = frame_smart_object_block(prefix, length_bytes, &placed_payload);
+            assert!(smart_object_descriptor_contains_key(&framed, b"filterFX"));
+        }
+    }
+
+    fn frame_smart_object_block(prefix: &[u8], length_bytes: usize, payload: &[u8]) -> Vec<u8> {
+        let mut framed = prefix.to_vec();
+        match length_bytes {
+            4 => framed.extend_from_slice(&(payload.len() as u32).to_be_bytes()),
+            _ => framed.extend_from_slice(&(payload.len() as u64).to_be_bytes()),
+        }
+        framed.extend_from_slice(payload);
+        framed
+    }
+
+    #[test]
+    fn layer_depth_and_smart_object_limits_fail_closed() {
+        let layers = (0..=MAX_PSD_LAYERS)
+            .map(|_| Layer::default())
+            .collect::<Vec<_>>();
+        let layer_error = visit_layers(&layers, &[], 1, &mut VisitState::default()).unwrap_err();
+        assert_eq!(layer_error.code, ErrorCode::OutputLimit);
+
+        let mut nested = Layer::default();
+        for _ in 0..MAX_PSD_LAYER_DEPTH {
+            nested = Layer {
+                children: Some(vec![nested]),
+                ..Layer::default()
+            };
+        }
+        let depth_error = visit_layers(&[nested], &[], 1, &mut VisitState::default()).unwrap_err();
+        assert_eq!(depth_error.code, ErrorCode::OutputLimit);
+
+        let smart_objects = (0..=MAX_PSD_SMART_OBJECTS)
+            .map(|index| Layer {
+                additional_info: LayerAdditionalInfo {
+                    placed_layer: Some(PlacedLayer {
+                        id: format!("placed-{index}"),
+                        ..PlacedLayer::default()
+                    }),
+                    ..LayerAdditionalInfo::default()
+                },
+                ..Layer::default()
+            })
+            .collect::<Vec<_>>();
+        let smart_object_error =
+            visit_layers(&smart_objects, &[], 1, &mut VisitState::default()).unwrap_err();
+        assert_eq!(smart_object_error.code, ErrorCode::OutputLimit);
     }
 
     #[test]

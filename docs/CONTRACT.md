@@ -420,10 +420,14 @@ The v0 tensor boundary is `IMAGE [1,H,W,3]` and optional `MASK [1,H,W]`, with
 finite values in `[0,1]`. It rejects every other batch size before rendering.
 The MASK convention follows Comfy `LoadImage`: mask `1` means fully
 transparent, so native source alpha is `1-mask`; returned alpha is converted
-back to `1-alpha`. Fully transparent output pixels do not promise preservation
-of hidden RGB because core filtering is premultiplied-alpha. Tensor exchange
-uses an 8-bit RGBA PNG boundary, so 8-bit quantization is part of this adapter's
-current output contract rather than hidden precision.
+back to `1-alpha`. Current `LoadImage` may supply an all-zero `[1,64,64]` MASK
+sentinel when the IMAGE has no alpha channel; only that exact empty sentinel may
+expand to an all-visible MASK at the actual IMAGE dimensions. Every non-empty
+or differently shaped mismatch remains `E_SCHEMA`. Fully transparent output
+pixels do not promise preservation of hidden RGB because core filtering is
+premultiplied-alpha. Tensor exchange uses an 8-bit RGBA PNG boundary, so 8-bit
+quantization is part of this adapter's current output contract rather than
+hidden precision.
 
 If both target dimensions are zero, a normalized spec validates at a temporary
 unit scale and binds to the incoming IMAGE dimensions at Apply. A pixel spec

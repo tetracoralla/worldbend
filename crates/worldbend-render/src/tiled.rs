@@ -26,7 +26,10 @@ pub const TILED_MEDIA_VERSION: &str = "0.1";
 pub const MAX_TILED_AXIS: u32 = 262_144;
 pub const MAX_TILED_OUTPUT_PIXELS: u64 = 1_000_000_000;
 pub const MAX_TILED_TILES: u32 = 4096;
-pub const MAX_TILED_TILE_PIXELS: u64 = 16 * 1024 * 1024;
+// Leave headroom beneath the 768 MiB Agent worker ceiling for a 12 MiP float
+// source pyramid, one RGBA-f32 tile, one f32 encoder buffer, parser/runtime
+// overhead, and cancellation cleanup to coexist.
+pub const MAX_TILED_TILE_PIXELS: u64 = 12 * 1024 * 1024;
 pub const MAX_TILED_ENCODED_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_EXACT_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -273,7 +276,7 @@ pub fn render_tiled_media_directory_with_cancel(
         },
         losses,
     };
-    let extension = output_extension(&options.output);
+    let extension = super::media::media_output_extension(&options.output);
     let mut tiles = Vec::with_capacity(tile_count as usize);
     let mut encoded_bytes = 0_u64;
     for row in 0..rows {
@@ -524,15 +527,6 @@ fn render_tile(
     })
 }
 
-fn output_extension(output: &MediaOutput) -> &'static str {
-    match output {
-        MediaOutput::Png { .. } => "png",
-        MediaOutput::Tiff { .. } => "tiff",
-        MediaOutput::Jpeg { .. } => "jpg",
-        MediaOutput::WebpLossless { .. } => "webp",
-    }
-}
-
 fn hash_regular_file(path: &Path) -> TransformResult<(u64, String)> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
         TransformError::new(ErrorCode::Render, "failed to inspect tiled output")
@@ -709,9 +703,57 @@ mod tests {
 
     #[test]
     fn rejects_a_single_tile_that_exceeds_the_memory_ceiling() {
-        let mut options = options(8192, 8192);
+        let mut options = options(4096, 4096);
         options.max_output_pixels = MAX_TILED_OUTPUT_PIXELS;
         let error = validate_options(&options).unwrap_err();
         assert_eq!(error.code, ErrorCode::OutputLimit);
+    }
+
+    #[test]
+    fn tiff_and_jpeg_tiles_use_the_declared_encoding_and_extension() {
+        let directory = tempdir().unwrap();
+        let source_path = directory.path().join("source.png");
+        DynamicImage::new_rgba8(2, 2)
+            .save_with_format(&source_path, ImageFormat::Png)
+            .unwrap();
+        let spec = TransformSpec::pixel(Size::new(2.0, 2.0), rectangle(2.0, 2.0));
+        let cases = [
+            (
+                MediaOutput::Tiff {
+                    precision: super::super::OutputPrecision::U16,
+                    icc: IccPolicy::Discard,
+                },
+                "tiff",
+                ImageFormat::Tiff,
+            ),
+            (
+                MediaOutput::Jpeg {
+                    quality: 90,
+                    matte: [255, 255, 255],
+                    icc: IccPolicy::Discard,
+                },
+                "jpg",
+                ImageFormat::Jpeg,
+            ),
+        ];
+        for (index, (output_format, extension, image_format)) in cases.into_iter().enumerate() {
+            let output = directory.path().join(format!("tiles-{index}"));
+            let mut render_options = options(1, 1);
+            render_options.output = output_format;
+            let result =
+                render_tiled_media_directory(&source_path, &spec, &output, render_options, false)
+                    .unwrap();
+            for tile in result.manifest.tiles {
+                assert!(tile.filename.ends_with(&format!(".{extension}")));
+                assert_eq!(
+                    image::ImageReader::open(output.join(tile.filename))
+                        .unwrap()
+                        .with_guessed_format()
+                        .unwrap()
+                        .format(),
+                    Some(image_format)
+                );
+            }
+        }
     }
 }

@@ -119,6 +119,34 @@ pub enum MediaOutput {
     },
 }
 
+pub fn media_output_extension(output: &MediaOutput) -> &'static str {
+    match output {
+        MediaOutput::Png { .. } => "png",
+        MediaOutput::Tiff { .. } => "tiff",
+        MediaOutput::Jpeg { .. } => "jpg",
+        MediaOutput::WebpLossless { .. } => "webp",
+    }
+}
+
+pub fn media_output_accepts_extension(output: &MediaOutput, extension: &str) -> bool {
+    matches!(
+        (output, extension),
+        (MediaOutput::Png { .. }, "png")
+            | (MediaOutput::Tiff { .. }, "tif" | "tiff")
+            | (MediaOutput::Jpeg { .. }, "jpg" | "jpeg")
+            | (MediaOutput::WebpLossless { .. }, "webp")
+    )
+}
+
+pub fn media_output_format_name(output: &MediaOutput) -> &'static str {
+    match output {
+        MediaOutput::Png { .. } => "png",
+        MediaOutput::Tiff { .. } => "tiff",
+        MediaOutput::Jpeg { .. } => "jpeg",
+        MediaOutput::WebpLossless { .. } => "webp",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct MediaRenderOptions {
@@ -779,23 +807,14 @@ fn validate_media_options(options: &MediaRenderOptions, output: &Path) -> Transf
             "JPEG quality must be in 1..100",
         ));
     }
-    let expected = match options.output {
-        MediaOutput::Png { .. } => "png",
-        MediaOutput::Tiff { .. } => "tiff",
-        MediaOutput::Jpeg { .. } => "jpeg",
-        MediaOutput::WebpLossless { .. } => "webp",
-    };
+    let expected = media_output_format_name(&options.output);
     let extension = output
         .extension()
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase);
-    let matches = matches!(
-        (expected, extension.as_deref()),
-        ("png", Some("png"))
-            | ("webp", Some("webp"))
-            | ("tiff", Some("tif" | "tiff"))
-            | ("jpeg", Some("jpg" | "jpeg"))
-    );
+    let matches = extension
+        .as_deref()
+        .is_some_and(|extension| media_output_accepts_extension(&options.output, extension));
     if !matches {
         return Err(TransformError::new(
             ErrorCode::Schema,

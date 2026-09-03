@@ -728,24 +728,36 @@ def _validate_image(image: torch.Tensor) -> torch.Tensor:
 def _validate_mask(mask: torch.Tensor, height: int, width: int) -> torch.Tensor:
     if not isinstance(mask, torch.Tensor):
         _raise("E_SCHEMA", "mask must be a Comfy MASK tensor")
-    if mask.ndim != 3 or tuple(mask.shape) != (1, height, width):
+    if mask.ndim != 3:
         _raise(
             "E_SCHEMA",
             "mask must have shape [1,H,W] matching the IMAGE",
             {"actual": list(mask.shape), "expected": [1, height, width]},
         )
     detached = mask.detach()
-    if not torch.isfinite(detached).all().item():
-        _raise("E_NON_FINITE_COORDINATE", "mask contains NaN or infinite values")
-    minimum = detached.amin().item()
-    maximum = detached.amax().item()
-    if minimum < 0.0 or maximum > 1.0:
-        _raise(
-            "E_SCHEMA",
-            "mask values must stay in the closed [0,1] range",
-            {"minimum": minimum, "maximum": maximum},
-        )
-    return detached.to(device="cpu", dtype=torch.float32).contiguous()
+    if tuple(detached.shape) == (1, height, width):
+        if not torch.isfinite(detached).all().item():
+            _raise("E_NON_FINITE_COORDINATE", "mask contains NaN or infinite values")
+        minimum = detached.amin().item()
+        maximum = detached.amax().item()
+        if minimum < 0.0 or maximum > 1.0:
+            _raise(
+                "E_SCHEMA",
+                "mask values must stay in the closed [0,1] range",
+                {"minimum": minimum, "maximum": maximum},
+            )
+        return detached.to(device="cpu", dtype=torch.float32).contiguous()
+    # ComfyUI LoadImage uses an all-zero 64 x 64 MASK as the host sentinel for
+    # an image that has no alpha channel. It is semantically an all-visible
+    # mask, not a spatial mask that should be resampled to the IMAGE. Accept
+    # only that exact empty sentinel; mismatched non-empty masks remain closed.
+    if tuple(detached.shape) == (1, 64, 64) and torch.count_nonzero(detached).item() == 0:
+        return torch.zeros((1, height, width), dtype=torch.float32, device="cpu")
+    _raise(
+        "E_SCHEMA",
+        "mask must have shape [1,H,W] matching the IMAGE",
+        {"actual": list(detached.shape), "expected": [1, height, width]},
+    )
 
 
 def _validate_target_size(width: int, height: int) -> Optional[tuple[int, int]]:

@@ -189,4 +189,46 @@ describe("Figma designer task main boundary", () => {
     });
     expect(figmaMock.clientStorage.setAsync).not.toHaveBeenCalled();
   });
+
+  it("reports a correlated write failure and keeps the mutation queue usable", async () => {
+    const { figmaMock, posts } = setup(1);
+    figmaMock.clientStorage.setAsync
+      .mockRejectedValueOnce(new Error("storage write failed"))
+      .mockResolvedValueOnce(undefined);
+    await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
+    const template = spatialTemplateFromMockup(defaultMockup([{
+      sourceNodeId: "source-1",
+      sourceName: "Source",
+      renderWidth: 100,
+      renderHeight: 80,
+      placement: { x: 0, y: 20, width: 100, height: 80 },
+      image: {} as HTMLImageElement,
+    }]));
+
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      requestId: 31,
+      name: "First attempt",
+      template,
+    });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({
+      type: "template-library-error",
+      mutation: { kind: "save", requestId: 31 },
+    })));
+
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      requestId: 32,
+      name: "Recovered",
+      template,
+    });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({
+      type: "template-library",
+      mutation: { kind: "save", requestId: 32 },
+      templates: [expect.objectContaining({ name: "Recovered" })],
+    })));
+    expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(2);
+  });
 });

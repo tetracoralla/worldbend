@@ -40,14 +40,15 @@ pub use media::{
     ColorManagement, IccPolicy, MAX_MEDIA_PIXELS, MediaAnalysisRaster, MediaColorModel,
     MediaFileRenderResult, MediaFormat, MediaLoss, MediaOutput, MediaOutputInfo,
     MediaRenderOptions, MediaSampleFormat, MediaSourceInfo, OutputPrecision,
-    decode_media_analysis_file_with_cancel, inspect_media_file, render_media_file,
+    decode_media_analysis_file_with_cancel, inspect_media_file, media_output_accepts_extension,
+    media_output_extension, media_output_format_name, render_media_file,
     render_media_file_with_cancel,
 };
 pub use tiled::{
-    MAX_TILED_AXIS, MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS, MAX_TILED_TILES,
-    TILED_MEDIA_SCHEMA, TILED_MEDIA_VERSION, TiledMediaManifest, TiledMediaRenderOptions,
-    TiledMediaRenderResult, TiledMediaStatus, TiledMediaTile, render_tiled_media_directory,
-    render_tiled_media_directory_with_cancel,
+    MAX_TILED_AXIS, MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS, MAX_TILED_TILE_PIXELS,
+    MAX_TILED_TILES, TILED_MEDIA_SCHEMA, TILED_MEDIA_VERSION, TiledMediaManifest,
+    TiledMediaRenderOptions, TiledMediaRenderResult, TiledMediaStatus, TiledMediaTile,
+    render_tiled_media_directory, render_tiled_media_directory_with_cancel,
 };
 pub use vector::{
     MAX_VECTOR_AXIS, MAX_VECTOR_OUTPUT_BYTES, MAX_VECTOR_SOURCE_BYTES, VectorCarrier,

@@ -180,6 +180,7 @@ async function main() {
     await checkProgressiveCatalog(catalogClient);
     await checkProductionMediaCatalog(catalogClient);
     await checkAdvancedSpatialCatalog(catalogClient);
+    await checkExtendedFamilyCancellation(catalogClient);
     await catalogClient.close();
     catalogClient = undefined;
 
@@ -197,7 +198,7 @@ async function main() {
     await checkBoundedConcurrency(client);
     checkCliAdapter();
     console.log(
-      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, variation=${metrics.variationResponseBytes}B, media=${metrics.mediaResponseBytes}B, perception=${metrics.perceptionResponseBytes}B, psd=${metrics.psdResponseBytes}B, surface=${metrics.surfaceResponseBytes}B, motion=${metrics.motionResponseBytes}B, tiled=${metrics.tiledResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms)`,
+      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, variation=${metrics.variationResponseBytes}B, media=${metrics.mediaResponseBytes}B, perception=${metrics.perceptionResponseBytes}B, psd=${metrics.psdResponseBytes}B, surface=${metrics.surfaceResponseBytes}B, motion=${metrics.motionResponseBytes}B, tiled=${metrics.tiledResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, extendedFamilyCancellations=${metrics.extendedFamilyCancellations}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms)`,
     );
   } finally {
     if (catalogClient) await catalogClient.close();
@@ -1948,6 +1949,150 @@ async function checkCancellationAndRecovery(activeClient) {
   assert.equal(recovery.result.tools.length, 8);
 }
 
+async function checkExtendedFamilyCancellation(activeClient) {
+  const cases = [
+    {
+      name: "media_render",
+      output: "out/cancelled-media.png",
+      arguments: {
+        source: "source.png",
+        spec: makePixelSpec(64, 64),
+        output: "out/cancelled-media.png",
+        options: {
+          quality: "high",
+          canvas: "reference",
+          output: { format: "png", precision: "u8", icc: "discard" },
+        },
+      },
+    },
+    {
+      name: "vector_render",
+      output: "out/cancelled-vector.svg",
+      arguments: {
+        source: "source.svg",
+        spec: makePixelSpec(20, 10),
+        output: "out/cancelled-vector.svg",
+        options: {
+          carrier: "svg",
+          elementSize: { width: 10, height: 10 },
+          canvas: "reference",
+        },
+      },
+    },
+    {
+      name: "tiled_media_render",
+      output: "out/cancelled-tiles",
+      arguments: {
+        source: "source.png",
+        spec: makePixelSpec(64, 64),
+        outputDirectory: "out/cancelled-tiles",
+        options: {
+          quality: "high",
+          canvas: "reference",
+          tileWidth: 32,
+          tileHeight: 32,
+          output: { format: "png", precision: "u8", icc: "discard" },
+        },
+      },
+    },
+    {
+      name: "surface_render",
+      output: "out/cancelled-surface.png",
+      arguments: {
+        source: "source.png",
+        spec: surfaceSpec,
+        output: "out/cancelled-surface.png",
+      },
+    },
+    {
+      name: "motion_render",
+      output: "out/cancelled-motion",
+      arguments: {
+        sources: [{ id: "still", source: "source.png" }],
+        spec: motionSpec,
+        outputDirectory: "out/cancelled-motion",
+      },
+    },
+    {
+      name: "variation_render",
+      output: "out/cancelled-variation",
+      arguments: {
+        assets: [{ id: "asset-a", source: "source.png" }],
+        spec: variationJobSpec,
+        outputDirectory: "out/cancelled-variation",
+      },
+    },
+  ];
+
+  for (let start = 0; start < cases.length; start += 2) {
+    const blockers = Array.from({ length: 2 }, (_, index) =>
+      activeClient.beginRequest("tools/call", {
+        name: "worldbend.run",
+        arguments: {
+          operation: "render",
+          arguments: {
+            source: "source.png",
+            output: `out/family-cancel-blocker-${start}-${index}.png`,
+            dryRun: true,
+            options: { quality: "high" },
+            spec: makePixelSpec(8000, 4000),
+          },
+        },
+      }),
+    );
+    const blockerOutcomes = blockers.map((request) => request.promise.catch(() => undefined));
+    await waitFor(async () => (await stagingDirectories()).length === 2, 2_000);
+
+    const targets = cases.slice(start, start + 2).map((entry) => ({
+      entry,
+      request: activeClient.beginRequest("tools/call", {
+        name: "worldbend.run",
+        arguments: { operation: entry.name, arguments: entry.arguments },
+      }),
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const targetOutcomes = targets.map(({ request }) => request.promise.then(
+      (response) => ({ kind: "response", response }),
+      (error) => ({ kind: "error", error }),
+    ));
+    for (const { entry, request } of targets) {
+      activeClient.notify("notifications/cancelled", {
+        requestId: request.id,
+        reason: `runtime smoke ${entry.name} queued cancellation`,
+      });
+    }
+    for (const blocker of blockers) {
+      activeClient.notify("notifications/cancelled", {
+        requestId: blocker.id,
+        reason: "runtime smoke extended-family blocker cleanup",
+      });
+    }
+    await waitFor(async () => (await privateStagingDirectories()).length === 0, 10_000);
+
+    for (let index = 0; index < targets.length; index += 1) {
+      const outcome = await Promise.race([
+        targetOutcomes[index],
+        new Promise((resolve) => setTimeout(() => resolve({ kind: "noResponse" }), 100)),
+      ]);
+      if (outcome.kind === "response") {
+        assert.equal(
+          outcome.response.result?.isError,
+          true,
+          `cancelled ${targets[index].entry.name} unexpectedly returned success`,
+        );
+      }
+      assert.equal(await exists(path.join(fixtureRoot, targets[index].entry.output)), false);
+    }
+    await Promise.all(blockerOutcomes.map((outcome) => Promise.race([
+      outcome,
+      new Promise((resolve) => setTimeout(resolve, 100)),
+    ])));
+  }
+  metrics.extendedFamilyCancellations = cases.length;
+  const recovery = await activeClient.request("tools/list", {});
+  assert.equal(recovery.result.tools.length, 3);
+}
+
 async function checkBoundedConcurrency(activeClient) {
   let maximumStages = 0;
   let monitoring = true;
@@ -2838,6 +2983,10 @@ async function programStagingDirectories() {
   return (await readdir(stagingRoot)).filter((name) =>
     name.startsWith(".worldbend-program-stage-"),
   );
+}
+
+async function privateStagingDirectories() {
+  return readdir(stagingRoot);
 }
 
 async function exists(target) {

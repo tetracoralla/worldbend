@@ -59,18 +59,19 @@ use worldbend_render::{
     CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult,
     CanvasSetProgram, CanvasSetRenderOptions, CanvasSetRenderStatus, DEFAULT_MAX_AXIS,
     DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus, MAX_MEDIA_PIXELS,
-    MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS, MAX_TILED_TILES, MAX_VECTOR_SOURCE_BYTES,
-    MediaFileRenderResult, MediaFormat, MediaOutput, MediaRenderOptions, MediaSourceInfo,
-    MeshWarpFileRenderResult, MeshWarpRenderOptions, MockupExtractFileRenderResult,
-    MockupExtractRenderOptions, MockupExtractRenderStatus, MockupFileRenderResult,
-    MockupFileSource, MockupRenderOptions, MotionFileRenderResult, RasterProgramFileRenderResult,
-    RasterProgramRenderOptions, RectifyFileRenderResult, RectifyRenderOptions, RemapFileMap,
-    RemapFileRenderResult, RemapRenderOptions, RenderLimits, RenderOptions, SamplingQuality,
-    SurfaceDeformationFileRenderResult, TILED_MEDIA_SCHEMA, TILED_MEDIA_VERSION,
-    TiledMediaRenderOptions, TiledMediaRenderResult, TiledMediaStatus, TimelineFileRenderResult,
-    TimelineFileSource, TimelineRenderOptions, TimelineRenderStatus, VariationFileAsset,
-    VariationJobFileRenderResult, VariationJobRenderOptions, VariationJobRenderStatus,
-    VectorCarrier, VectorFileResult, VectorRenderOptions, inspect_media_file,
+    MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS, MAX_TILED_TILE_PIXELS, MAX_TILED_TILES,
+    MAX_VECTOR_SOURCE_BYTES, MediaFileRenderResult, MediaFormat, MediaOutput, MediaRenderOptions,
+    MediaSourceInfo, MeshWarpFileRenderResult, MeshWarpRenderOptions,
+    MockupExtractFileRenderResult, MockupExtractRenderOptions, MockupExtractRenderStatus,
+    MockupFileRenderResult, MockupFileSource, MockupRenderOptions, MotionFileRenderResult,
+    RasterProgramFileRenderResult, RasterProgramRenderOptions, RectifyFileRenderResult,
+    RectifyRenderOptions, RemapFileMap, RemapFileRenderResult, RemapRenderOptions, RenderLimits,
+    RenderOptions, SamplingQuality, SurfaceDeformationFileRenderResult, TILED_MEDIA_SCHEMA,
+    TILED_MEDIA_VERSION, TiledMediaRenderOptions, TiledMediaRenderResult, TiledMediaStatus,
+    TimelineFileRenderResult, TimelineFileSource, TimelineRenderOptions, TimelineRenderStatus,
+    VariationFileAsset, VariationJobFileRenderResult, VariationJobRenderOptions,
+    VariationJobRenderStatus, VectorCarrier, VectorFileResult, VectorRenderOptions,
+    inspect_media_file, media_output_accepts_extension, media_output_extension,
     rectify_file_with_source_sha256, render_canvas_set_file, render_file_with_source_sha256,
     render_media_file, render_mesh_warp_file_with_cancel, render_mockup_extract_files_with_cancel,
     render_mockup_files_with_cancel, render_motion_files_with_cancel,
@@ -600,6 +601,7 @@ impl TryFrom<TiledMediaRenderOptionsInput> for TiledMediaRenderOptions {
             || value.tile_height == 0
             || value.tile_width > 4096
             || value.tile_height > 4096
+            || u64::from(value.tile_width) * u64::from(value.tile_height) > MAX_TILED_TILE_PIXELS
             || value.max_output_pixels == 0
             || value.max_output_pixels > MCP_MAX_TILED_PIXELS
             || value.max_encoded_bytes == 0
@@ -2868,12 +2870,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Mockup render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_mockup_worker(prepared),
+                            run_mockup_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -2922,6 +2926,7 @@ impl WorldbendServer {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
                         execute_bounded_directory(
+                            "Mockup extraction",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -2974,12 +2979,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Mesh render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_mesh_worker(prepared),
+                            run_mesh_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3026,12 +3033,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Surface Deformation render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_surface_worker(prepared),
+                            run_surface_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3078,12 +3087,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Remap render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_remap_worker(prepared),
+                            run_remap_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3132,6 +3143,7 @@ impl WorldbendServer {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
                         execute_bounded_directory(
+                            "Timeline",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3186,6 +3198,7 @@ impl WorldbendServer {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
                         execute_bounded_directory(
+                            "Motion",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3311,12 +3324,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Transform render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_render_worker(prepared),
+                            run_render_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3355,6 +3370,7 @@ impl WorldbendServer {
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         execute_bounded_render(
+                            "media inspection",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3397,12 +3413,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "media render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_media_render_worker(prepared),
+                            run_media_render_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3441,6 +3459,7 @@ impl WorldbendServer {
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         execute_bounded_render(
+                            "plane candidate assessment",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3484,6 +3503,7 @@ impl WorldbendServer {
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         execute_bounded_render(
+                            "PSD Smart Object interoperability",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3526,12 +3546,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "vector render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_vector_render_worker(prepared),
+                            run_vector_render_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3571,6 +3593,7 @@ impl WorldbendServer {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
                         execute_bounded_directory(
+                            "tiled media output",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3647,12 +3670,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Rectification render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_rectify_worker(prepared),
+                            run_rectify_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3699,12 +3724,14 @@ impl WorldbendServer {
                     }))),
                     Ok(admission) => {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
                         execute_bounded_render(
+                            "Raster Program render",
                             admission,
                             self.render_slots.clone(),
                             remaining,
                             cancellation,
-                            run_program_worker(prepared),
+                            run_program_worker(prepared, work_cancellation),
                         )
                         .await
                     }
@@ -3775,6 +3802,7 @@ impl WorldbendServer {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
                         execute_bounded_directory(
+                            "Variation Job",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3832,6 +3860,7 @@ impl WorldbendServer {
                         let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
                         let work_cancellation = cancellation.child_token();
                         execute_bounded_directory(
+                            "Canvas Set",
                             admission,
                             self.render_slots.clone(),
                             remaining,
@@ -3901,6 +3930,7 @@ impl ServerHandler for WorldbendServer {
 /// future on every exit path; the worker permit and its process (via
 /// `kill_on_drop`) and staging directory follow the same drop.
 async fn execute_bounded_render<T, F>(
+    operation: &'static str,
     admission: OwnedSemaphorePermit,
     slots: Arc<Semaphore>,
     deadline_remaining: Duration,
@@ -3914,7 +3944,7 @@ where
     tokio::select! {
         _ = cancellation.cancelled() => Err(TransformError::new(
             ErrorCode::Cancelled,
-            "render was cancelled by the client before completion",
+            format!("{operation} was cancelled by the client before completion"),
         )),
         outcome = timeout(deadline_remaining, async move {
             let _admission = admission;
@@ -3928,7 +3958,7 @@ where
         }) => match outcome {
             Ok(inner) => inner,
             Err(_) => Err(render_timeout_error(
-                "queued or executing",
+                &format!("queued for or executing {operation}"),
                 deadline_remaining,
             )),
         },
@@ -3940,6 +3970,7 @@ where
 /// completes first. The final token/deadline check is followed by exactly one
 /// synchronous no-replace directory rename and no await.
 async fn execute_bounded_directory<T, F>(
+    operation: &'static str,
     admission: OwnedSemaphorePermit,
     slots: Arc<Semaphore>,
     deadline_remaining: Duration,
@@ -3990,7 +4021,7 @@ where
             work_cancellation.cancel();
             let _ = work.await;
             return Err(render_timeout_error(
-                "executing a Canvas Set",
+                &format!("executing {operation}"),
                 deadline_remaining,
             ));
         },
@@ -4005,7 +4036,7 @@ where
     }
     if started.elapsed() >= deadline_remaining {
         return Err(render_timeout_error(
-            "preflighting the Canvas Set commit",
+            &format!("preflighting the {operation} commit"),
             deadline_remaining,
         ));
     }
@@ -4015,7 +4046,7 @@ where
     Ok(prepared.result)
 }
 
-fn render_timeout_error(stage: &'static str, deadline: Duration) -> TransformError {
+fn render_timeout_error(stage: &str, deadline: Duration) -> TransformError {
     TransformError::new(
         ErrorCode::Timeout,
         format!(
@@ -4795,13 +4826,9 @@ fn validate_media_output_extension(output: &str, format: &MediaOutput) -> Transf
         .extension()
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase);
-    let valid = matches!(
-        (format, extension.as_deref()),
-        (MediaOutput::Png { .. }, Some("png"))
-            | (MediaOutput::Tiff { .. }, Some("tif" | "tiff"))
-            | (MediaOutput::Jpeg { .. }, Some("jpg" | "jpeg"))
-            | (MediaOutput::WebpLossless { .. }, Some("webp"))
-    );
+    let valid = extension
+        .as_deref()
+        .is_some_and(|extension| media_output_accepts_extension(format, extension));
     if !valid {
         return Err(TransformError::new(
             ErrorCode::Schema,
@@ -5132,6 +5159,7 @@ fn prepare_canvas_render_request(
 
 async fn run_render_worker(
     prepared: PreparedRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<FileRenderResult, TransformError> {
     let PreparedRenderRequest {
         source,
@@ -5167,6 +5195,14 @@ async fn run_render_worker(
         options: input.options,
     };
     let mut result: FileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Transform worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -5306,6 +5342,7 @@ async fn run_psd_smart_objects_worker(
 
 async fn run_media_render_worker(
     prepared: PreparedMediaRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<MediaFileRenderResult, TransformError> {
     let PreparedMediaRenderRequest {
         source,
@@ -5350,13 +5387,14 @@ async fn run_media_render_worker(
             "media render source digest does not match the staged source",
         ));
     }
-    let (bytes, sha256) = hash_regular_file(&staged_output)?;
-    if bytes != result.bytes || !sha256.eq_ignore_ascii_case(&result.evidence.output_sha256) {
-        return Err(TransformError::new(
-            ErrorCode::Internal,
-            "media render output does not match its reported digest and byte count",
-        ));
-    }
+    verify_worker_output(
+        staged_output.clone(),
+        "media render worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -5378,17 +5416,9 @@ async fn run_media_render_worker(
     Ok(result)
 }
 
-fn media_output_extension(output: &MediaOutput) -> &'static str {
-    match output {
-        MediaOutput::Png { .. } => "png",
-        MediaOutput::Tiff { .. } => "tiff",
-        MediaOutput::Jpeg { .. } => "jpg",
-        MediaOutput::WebpLossless { .. } => "webp",
-    }
-}
-
 async fn run_vector_render_worker(
     prepared: PreparedVectorRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<VectorFileResult, TransformError> {
     let PreparedVectorRenderRequest {
         source,
@@ -5430,13 +5460,14 @@ async fn run_vector_render_worker(
             "vector worker source digest does not match the staged source",
         ));
     }
-    let (bytes, sha256) = hash_regular_file(&staged_output)?;
-    if bytes != result.bytes || !sha256.eq_ignore_ascii_case(&result.output_sha256) {
-        return Err(TransformError::new(
-            ErrorCode::Internal,
-            "vector worker output does not match its result",
-        ));
-    }
+    verify_worker_output(
+        staged_output.clone(),
+        "vector worker",
+        result.bytes,
+        result.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -5509,6 +5540,7 @@ async fn run_tiled_media_worker(
     let output_directory = input.output_directory.clone();
     let dry_run = input.dry_run;
     let source_sha256_for_normalize = source_sha256.clone();
+    let normalize_cancellation = cancellation.clone();
     result = tokio::task::spawn_blocking(move || {
         normalize_tiled_media_worker_result(
             &mut result,
@@ -5516,6 +5548,7 @@ async fn run_tiled_media_worker(
             &output_directory,
             dry_run,
             &source_sha256_for_normalize,
+            &|| normalize_cancellation.is_cancelled(),
         )?;
         Ok::<_, TransformError>(result)
     })
@@ -5559,6 +5592,7 @@ fn normalize_tiled_media_worker_result(
     output_directory: &str,
     dry_run: bool,
     source_sha256: &str,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
     let manifest = &mut result.manifest;
     let expected_count = manifest.rows.checked_mul(manifest.columns).ok_or_else(|| {
@@ -5622,7 +5656,7 @@ fn normalize_tiled_media_worker_result(
             ));
         }
         let path = staged_output.join(&filename);
-        let (bytes, sha256) = hash_regular_file(&path)?;
+        let (bytes, sha256) = hash_regular_file(&path, "tiled worker", is_cancelled)?;
         if bytes != tile.bytes || !sha256.eq_ignore_ascii_case(&tile.sha256) {
             return Err(TransformError::new(
                 ErrorCode::Internal,
@@ -5644,7 +5678,8 @@ fn normalize_tiled_media_worker_result(
         ));
     }
     let manifest_path = staged_output.join("worldbend.tiled-media.json");
-    let (_, manifest_sha256) = hash_regular_file(&manifest_path)?;
+    let (_, manifest_sha256) =
+        hash_regular_file(&manifest_path, "tiled worker manifest", is_cancelled)?;
     if !valid_sha256(&result.manifest_sha256)
         || !manifest_sha256.eq_ignore_ascii_case(&result.manifest_sha256)
     {
@@ -5675,6 +5710,7 @@ fn normalize_tiled_media_worker_result(
 
 async fn run_rectify_worker(
     prepared: PreparedRectifyRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<RectifyFileRenderResult, TransformError> {
     let PreparedRectifyRenderRequest {
         source,
@@ -5707,6 +5743,14 @@ async fn run_rectify_worker(
         options: input.options,
     };
     let mut result: RectifyFileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Rectification worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -5731,6 +5775,7 @@ async fn run_rectify_worker(
 
 async fn run_program_worker(
     prepared: PreparedProgramRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<RasterProgramFileRenderResult, TransformError> {
     let PreparedProgramRenderRequest {
         source,
@@ -5763,6 +5808,14 @@ async fn run_program_worker(
         options: input.options,
     };
     let mut result: RasterProgramFileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Raster Program worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -5832,19 +5885,35 @@ async fn run_variation_worker(
         output_directory: staged_output.clone(),
         options: input.options,
     };
-    let mut result: VariationJobFileRenderResult = tokio::select! {
+    let result: VariationJobFileRenderResult = tokio::select! {
         _ = cancellation.cancelled() => return Err(TransformError::new(
             ErrorCode::Cancelled,
             "Variation Job was cancelled while its worker was running",
         )),
         result = execute_worker_request(&request) => result?,
     };
-    normalize_variation_worker_result(
-        &mut result,
-        &staged_output,
-        &input.output_directory,
-        input.dry_run,
-    )?;
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_variation_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Variation Job result validation task failed: {error}"),
+        )
+    })??;
     preflight_render_result(&result)?;
 
     let staged_output_for_copy = staged_output.clone();
@@ -5879,6 +5948,7 @@ fn normalize_variation_worker_result(
     staged_output: &std::path::Path,
     output_directory: &str,
     dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
     if result.plan.items.len() != result.items.len()
         || result.plan.output_count > MCP_MAX_VARIATION_OUTPUTS
@@ -5947,7 +6017,7 @@ fn normalize_variation_worker_result(
                 ));
             }
             let path = item_directory.join(&planned_output.filename);
-            let (bytes, sha256) = hash_regular_file(&path)?;
+            let (bytes, sha256) = hash_regular_file(&path, "Variation Job worker", is_cancelled)?;
             if bytes != output.bytes || !sha256.eq_ignore_ascii_case(&output.sha256) {
                 return Err(invalid_variation_worker_result(
                     "Variation Job worker output bytes do not match its result",
@@ -6005,26 +6075,46 @@ fn valid_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-fn hash_regular_file(path: &std::path::Path) -> TransformResult<(u64, String)> {
+fn hash_regular_file(
+    path: &std::path::Path,
+    context: &'static str,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<(u64, String)> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
-        invalid_variation_worker_result("Variation Job worker output file is missing")
-            .with_details(json!({ "reason": error.to_string() }))
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output file is missing"),
+        )
+        .with_details(json!({ "reason": error.to_string() }))
     })?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(invalid_variation_worker_result(
-            "Variation Job worker output is not a regular file",
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output is not a regular file"),
         ));
     }
     let mut file = fs::File::open(path).map_err(|error| {
-        invalid_variation_worker_result("Variation Job worker output is not readable")
-            .with_details(json!({ "reason": error.to_string() }))
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output is not readable"),
+        )
+        .with_details(json!({ "reason": error.to_string() }))
     })?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
+        if is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                format!("{context} output validation was cancelled"),
+            ));
+        }
         let count = file.read(&mut buffer).map_err(|error| {
-            invalid_variation_worker_result("Variation Job worker output could not be hashed")
-                .with_details(json!({ "reason": error.to_string() }))
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("{context} output could not be hashed"),
+            )
+            .with_details(json!({ "reason": error.to_string() }))
         })?;
         if count == 0 {
             break;
@@ -6032,6 +6122,44 @@ fn hash_regular_file(path: &std::path::Path) -> TransformResult<(u64, String)> {
         digest.update(&buffer[..count]);
     }
     Ok((metadata.len(), format!("{:x}", digest.finalize())))
+}
+
+fn verify_reported_output_file(
+    path: &std::path::Path,
+    context: &'static str,
+    reported_bytes: u64,
+    reported_sha256: &str,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    let (actual_bytes, actual_sha256) = hash_regular_file(path, context, is_cancelled)?;
+    if actual_bytes != reported_bytes || !actual_sha256.eq_ignore_ascii_case(reported_sha256) {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output does not match its reported digest and byte count"),
+        ));
+    }
+    Ok(())
+}
+
+async fn verify_worker_output(
+    path: PathBuf,
+    context: &'static str,
+    reported_bytes: u64,
+    reported_sha256: String,
+    cancellation: CancellationToken,
+) -> TransformResult<()> {
+    tokio::task::spawn_blocking(move || {
+        verify_reported_output_file(&path, context, reported_bytes, &reported_sha256, &|| {
+            cancellation.is_cancelled()
+        })
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output verification task failed: {error}"),
+        )
+    })?
 }
 
 fn read_entry_names(directory: &std::path::Path) -> TransformResult<Vec<String>> {
@@ -6059,6 +6187,7 @@ fn invalid_variation_worker_result(message: &'static str) -> TransformError {
 
 async fn run_mockup_worker(
     prepared: PreparedMockupRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<MockupFileRenderResult, TransformError> {
     let PreparedMockupRenderRequest {
         sources,
@@ -6098,6 +6227,14 @@ async fn run_mockup_worker(
         options: input.options,
     };
     let mut result: MockupFileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Mockup worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -6122,6 +6259,7 @@ async fn run_mockup_worker(
 
 async fn run_mesh_worker(
     prepared: PreparedMeshRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<MeshWarpFileRenderResult, TransformError> {
     let PreparedMeshRenderRequest {
         source,
@@ -6154,6 +6292,14 @@ async fn run_mesh_worker(
         options: input.options,
     };
     let mut result: MeshWarpFileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Mesh worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -6177,6 +6323,7 @@ async fn run_mesh_worker(
 
 async fn run_surface_worker(
     prepared: PreparedSurfaceRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<SurfaceDeformationFileRenderResult, TransformError> {
     let PreparedSurfaceRenderRequest {
         source,
@@ -6209,6 +6356,14 @@ async fn run_surface_worker(
         options: input.options,
     };
     let mut result: SurfaceDeformationFileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Surface Deformation worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -6232,6 +6387,7 @@ async fn run_surface_worker(
 
 async fn run_remap_worker(
     prepared: PreparedRemapRenderRequest,
+    cancellation: CancellationToken,
 ) -> Result<RemapFileRenderResult, TransformError> {
     let PreparedRemapRenderRequest {
         source,
@@ -6287,6 +6443,14 @@ async fn run_remap_worker(
         options: input.options,
     };
     let mut result: RemapFileRenderResult = execute_worker_request(&request).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Remap worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation,
+    )
+    .await?;
     result.output = input.output;
     result.dry_run = input.dry_run;
     result.status = if input.dry_run {
@@ -6349,19 +6513,35 @@ async fn run_mockup_extract_worker(
         output_directory: staged_output.clone(),
         options: input.options,
     };
-    let mut result: MockupExtractFileRenderResult = tokio::select! {
+    let result: MockupExtractFileRenderResult = tokio::select! {
         _ = cancellation.cancelled() => return Err(TransformError::new(
             ErrorCode::Cancelled,
             "mockup extraction was cancelled while its worker was running",
         )),
         result = execute_worker_request(&request) => result?,
     };
-    normalize_mockup_extract_worker_result(
-        &mut result,
-        &staged_output,
-        &input.output_directory,
-        input.dry_run,
-    )?;
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_mockup_extract_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("mockup extraction result validation task failed: {error}"),
+        )
+    })??;
     preflight_render_result(&result)?;
 
     let staged_output_for_copy = staged_output.clone();
@@ -6394,6 +6574,7 @@ fn normalize_mockup_extract_worker_result(
     staged_output: &std::path::Path,
     output_directory: &str,
     dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
     if result.plan.outputs.len() != result.items.len() {
         return Err(invalid_mockup_extract_worker_result(
@@ -6420,15 +6601,21 @@ fn normalize_mockup_extract_worker_result(
                 "mockup extraction encoded output byte count overflowed",
             )
         })?;
+        if encoded_bytes > MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "mockup extraction encoded output set exceeds the Agent byte ceiling",
+            )
+            .with_details(json!({
+                "actual": encoded_bytes,
+                "maximum": MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES,
+            })));
+        }
         let path = staged_output.join(&planned.filename);
-        let metadata = fs::symlink_metadata(&path).map_err(|error| {
-            invalid_mockup_extract_worker_result("mockup extraction worker output file is missing")
-                .with_details(json!({ "reason": error.to_string() }))
-        })?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
-        {
+        let (bytes, sha256) = hash_regular_file(&path, "mockup extraction worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
             return Err(invalid_mockup_extract_worker_result(
-                "mockup extraction worker output file does not match its result",
+                "mockup extraction worker output bytes do not match its result",
             ));
         }
         expected_files.push(planned.filename.clone());
@@ -6530,19 +6717,35 @@ async fn run_timeline_worker(
         output_directory: staged_output.clone(),
         options: input.options,
     };
-    let mut result: TimelineFileRenderResult = tokio::select! {
+    let result: TimelineFileRenderResult = tokio::select! {
         _ = cancellation.cancelled() => return Err(TransformError::new(
             ErrorCode::Cancelled,
             "timeline render was cancelled while its worker was running",
         )),
         result = execute_worker_request(&request) => result?,
     };
-    normalize_timeline_worker_result(
-        &mut result,
-        &staged_output,
-        &input.output_directory,
-        input.dry_run,
-    )?;
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_timeline_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("timeline result validation task failed: {error}"),
+        )
+    })??;
     preflight_render_result(&result)?;
 
     let staged_output_for_copy = staged_output.clone();
@@ -6575,6 +6778,7 @@ fn normalize_timeline_worker_result(
     staged_output: &std::path::Path,
     output_directory: &str,
     dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
     if result.plan.frames.len() != result.items.len() {
         return Err(invalid_timeline_worker_result(
@@ -6604,14 +6808,10 @@ fn normalize_timeline_worker_result(
         })?;
         let filename = format!("{}.png", item.id);
         let path = staged_output.join(&filename);
-        let metadata = fs::symlink_metadata(&path).map_err(|error| {
-            invalid_timeline_worker_result("timeline worker output file is missing")
-                .with_details(json!({ "reason": error.to_string() }))
-        })?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
-        {
+        let (bytes, sha256) = hash_regular_file(&path, "timeline worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
             return Err(invalid_timeline_worker_result(
-                "timeline worker output file does not match its result",
+                "timeline worker output bytes do not match its result",
             ));
         }
         expected_files.push(filename);
@@ -6709,19 +6909,35 @@ async fn run_motion_worker(
         output_directory: staged_output.clone(),
         options: input.options,
     };
-    let mut result: MotionFileRenderResult = tokio::select! {
+    let result: MotionFileRenderResult = tokio::select! {
         _ = cancellation.cancelled() => return Err(TransformError::new(
             ErrorCode::Cancelled,
             "motion render was cancelled while its worker was running",
         )),
         result = execute_worker_request(&request) => result?,
     };
-    normalize_motion_worker_result(
-        &mut result,
-        &staged_output,
-        &input.output_directory,
-        input.dry_run,
-    )?;
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_motion_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("motion result validation task failed: {error}"),
+        )
+    })??;
     preflight_render_result(&result)?;
 
     let staged_output_for_copy = staged_output.clone();
@@ -6754,6 +6970,7 @@ fn normalize_motion_worker_result(
     staged_output: &std::path::Path,
     output_directory: &str,
     dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
     if result.plan.frames.len() != result.items.len()
         || result.plan.timeline.frames.len() != result.items.len()
@@ -6794,14 +7011,10 @@ fn normalize_motion_worker_result(
         })?;
         let filename = format!("{}.png", item.id);
         let path = staged_output.join(&filename);
-        let metadata = fs::symlink_metadata(&path).map_err(|error| {
-            invalid_motion_worker_result("motion worker output file is missing")
-                .with_details(json!({ "reason": error.to_string() }))
-        })?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
-        {
+        let (bytes, sha256) = hash_regular_file(&path, "motion worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
             return Err(invalid_motion_worker_result(
-                "motion worker output file does not match its result",
+                "motion worker output bytes do not match its result",
             ));
         }
         expected_files.push(filename);
@@ -6900,19 +7113,35 @@ async fn run_canvas_worker(
             max_cumulative_pixels: MCP_MAX_CANVAS_SET_PIXELS,
         },
     };
-    let mut result: CanvasSetFileRenderResult = tokio::select! {
+    let result: CanvasSetFileRenderResult = tokio::select! {
         _ = cancellation.cancelled() => return Err(TransformError::new(
             ErrorCode::Cancelled,
             "Canvas Set render was cancelled while its worker was running",
         )),
         result = execute_worker_request(&request) => result?,
     };
-    normalize_canvas_worker_result(
-        &mut result,
-        &staged_output,
-        &input.output_directory,
-        input.dry_run,
-    )?;
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_canvas_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Canvas result validation task failed: {error}"),
+        )
+    })??;
     preflight_render_result(&result)?;
 
     let staged_output_for_copy = staged_output.clone();
@@ -6947,6 +7176,7 @@ fn normalize_canvas_worker_result(
     staged_output: &std::path::Path,
     output_directory: &str,
     dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
     if result.plan.variants.len() != result.items.len() {
         return Err(invalid_canvas_worker_result(
@@ -6966,26 +7196,32 @@ fn normalize_canvas_worker_result(
                 "Canvas worker result does not match its ordered plan",
             ));
         }
+        item.output = canvas_output_label(output_directory, &item.id);
         encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
             TransformError::new(
                 ErrorCode::OutputLimit,
                 "Canvas encoded output byte count overflowed",
             )
         })?;
+        if encoded_bytes > MCP_MAX_CANVAS_ENCODED_BYTES {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "Canvas encoded output set exceeds the Agent byte ceiling",
+            )
+            .with_details(json!({
+                "actual": encoded_bytes,
+                "maximum": MCP_MAX_CANVAS_ENCODED_BYTES,
+            })));
+        }
         let filename = format!("{}.png", item.id);
         let path = staged_output.join(&filename);
-        let metadata = fs::symlink_metadata(&path).map_err(|error| {
-            invalid_canvas_worker_result("Canvas worker output file is missing")
-                .with_details(json!({ "reason": error.to_string() }))
-        })?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != item.bytes
-        {
+        let (bytes, sha256) = hash_regular_file(&path, "Canvas worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
             return Err(invalid_canvas_worker_result(
-                "Canvas worker output file does not match its result",
+                "Canvas worker output bytes do not match its result",
             ));
         }
         expected_files.push(filename);
-        item.output = canvas_output_label(output_directory, &item.id);
     }
     let mut actual_files = fs::read_dir(staged_output)
         .map_err(|error| {
@@ -7569,12 +7805,17 @@ mod tests {
     use std::collections::HashMap;
     use worldbend_core::{
         CANVAS_SET_SCHEMA, CANVAS_VERSION, CanvasOperation, CanvasSetSpec, CanvasSpec,
-        CanvasVariant, PixelSize, Point, Quad, RASTER_PROGRAM_SCHEMA, RASTER_PROGRAM_VERSION,
-        RasterProgramStage, SPATIAL_TEMPLATE_SCHEMA, SPATIAL_TEMPLATE_VERSION, SourceOrientation,
-        SpatialTemplateOperation, SpatialTemplateOutput, VARIATION_JOB_SCHEMA, VariationBinding,
-        VariationJobItem, plan_canvas_set,
+        CanvasVariant, FrameRate, MOTION_SCHEMA, MOTION_VERSION, MotionEasing, MotionKeyframe,
+        MotionSpec, PixelSize, Point, Quad, RASTER_PROGRAM_SCHEMA, RASTER_PROGRAM_VERSION,
+        RasterProgramStage, SPATIAL_TEMPLATE_SCHEMA, SPATIAL_TEMPLATE_VERSION, Size,
+        SourceOrientation, SpatialTemplateOperation, SpatialTemplateOutput, TIMELINE_SCHEMA,
+        TIMELINE_VERSION, TimelineFrame, TimelineProgram, TimelineSpec, TransformSpec,
+        VARIATION_JOB_SCHEMA, VariationBinding, VariationJobItem, plan_canvas_set,
     };
-    use worldbend_render::{CanvasSetRenderedItem, render_variation_job_files};
+    use worldbend_render::{
+        CanvasSetRenderedItem, TimelineRenderOptions, render_motion_files, render_timeline_files,
+        render_variation_job_files,
+    };
 
     fn variation_spec(item_ids: &[&str]) -> VariationJobSpec {
         VariationJobSpec {
@@ -7617,6 +7858,58 @@ mod tests {
         }
     }
 
+    fn timeline_spec() -> TimelineSpec {
+        TimelineSpec {
+            schema: TIMELINE_SCHEMA.to_owned(),
+            version: TIMELINE_VERSION.to_owned(),
+            output: PixelSize::new(2, 2),
+            program: TimelineProgram::Frames {
+                frames: vec![TimelineFrame {
+                    id: "frame-1".to_owned(),
+                    source_id: "still".to_owned(),
+                    transform: TransformSpec::normalized(Quad::unit()),
+                }],
+            },
+        }
+    }
+
+    fn motion_spec() -> MotionSpec {
+        MotionSpec {
+            schema: MOTION_SCHEMA.to_owned(),
+            version: MOTION_VERSION.to_owned(),
+            output: PixelSize::new(2, 2),
+            timebase: FrameRate {
+                numerator: 24,
+                denominator: 1,
+            },
+            source_id: "still".to_owned(),
+            frame_count: 2,
+            base: TransformSpec::pixel(Size::new(2.0, 2.0), Quad::unit()),
+            keyframes: vec![
+                MotionKeyframe {
+                    frame: 0,
+                    quad: Quad::new(
+                        Point::new(0.0, 0.0),
+                        Point::new(2.0, 0.0),
+                        Point::new(2.0, 2.0),
+                        Point::new(0.0, 2.0),
+                    ),
+                    easing_to_next: Some(MotionEasing::Linear),
+                },
+                MotionKeyframe {
+                    frame: 1,
+                    quad: Quad::new(
+                        Point::new(0.25, 0.0),
+                        Point::new(2.0, 0.0),
+                        Point::new(2.0, 2.0),
+                        Point::new(0.25, 2.0),
+                    ),
+                    easing_to_next: None,
+                },
+            ],
+        }
+    }
+
     #[test]
     fn private_staging_root_accepts_only_a_writable_absolute_directory_outside_workspace() {
         let workspace = tempfile::tempdir().unwrap();
@@ -7651,6 +7944,24 @@ mod tests {
         let file_error =
             resolve_private_staging_root(Some(&file), Some(&workspace_root)).unwrap_err();
         assert!(file_error.to_string().contains("directory"));
+
+        let missing = private.path().join("missing-directory");
+        let missing_error =
+            resolve_private_staging_root(Some(&missing), Some(&workspace_root)).unwrap_err();
+        assert!(missing_error.to_string().contains("not accessible"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let unwritable = private.path().join("unwritable-directory");
+            fs::create_dir(&unwritable).unwrap();
+            fs::set_permissions(&unwritable, fs::Permissions::from_mode(0o500)).unwrap();
+            let unwritable_error =
+                resolve_private_staging_root(Some(&unwritable), Some(&workspace_root)).unwrap_err();
+            fs::set_permissions(&unwritable, fs::Permissions::from_mode(0o700)).unwrap();
+            assert!(unwritable_error.to_string().contains("not writable"));
+        }
     }
 
     #[test]
@@ -7959,18 +8270,194 @@ mod tests {
         )
         .unwrap();
 
-        normalize_variation_worker_result(&mut result, &staged_output, "outputs/job", false)
-            .unwrap();
+        normalize_variation_worker_result(
+            &mut result,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap();
         assert_eq!(
             result.items[0].outputs[0].output,
             "outputs/job/sku-a/hero.png"
         );
 
         fs::write(staged_output.join("sku-a/hero.png"), b"tampered").unwrap();
-        let error =
-            normalize_variation_worker_result(&mut result, &staged_output, "outputs/job", false)
-                .unwrap_err();
+        let error = normalize_variation_worker_result(
+            &mut result,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
         assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn sequence_controllers_rehash_outputs_instead_of_trusting_reported_digests() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.png");
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+        let sources = HashMap::from([("still".to_owned(), source)]);
+
+        let timeline_output = directory.path().join("timeline-worker-result");
+        let mut timeline = render_timeline_files(
+            &sources,
+            &timeline_spec(),
+            &timeline_output,
+            TimelineRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        normalize_timeline_worker_result(
+            &mut timeline,
+            &timeline_output,
+            "outputs/timeline",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        corrupt_file_without_changing_length(&timeline_output.join("frame-1.png"));
+        let timeline_error = normalize_timeline_worker_result(
+            &mut timeline,
+            &timeline_output,
+            "outputs/timeline",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(timeline_error.code, ErrorCode::Internal);
+
+        let motion_output = directory.path().join("motion-worker-result");
+        let mut motion = render_motion_files(
+            &sources,
+            &motion_spec(),
+            &motion_output,
+            TimelineRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        normalize_motion_worker_result(
+            &mut motion,
+            &motion_output,
+            "outputs/motion",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        corrupt_file_without_changing_length(&motion_output.join("frame-000001.png"));
+        let motion_error = normalize_motion_worker_result(
+            &mut motion,
+            &motion_output,
+            "outputs/motion",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(motion_error.code, ErrorCode::Internal);
+    }
+
+    #[tokio::test]
+    async fn single_output_controller_rejects_same_length_digest_mismatch() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("result.png");
+        fs::write(&output, b"first").unwrap();
+        let reported_sha256 = format!("{:x}", Sha256::digest(b"first"));
+
+        verify_worker_output(
+            output.clone(),
+            "test worker",
+            5,
+            reported_sha256.clone(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        fs::write(&output, b"other").unwrap();
+        let error = verify_worker_output(
+            output,
+            "test worker",
+            5,
+            reported_sha256,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn canvas_controller_rejects_same_length_digest_mismatch() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("square.png");
+        fs::write(&output, b"first").unwrap();
+        let spec: CanvasSetSpec = serde_json::from_value(json!({
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [{
+                "id": "square",
+                "operation": {
+                    "kind": "stretch",
+                    "output": { "width": 2, "height": 2 }
+                }
+            }]
+        }))
+        .unwrap();
+        let mut result = CanvasSetFileRenderResult {
+            status: CanvasSetRenderStatus::Ready,
+            dry_run: true,
+            output_directory: directory.path().to_string_lossy().into_owned(),
+            plan: plan_canvas_set(&spec, PixelSize::new(2, 2)).unwrap(),
+            items: vec![CanvasSetRenderedItem {
+                id: "square".to_owned(),
+                output: output.to_string_lossy().into_owned(),
+                bytes: 5,
+                sha256: format!("{:x}", Sha256::digest(b"first")),
+                width: 2,
+                height: 2,
+            }],
+        };
+
+        normalize_canvas_worker_result(
+            &mut result,
+            directory.path(),
+            "sets/social",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        fs::write(output, b"other").unwrap();
+        let error = normalize_canvas_worker_result(
+            &mut result,
+            directory.path(),
+            "sets/social",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    fn corrupt_file_without_changing_length(path: &Path) {
+        let mut bytes = fs::read(path).unwrap();
+        let index = bytes.len() / 2;
+        bytes[index] ^= 0x01;
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn output_verification_hashing_honors_cancellation() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("output.png");
+        fs::write(&path, vec![0_u8; 256 * 1024]).unwrap();
+        let error = hash_regular_file(&path, "test worker", &|| true).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        hash_regular_file(&path, "test worker", &|| false).unwrap();
     }
 
     #[test]
@@ -8623,9 +9110,14 @@ mod tests {
             }],
         };
 
-        let error =
-            normalize_canvas_worker_result(&mut result, private.path(), "sets/social", false)
-                .unwrap_err();
+        let error = normalize_canvas_worker_result(
+            &mut result,
+            private.path(),
+            "sets/social",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
         assert_eq!(error.code, ErrorCode::OutputLimit);
         assert_eq!(
             error.details.unwrap()["maximum"],
@@ -8656,6 +9148,7 @@ mod tests {
         let admission = admissions.clone().try_acquire_owned().unwrap();
         let started = Instant::now();
         let error = execute_bounded_render::<(), _>(
+            "test render",
             admission,
             slots.clone(),
             Duration::from_millis(80),
@@ -8666,6 +9159,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Timeout);
         assert!(error.message.contains("80 ms"));
+        assert!(error.message.contains("test render"));
         assert_eq!(error.details.as_ref().unwrap()["deadlineMs"], json!(80));
         assert!(started.elapsed() >= Duration::from_millis(70));
         assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
@@ -8678,6 +9172,7 @@ mod tests {
         let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
         let admission = admissions.clone().try_acquire_owned().unwrap();
         let error = execute_bounded_render(
+            "test render",
             admission,
             slots.clone(),
             Duration::from_millis(60),
@@ -8707,6 +9202,7 @@ mod tests {
         });
         let started = Instant::now();
         let error = execute_bounded_render::<(), _>(
+            "test render",
             admission,
             slots.clone(),
             Duration::from_secs(30),
@@ -8716,6 +9212,7 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(error.message.contains("test render"));
         assert!(started.elapsed() < Duration::from_secs(5));
         assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
         assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
@@ -8727,6 +9224,7 @@ mod tests {
         let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
         let admission = admissions.clone().try_acquire_owned().unwrap();
         let value = execute_bounded_render(
+            "test render",
             admission,
             slots,
             Duration::from_secs(5),
@@ -8757,6 +9255,7 @@ mod tests {
         let work_cancellation = cancellation.child_token();
 
         let value = execute_bounded_directory(
+            "test directory output",
             admission,
             slots.clone(),
             Duration::from_secs(5),
@@ -8800,6 +9299,7 @@ mod tests {
         let cancel_before_return = cancellation.clone();
 
         let error = execute_bounded_directory(
+            "test directory output",
             admission,
             slots.clone(),
             Duration::from_secs(5),
@@ -8873,6 +9373,7 @@ mod tests {
             }
         });
         let error = execute_bounded_directory(
+            "test directory output",
             admission,
             slots.clone(),
             Duration::from_secs(5),
@@ -9023,11 +9524,25 @@ mod tests {
 
     #[test]
     fn mcp_pixel_budget_stays_under_the_worker_memory_ceiling() {
-        // source + 4/3 mip pyramid + output + one decode working copy, RGBA.
+        // Ordinary u8 source + 4/3 mip pyramid + output + one decode working
+        // copy, all RGBA.
         let worst_case_bytes = MCP_MAX_PIXELS * 4 * (1 + 4 + 3 + 3) / 3;
         assert!(
             worst_case_bytes < WORKER_MEMORY_BYTES,
             "MCP_MAX_PIXELS={MCP_MAX_PIXELS} needs {worst_case_bytes} bytes worst case, above the {WORKER_MEMORY_BYTES}-byte worker ceiling"
         );
+
+        // Production f32 source pyramid (4/3), one RGBA-f32 output, and one
+        // RGBA-f32 encoder working buffer. The tiled source and tile ceilings
+        // leave the same 128 MiB minimum headroom for process/runtime overhead.
+        let production_media_bytes = MAX_MEDIA_PIXELS * 16 * (4 + 3 + 3) / 3;
+        let tiled_media_bytes = MAX_MEDIA_PIXELS * 16 * 4 / 3 + MAX_TILED_TILE_PIXELS * 16 * 2;
+        let reserved_headroom = 128 * 1024 * 1024;
+        for required in [production_media_bytes, tiled_media_bytes] {
+            assert!(
+                required + reserved_headroom <= WORKER_MEMORY_BYTES,
+                "f32 media path needs {required} bytes plus {reserved_headroom} bytes headroom, above the {WORKER_MEMORY_BYTES}-byte worker ceiling"
+            );
+        }
     }
 }

@@ -5,7 +5,7 @@ import {
   type DesignerWorkspaceSource,
 } from "./designer-workspace-common";
 import { planMockup } from "./designer-plan";
-import type { MainToUiMessage, UiToMainMessage } from "./messages";
+import type { MainToUiMessage, TemplateMutationReceipt, UiToMainMessage } from "./messages";
 import {
   templateSourceCount,
   type FigmaSpatialTemplate,
@@ -20,6 +20,57 @@ export interface TemplateWorkspaceCopy extends DesignerWorkspaceCopy {
   confirmRemove: string;
   sourceCount: string;
   incompatible: string;
+}
+
+export class TemplateWorkspaceAsyncState {
+  active = false;
+  useGeneration = 0;
+  usingTemplate = false;
+  pendingDeleteRequestId: number | undefined;
+
+  enter(): void {
+    this.active = true;
+    this.useGeneration += 1;
+  }
+
+  leave(): void {
+    this.active = false;
+    this.useGeneration += 1;
+    this.usingTemplate = false;
+  }
+
+  beginUse(): number {
+    this.useGeneration += 1;
+    this.usingTemplate = true;
+    return this.useGeneration;
+  }
+
+  acceptsUse(generation: number): boolean {
+    return this.active && generation === this.useGeneration;
+  }
+
+  finishUse(generation: number): boolean {
+    if (generation !== this.useGeneration) return false;
+    this.usingTemplate = false;
+    return true;
+  }
+
+  beginDelete(requestId: number): void {
+    this.pendingDeleteRequestId = requestId;
+  }
+
+  finishDelete(mutation: TemplateMutationReceipt | undefined): boolean {
+    if (
+      mutation?.kind !== "delete" ||
+      mutation.requestId !== this.pendingDeleteRequestId
+    ) return false;
+    this.pendingDeleteRequestId = undefined;
+    return true;
+  }
+
+  busy(): boolean {
+    return this.usingTemplate || this.pendingDeleteRequestId !== undefined;
+  }
 }
 
 export function createTemplateWorkspace(input: {
@@ -45,10 +96,7 @@ export function createTemplateWorkspace(input: {
   let source: DesignerWorkspaceSource | undefined;
   let selectedId: string | undefined;
   let confirmingDelete = false;
-  let active = false;
-  let useGeneration = 0;
-  let usingTemplate = false;
-  let pendingDeleteRequestId: number | undefined;
+  const asyncState = new TemplateWorkspaceAsyncState();
   let nextDeleteRequestId = 1;
 
   shell.back.addEventListener("click", input.onBack);
@@ -60,7 +108,7 @@ export function createTemplateWorkspace(input: {
   }
 
   function render(): void {
-    if (!active) return;
+    if (!asyncState.active) return;
     const copy = input.copy();
     shell.setCopy({ ...copy, apply: copy.use, reset: confirmingDelete ? copy.confirmRemove : copy.remove });
     list.replaceChildren();
@@ -105,7 +153,7 @@ export function createTemplateWorkspace(input: {
     }
     const selectedRecord = selected();
     const count = selectedRecord ? templateSourceCount(selectedRecord.template) : 0;
-    const busy = usingTemplate || pendingDeleteRequestId !== undefined;
+    const busy = asyncState.busy();
     shell.apply.disabled =
       busy || !selectedRecord || !source || count !== source.sources.length;
     shell.reset.disabled = busy || !selectedRecord;
@@ -118,7 +166,7 @@ export function createTemplateWorkspace(input: {
 
   async function useSelected(): Promise<void> {
     const record = selected();
-    if (!active || !record || !source || usingTemplate || pendingDeleteRequestId !== undefined) {
+    if (!asyncState.active || !record || !source || asyncState.busy()) {
       return;
     }
     const count = templateSourceCount(record.template);
@@ -126,23 +174,21 @@ export function createTemplateWorkspace(input: {
       shell.showError(input.copy().incompatible.replace("{count}", String(count)));
       return;
     }
-    const generation = ++useGeneration;
-    usingTemplate = true;
+    const generation = asyncState.beginUse();
     render();
     try {
       const plan = await planMockup(record.template.operation.spec);
-      if (!active || generation !== useGeneration) return;
+      if (!asyncState.acceptsUse(generation)) return;
       if (
         new Set(plan.planes.map((plane) => plane.sourceId)).size !== count ||
         !input.onUse(record.template)
       ) throw new Error("The saved template is not compatible with this workspace");
       shell.showError();
     } catch (error) {
-      if (!active || generation !== useGeneration) return;
+      if (!asyncState.acceptsUse(generation)) return;
       shell.showError(input.formatError(error));
     } finally {
-      if (generation === useGeneration) {
-        usingTemplate = false;
+      if (asyncState.finishUse(generation)) {
         render();
       }
     }
@@ -150,7 +196,7 @@ export function createTemplateWorkspace(input: {
 
   function removeSelected(): void {
     const record = selected();
-    if (!active || !record || usingTemplate || pendingDeleteRequestId !== undefined) return;
+    if (!asyncState.active || !record || asyncState.busy()) return;
     if (!confirmingDelete) {
       confirmingDelete = true;
       render();
@@ -159,22 +205,20 @@ export function createTemplateWorkspace(input: {
     confirmingDelete = false;
     const requestId = nextDeleteRequestId;
     nextDeleteRequestId += 1;
-    pendingDeleteRequestId = requestId;
+    asyncState.beginDelete(requestId);
     render();
     input.post({ type: "delete-template", requestId, id: record.id });
   }
 
   return {
-    enter() { active = true; useGeneration += 1; shell.root.hidden = false; render(); },
+    enter() { asyncState.enter(); shell.root.hidden = false; render(); },
     leave() {
-      active = false;
-      useGeneration += 1;
-      usingTemplate = false;
+      asyncState.leave();
       shell.root.hidden = true;
       confirmingDelete = false;
     },
     setSource(next) { source = next; render(); },
-    clearSource(error) { source = undefined; if (active) shell.showError(error); render(); },
+    clearSource(error) { source = undefined; if (asyncState.active) shell.showError(error); render(); },
     updateLocale() { render(); },
     handleMainMessage(message: MainToUiMessage) {
       if (message.type === "template-library") {
@@ -183,24 +227,16 @@ export function createTemplateWorkspace(input: {
           selectedId = templates[0]?.id;
         }
         confirmingDelete = false;
-        if (
-          message.mutation?.kind === "delete" &&
-          message.mutation.requestId === pendingDeleteRequestId
-        ) {
-          pendingDeleteRequestId = undefined;
-          if (active) shell.showError();
+        if (asyncState.finishDelete(message.mutation)) {
+          if (asyncState.active) shell.showError();
         }
         render();
         return true;
       }
       if (message.type === "template-library-error") {
-        if (
-          message.mutation?.kind === "delete" &&
-          message.mutation.requestId === pendingDeleteRequestId
-        ) {
-          pendingDeleteRequestId = undefined;
-          if (active) shell.showError(input.formatError(message.message));
-        } else if (!message.mutation && active) {
+        if (asyncState.finishDelete(message.mutation)) {
+          if (asyncState.active) shell.showError(input.formatError(message.message));
+        } else if (!message.mutation && asyncState.active) {
           shell.showError(input.formatError(message.message));
         }
         render();
