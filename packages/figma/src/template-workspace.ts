@@ -6,20 +6,26 @@ import {
 } from "./designer-workspace-common";
 import { planMockup } from "./designer-plan";
 import type { MainToUiMessage, TemplateMutationReceipt, UiToMainMessage } from "./messages";
+import { taskWorkspaceAvailability } from "./task-launcher";
 import {
+  templateOutputCount,
   templateSourceCount,
-  type FigmaSpatialTemplate,
+  type FigmaTaskTemplate,
   type SavedSpatialTemplate,
 } from "./stored-template-library";
 
 export interface TemplateWorkspaceCopy extends DesignerWorkspaceCopy {
   empty: string;
   create: string;
+  createCanvas: string;
   use: string;
   remove: string;
   confirmRemove: string;
   sourceCount: string;
+  outputCount: string;
   incompatible: string;
+  mockup: string;
+  sizes: string;
 }
 
 export class TemplateWorkspaceAsyncState {
@@ -77,8 +83,8 @@ export function createTemplateWorkspace(input: {
   root: HTMLElement;
   copy(): TemplateWorkspaceCopy;
   onBack(): void;
-  onCreate(): void;
-  onUse(template: FigmaSpatialTemplate): boolean;
+  onCreate(target: "mockup" | "canvas"): void;
+  onUse(template: FigmaTaskTemplate): boolean;
   post(message: UiToMainMessage): void;
   formatError(error: unknown): string;
 }): DesignerTaskWorkspace {
@@ -117,12 +123,19 @@ export function createTemplateWorkspace(input: {
       empty.className = "template-empty";
       const label = document.createElement("p");
       label.textContent = copy.empty;
-      const create = document.createElement("button");
-      create.type = "button";
-      create.className = "primary";
-      create.textContent = copy.create;
-      create.addEventListener("click", input.onCreate);
-      empty.append(label, create);
+      const createMockup = document.createElement("button");
+      createMockup.type = "button";
+      createMockup.className = "primary";
+      createMockup.textContent = copy.create;
+      createMockup.addEventListener("click", () => input.onCreate("mockup"));
+      const createCanvas = document.createElement("button");
+      createCanvas.type = "button";
+      createCanvas.textContent = copy.createCanvas;
+      createCanvas.addEventListener("click", () => input.onCreate("canvas"));
+      const availability = taskWorkspaceAvailability(source?.sources.length ?? 0);
+      createMockup.hidden = !availability.mockup;
+      createCanvas.hidden = !availability.canvas;
+      empty.append(label, createMockup, createCanvas);
       list.append(empty);
       footer.hidden = true;
       return;
@@ -141,7 +154,11 @@ export function createTemplateWorkspace(input: {
       const detail = button.querySelector<HTMLElement>(".template-item-detail");
       if (!name || !detail) throw new Error("Missing Template item labels");
       name.textContent = template.name;
-      detail.textContent = copy.sourceCount.replace("{count}", String(count));
+      const kind = template.template.operation.kind === "canvas" ? copy.sizes : copy.mockup;
+      const size = template.template.operation.kind === "canvas"
+        ? copy.outputCount.replace("{count}", String(templateOutputCount(template.template) ?? 0))
+        : copy.sourceCount.replace("{count}", String(count));
+      detail.textContent = `${kind} · ${size}`;
       if (!compatible) button.title = copy.incompatible.replace("{count}", String(count));
       button.addEventListener("click", () => {
         selectedId = template.id;
@@ -177,12 +194,17 @@ export function createTemplateWorkspace(input: {
     const generation = asyncState.beginUse();
     render();
     try {
-      const plan = await planMockup(record.template.operation.spec);
       if (!asyncState.acceptsUse(generation)) return;
-      if (
-        new Set(plan.planes.map((plane) => plane.sourceId)).size !== count ||
-        !input.onUse(record.template)
-      ) throw new Error("The saved template is not compatible with this workspace");
+      if (record.template.operation.kind === "mockup") {
+        const plan = await planMockup(record.template.operation.spec);
+        if (!asyncState.acceptsUse(generation)) return;
+        if (new Set(plan.planes.map((plane) => plane.sourceId)).size !== count) {
+          throw new Error("The saved template is not compatible with this workspace");
+        }
+      }
+      if (!input.onUse(record.template)) {
+        throw new Error("The saved template is not compatible with this workspace");
+      }
       shell.showError();
     } catch (error) {
       if (!asyncState.acceptsUse(generation)) return;
@@ -211,7 +233,7 @@ export function createTemplateWorkspace(input: {
   }
 
   return {
-    enter() { asyncState.enter(); shell.root.hidden = false; render(); },
+    enter() { asyncState.enter(); shell.root.hidden = false; render(); queueMicrotask(() => shell.back.focus()); },
     leave() {
       asyncState.leave();
       shell.root.hidden = true;

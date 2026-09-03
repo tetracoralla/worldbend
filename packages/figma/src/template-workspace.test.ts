@@ -32,7 +32,11 @@ describe("Template workspace asynchronous state", () => {
     state.enter();
     state.beginDelete(1);
 
-    expect(state.finishDelete({ kind: "save", requestId: 44 })).toBe(false);
+    expect(state.finishDelete({
+      kind: "save",
+      workspace: "mockup",
+      requestId: 44,
+    })).toBe(false);
     expect(state.finishDelete({ kind: "delete", requestId: 99 })).toBe(false);
     expect(state.busy()).toBe(true);
     expect(state.finishDelete({ kind: "delete", requestId: 1 })).toBe(true);

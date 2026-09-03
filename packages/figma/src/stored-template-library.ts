@@ -3,6 +3,10 @@ import type {
   SpatialTemplateSpecInput,
 } from "@worldbend/web/types";
 import { isStoredDesignerTask } from "./stored-designer-task";
+import {
+  isOwnedCanvasSetSpec,
+  type OwnedCanvasSetSpec,
+} from "./stored-canvas";
 import { isRecord } from "./stored-plane";
 
 export const TEMPLATE_LIBRARY_STORAGE_KEY = "worldbend.spatial-templates.v1";
@@ -17,10 +21,18 @@ export type FigmaSpatialTemplate = Omit<
   output: { kind: "single"; id: "output" };
 };
 
+export interface FigmaCanvasTemplate {
+  schema: "worldbend.figma-task-template";
+  version: "0.1";
+  operation: { kind: "canvas"; spec: OwnedCanvasSetSpec };
+}
+
+export type FigmaTaskTemplate = FigmaSpatialTemplate | FigmaCanvasTemplate;
+
 export interface SavedSpatialTemplate {
   id: string;
   name: string;
-  template: FigmaSpatialTemplate;
+  template: FigmaTaskTemplate;
 }
 
 export interface StoredTemplateLibrary {
@@ -46,8 +58,24 @@ export function spatialTemplateFromMockup(spec: MockupSpecInput): FigmaSpatialTe
   };
 }
 
-export function templateSourceCount(template: FigmaSpatialTemplate): number {
-  return canonicalMockupSourceSlots(template.operation.spec)?.length ?? 0;
+export function canvasTemplateFromSet(spec: OwnedCanvasSetSpec): FigmaCanvasTemplate {
+  return {
+    schema: "worldbend.figma-task-template",
+    version: "0.1",
+    operation: { kind: "canvas", spec: cloneJson(spec) },
+  };
+}
+
+export function templateSourceCount(template: FigmaTaskTemplate): number {
+  return template.operation.kind === "canvas"
+    ? 1
+    : canonicalMockupSourceSlots(template.operation.spec)?.length ?? 0;
+}
+
+export function templateOutputCount(template: FigmaTaskTemplate): number | undefined {
+  return template.operation.kind === "canvas"
+    ? template.operation.spec.variants.length
+    : undefined;
 }
 
 export function normalizeTemplateName(value: string): string | undefined {
@@ -73,6 +101,20 @@ export function isFigmaSpatialTemplate(value: unknown): value is FigmaSpatialTem
   return canonicalMockupSourceSlots(value["operation"]["spec"] as MockupSpecInput) !== undefined;
 }
 
+export function isFigmaTaskTemplate(value: unknown): value is FigmaTaskTemplate {
+  if (isFigmaSpatialTemplate(value)) return true;
+  return (
+    isRecord(value) &&
+    exact(value, ["schema", "version", "operation"]) &&
+    value["schema"] === "worldbend.figma-task-template" &&
+    value["version"] === "0.1" &&
+    isRecord(value["operation"]) &&
+    exact(value["operation"], ["kind", "spec"]) &&
+    value["operation"]["kind"] === "canvas" &&
+    isOwnedCanvasSetSpec(value["operation"]["spec"])
+  );
+}
+
 export function isSavedSpatialTemplate(value: unknown): value is SavedSpatialTemplate {
   return (
     isRecord(value) &&
@@ -80,7 +122,7 @@ export function isSavedSpatialTemplate(value: unknown): value is SavedSpatialTem
     isSafeId(value["id"]) &&
     typeof value["name"] === "string" &&
     normalizeTemplateName(value["name"]) === value["name"] &&
-    isFigmaSpatialTemplate(value["template"])
+    isFigmaTaskTemplate(value["template"])
   );
 }
 

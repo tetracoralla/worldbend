@@ -42,6 +42,7 @@ import {
   MAX_SAVED_SPATIAL_TEMPLATES,
   TEMPLATE_LIBRARY_STORAGE_KEY,
   checkedTemplateLibrary,
+  canvasTemplateFromSet,
   emptyTemplateLibrary,
   parseTemplateLibrary,
   spatialTemplateFromMockup,
@@ -127,6 +128,7 @@ figma.ui.onmessage = (message: unknown) => {
   if (message.type === "save-template") {
     const mutation: TemplateMutationReceipt = {
       kind: "save",
+      workspace: message.workspace,
       requestId: message.requestId,
     };
     queueTemplateMutation(mutation, async () => {
@@ -134,10 +136,15 @@ figma.ui.onmessage = (message: unknown) => {
       if (templateLibrary.templates.length >= MAX_SAVED_SPATIAL_TEMPLATES) {
         throw userError("templateLimitReached", { limit: MAX_SAVED_SPATIAL_TEMPLATES });
       }
+      if (templateLibrary.templates.some((template) => template.name === message.name)) {
+        throw userError("templateNameExists", { name: message.name });
+      }
       const record: SavedSpatialTemplate = {
         id: createTemplateId(templateLibrary.templates),
         name: message.name,
-        template: spatialTemplateFromMockup(message.template.operation.spec),
+        template: message.template.operation.kind === "canvas"
+          ? canvasTemplateFromSet(message.template.operation.spec)
+          : spatialTemplateFromMockup(message.template.operation.spec),
       };
       const next = checkedTemplateLibrary([...templateLibrary.templates, record]);
       if (!next) throw userError("templateSaveFailed");

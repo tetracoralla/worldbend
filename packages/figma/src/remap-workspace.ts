@@ -151,7 +151,7 @@ export function createRemapWorkspace(input: {
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(false); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
+    enter() { active = true; shell.root.hidden = false; void render(false); queueMicrotask(() => shell.back.focus()); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
     setSource(next) {
       busy = false; shell.setBusy(false);
       source = next;

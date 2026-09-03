@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { defaultMockup } from "./mockup-workspace";
 import {
+  canvasTemplateFromSet,
   checkedTemplateLibrary,
+  isFigmaTaskTemplate,
   parseTemplateLibrary,
   spatialTemplateFromMockup,
+  templateOutputCount,
   templateSourceCount,
   utf8ByteLength,
 } from "./stored-template-library";
@@ -26,6 +29,35 @@ describe("Figma Spatial Template storage", () => {
     expect(library).toBeDefined();
     expect(parseTemplateLibrary(structuredClone(library))).toEqual(library);
     expect(templateSourceCount(template)).toBe(2);
+  });
+
+  it("round-trips a canonical Sizes task template beside Mockup templates", () => {
+    const template = canvasTemplateFromSet({
+      schema: "worldbend.canvas-set",
+      version: "0.1",
+      variants: [
+        {
+          id: "social-square",
+          operation: {
+            kind: "contain",
+            output: { width: 1080, height: 1080 },
+            anchor: { x: 0.5, y: 0.5 },
+            background: { kind: "transparent" },
+          },
+        },
+        {
+          id: "wide",
+          operation: { kind: "stretch", output: { width: 1200, height: 628 } },
+        },
+      ],
+    });
+    const library = checkedTemplateLibrary([{ id: "template-size", name: "Social", template }]);
+
+    expect(isFigmaTaskTemplate(template)).toBe(true);
+    expect(templateSourceCount(template)).toBe(1);
+    expect(templateOutputCount(template)).toBe(2);
+    expect(templateOutputCount(spatialTemplateFromMockup(defaultMockup([source(1)])))).toBeUndefined();
+    expect(parseTemplateLibrary(structuredClone(library))).toEqual(library);
   });
 
   it("rejects noncanonical source slots and duplicate record ids", () => {

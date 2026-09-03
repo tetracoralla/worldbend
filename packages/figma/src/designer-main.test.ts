@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMeshSpec } from "./mesh-workspace";
 import { defaultMockup } from "./mockup-workspace";
-import { spatialTemplateFromMockup } from "./stored-template-library";
+import {
+  canvasTemplateFromSet,
+  spatialTemplateFromMockup,
+} from "./stored-template-library";
 
 function sourceNode(id: string, x: number, page: object) {
   return {
@@ -112,6 +115,7 @@ describe("Figma designer task main boundary", () => {
     }]));
     figmaMock.ui.onmessage?.({
       type: "save-template",
+      workspace: "mockup",
       requestId: 11,
       name: "Card",
       template,
@@ -120,7 +124,7 @@ describe("Figma designer task main boundary", () => {
       expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(1);
       expect(posts).toContainEqual(expect.objectContaining({
         type: "template-library",
-        mutation: { kind: "save", requestId: 11 },
+        mutation: { kind: "save", workspace: "mockup", requestId: 11 },
         templates: [expect.objectContaining({ name: "Card", template })],
       }));
     });
@@ -140,6 +144,78 @@ describe("Figma designer task main boundary", () => {
         templates: [],
         mutation: { kind: "delete", requestId: 12 },
       });
+    });
+  });
+
+  it("rejects saving a second template under an existing name without writing storage", async () => {
+    const { figmaMock, posts } = setup(1);
+    await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
+    const template = spatialTemplateFromMockup(defaultMockup([{
+      sourceNodeId: "source-1",
+      sourceName: "Source",
+      renderWidth: 100,
+      renderHeight: 80,
+      placement: { x: 0, y: 20, width: 100, height: 80 },
+      image: {} as HTMLImageElement,
+    }]));
+
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      workspace: "mockup",
+      requestId: 21,
+      name: "Card",
+      template,
+    });
+    await vi.waitFor(() => expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(1));
+
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      workspace: "mockup",
+      requestId: 22,
+      name: "Card",
+      template,
+    });
+    await vi.waitFor(() => {
+      expect(posts).toContainEqual(expect.objectContaining({
+        type: "template-library-error",
+        mutation: { kind: "save", workspace: "mockup", requestId: 22 },
+        message: { key: "templateNameExists", values: { name: "Card" } },
+      }));
+      expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("persists a validated Sizes task template without fabricating a program root", async () => {
+    const { figmaMock, posts } = setup(1);
+    await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
+    const template = canvasTemplateFromSet({
+      schema: "worldbend.canvas-set",
+      version: "0.1",
+      variants: [{
+        id: "square",
+        operation: { kind: "stretch", output: { width: 1080, height: 1080 } },
+      }],
+    });
+
+    figmaMock.ui.onmessage?.({
+      type: "save-template",
+      workspace: "canvas",
+      requestId: 13,
+      name: "Social square",
+      template,
+    });
+
+    await vi.waitFor(() => {
+      expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(1);
+      expect(posts).toContainEqual(expect.objectContaining({
+        type: "template-library",
+        mutation: { kind: "save", workspace: "canvas", requestId: 13 },
+        templates: [expect.objectContaining({ name: "Social square", template })],
+      }));
     });
   });
 
@@ -168,6 +244,7 @@ describe("Figma designer task main boundary", () => {
     }]));
     figmaMock.ui.onmessage?.({
       type: "save-template",
+      workspace: "mockup",
       requestId: 21,
       name: "Must not overwrite",
       template,
@@ -180,7 +257,7 @@ describe("Figma designer task main boundary", () => {
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({
         type: "template-library-error",
-        mutation: { kind: "save", requestId: 21 },
+        mutation: { kind: "save", workspace: "mockup", requestId: 21 },
       }));
       expect(posts).toContainEqual(expect.objectContaining({
         type: "template-library-error",
@@ -209,24 +286,26 @@ describe("Figma designer task main boundary", () => {
 
     figmaMock.ui.onmessage?.({
       type: "save-template",
+      workspace: "mockup",
       requestId: 31,
       name: "First attempt",
       template,
     });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({
       type: "template-library-error",
-      mutation: { kind: "save", requestId: 31 },
+      mutation: { kind: "save", workspace: "mockup", requestId: 31 },
     })));
 
     figmaMock.ui.onmessage?.({
       type: "save-template",
+      workspace: "mockup",
       requestId: 32,
       name: "Recovered",
       template,
     });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({
       type: "template-library",
-      mutation: { kind: "save", requestId: 32 },
+      mutation: { kind: "save", workspace: "mockup", requestId: 32 },
       templates: [expect.objectContaining({ name: "Recovered" })],
     })));
     expect(figmaMock.clientStorage.setAsync).toHaveBeenCalledTimes(2);

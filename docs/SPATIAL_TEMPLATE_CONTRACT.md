@@ -116,10 +116,16 @@ workspace and the existing Mockup and Sizes task objects. Templates is a fifth
 replacing sibling workspace; it does not enter Perspective `EditorMode` or add
 controls to the frozen Perspective operation bar. The contract does not
 authorize a layers panel, job dashboard, source-path storage, or Agent/runtime
-metadata in the human surface. If the persisted template library cannot be
+metadata in the human surface. A Mockup library entry remains the canonical
+single-output Spatial Template above. A Sizes-only library entry uses the
+adapter-local `worldbend.figma-task-template@0.1` envelope around one canonical
+Canvas Set instead of fabricating a hidden Raster Program root; it is not an
+Agent or CLI Spatial Template and does not widen the core union. If the persisted template library cannot be
 read or validated, the workspace may remain usable with an empty read-only
 fallback, but save and delete must fail without writing client storage so the
-unread library cannot be silently replaced. ComfyUI does not receive the job contract until
+unread library cannot be silently replaced. Saving under a name that already
+exists in the library fails without writing storage, so entries stay
+distinguishable by name. ComfyUI does not receive the job contract until
 a graph-native use defines tensor/list ownership, cancellation, and
 retained-memory behavior.
 

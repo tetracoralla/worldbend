@@ -30,6 +30,7 @@ import {
   canvasResultPlacements,
   cloneBackground,
   draftFromStoredCanvas,
+  draftFromStoredCanvasSet,
   eventTargetEditsText,
   hexToRgba,
   imageRgba,
@@ -40,6 +41,11 @@ import {
   specFromDraft,
   type CanvasWorkspacePhase,
 } from "./canvas-workspace-support";
+import {
+  canvasTemplateFromSet,
+  normalizeTemplateName,
+} from "./stored-template-library";
+import type { OwnedCanvasSetSpec } from "./stored-canvas";
 
 type WorkspaceSource = Omit<SourcePayload, "bytes" | "sources"> & { selectionGeneration: number };
 type WorkspacePhase = CanvasWorkspacePhase;
@@ -53,6 +59,8 @@ export interface CanvasWorkspace {
   updateLocale(): void;
   handleMainMessage(message: MainToUiMessage): boolean;
   handleKeydown(event: KeyboardEvent): boolean;
+  loadTemplate(spec: OwnedCanvasSetSpec): boolean;
+  finishTemplateSave(requestId: number, error?: string): void;
   dispose(): void;
 }
 
@@ -82,6 +90,10 @@ export function createCanvasWorkspace(input: {
   let planGeneration = 0;
   let undoRouted = false;
   let visibleError = "";
+  let savingTemplate = false;
+  let pendingTemplateRequestId: number | undefined;
+  let nextTemplateRequestId = 1;
+  let savedNotice = false;
 
   view.back.addEventListener("click", input.onBack);
   view.addVariant.addEventListener("click", () => {
@@ -141,6 +153,11 @@ export function createCanvasWorkspace(input: {
   view.reset.addEventListener("click", resetDraft);
   view.apply.addEventListener("click", () => void apply(false));
   view.applyNew.addEventListener("click", () => void apply(true));
+  view.templateName.addEventListener("input", () => {
+    savedNotice = false;
+    render();
+  });
+  view.saveTemplate.addEventListener("click", saveCurrentTemplate);
   input.root.hidden = true;
   input.root.inert = true;
   view.applyCopy(input.copy());
@@ -164,6 +181,7 @@ export function createCanvasWorkspace(input: {
     active = false;
     planGeneration += 1;
     plan = undefined;
+    savedNotice = false;
     renderer?.dispose();
     renderer = undefined;
     view.preview.replaceChildren();
@@ -180,17 +198,22 @@ export function createCanvasWorkspace(input: {
     sourceRgba = undefined;
     undoRouted = false;
     visibleError = "";
+    savedNotice = false;
     if (!same || !draft) {
       draft = nextSource.canvas
         ? draftFromStoredCanvas(nextSource.canvas.operation, image.naturalWidth, image.naturalHeight)
         : createCanvasDraft(image.naturalWidth, image.naturalHeight);
       baseline = cloneCanvasDraft(draft);
       history = createCanvasHistory(draft);
+      view.templateName.value = input.copy().templateNamePlaceholder;
     } else {
       draft = { ...draft, source: { width: image.naturalWidth, height: image.naturalHeight } };
       baseline = baseline
         ? { ...baseline, source: { ...draft.source } }
         : cloneCanvasDraft(draft);
+      if (!normalizeTemplateName(view.templateName.value)) {
+        view.templateName.value = input.copy().templateNamePlaceholder;
+      }
     }
     phase = active ? "planning" : "ready";
     render();
@@ -201,6 +224,7 @@ export function createCanvasWorkspace(input: {
     if (!active) return;
     planGeneration += 1;
     phase = "planning";
+    savedNotice = false;
     visibleError = "";
     render();
   }
@@ -215,6 +239,9 @@ export function createCanvasWorkspace(input: {
     plan = undefined;
     phase = "idle";
     visibleError = error;
+    savedNotice = false;
+    savingTemplate = false;
+    pendingTemplateRequestId = undefined;
     if (renderer) {
       renderer.canvas.width = 1;
       renderer.canvas.height = 1;
@@ -235,6 +262,7 @@ export function createCanvasWorkspace(input: {
     const generation = ++planGeneration;
     const plannedDraft = draft;
     phase = "planning";
+    savedNotice = false;
     visibleError = "";
     render();
     try {
@@ -281,6 +309,7 @@ export function createCanvasWorkspace(input: {
     const applyingDraft = draft;
     const generation = planGeneration;
     phase = "applying";
+    savedNotice = false;
     visibleError = "";
     render();
     try {
@@ -356,6 +385,31 @@ export function createCanvasWorkspace(input: {
       return true;
     }
     return false;
+  }
+
+  function saveCurrentTemplate(): void {
+    const name = normalizeTemplateName(view.templateName.value);
+    if (
+      !draft ||
+      !plan ||
+      phase !== "ready" ||
+      savingTemplate ||
+      validateCanvasDraft(draft) ||
+      !name
+    ) return;
+    const requestId = nextTemplateRequestId;
+    nextTemplateRequestId += 1;
+    savingTemplate = true;
+    pendingTemplateRequestId = requestId;
+    visibleError = "";
+    input.post({
+      type: "save-template",
+      workspace: "canvas",
+      requestId,
+      name,
+      template: canvasTemplateFromSet(specFromDraft(draft)),
+    });
+    render();
   }
 
   function handleKeydown(event: KeyboardEvent): boolean {
@@ -436,6 +490,20 @@ export function createCanvasWorkspace(input: {
     updateDraft(cloneCanvasDraft(baseline));
   }
 
+  function renderTemplateSave(): void {
+    const busy = phase === "planning" || phase === "applying";
+    view.templateName.disabled = busy || savingTemplate || !draft;
+    const saveDisabled =
+      busy ||
+      savingTemplate ||
+      !plan ||
+      !draft ||
+      Boolean(validateCanvasDraft(draft)) ||
+      !normalizeTemplateName(view.templateName.value);
+    view.saveTemplate.disabled = saveDisabled;
+    view.saveTemplate.title = saveDisabled ? input.copy().saveTemplate : "";
+  }
+
   function render(): void {
     const copy = input.copy();
     view.applyCopy(copy);
@@ -455,6 +523,7 @@ export function createCanvasWorkspace(input: {
       busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length >= 8;
     view.removeVariant.disabled =
       busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length <= 1;
+    renderTemplateSave();
     view.reset.disabled = busy || !baseline;
     view.apply.disabled = !ready;
     view.applyNew.hidden = !source?.targetNodeId;
@@ -466,14 +535,17 @@ export function createCanvasWorkspace(input: {
     });
     view.error.hidden = visibleError.length === 0;
     view.error.textContent = visibleError;
-    view.status.textContent =
-      phase === "planning"
-        ? copy.planning
-        : phase === "applying"
-          ? copy.applying
-          : phase === "applied"
-            ? copy.applied
-            : "";
+    view.status.textContent = savingTemplate
+      ? copy.savingTemplate
+      : savedNotice
+        ? copy.templateSaved
+        : phase === "planning"
+          ? copy.planning
+          : phase === "applying"
+            ? copy.applying
+            : phase === "applied"
+              ? copy.applied
+              : "";
     input.root.setAttribute("aria-busy", String(busy));
   }
 
@@ -518,6 +590,34 @@ export function createCanvasWorkspace(input: {
     updateLocale: render,
     handleMainMessage,
     handleKeydown,
+    loadTemplate(spec) {
+      if (!source || !sourceImage) return false;
+      const next = draftFromStoredCanvasSet(
+        spec,
+        sourceImage.naturalWidth,
+        sourceImage.naturalHeight,
+      );
+      if (validateCanvasDraft(next)) return false;
+      draft = next;
+      baseline = cloneCanvasDraft(next);
+      history = createCanvasHistory(next);
+      plan = undefined;
+      phase = active ? "planning" : "ready";
+      savedNotice = false;
+      view.templateName.value = input.copy().templateNamePlaceholder;
+      visibleError = "";
+      render();
+      if (active) void requestPlan();
+      return true;
+    },
+    finishTemplateSave(requestId, error) {
+      if (!savingTemplate || pendingTemplateRequestId !== requestId) return;
+      savingTemplate = false;
+      pendingTemplateRequestId = undefined;
+      savedNotice = !error;
+      if (error) visibleError = error;
+      render();
+    },
     dispose() {
       leave();
       input.root.replaceChildren();
@@ -532,6 +632,7 @@ function activeGeneration(source: WorkspaceSource): number {
 export {
   canvasPrimaryActionLabel,
   canvasResultPlacements,
+  draftFromStoredCanvasSet,
   specFromDraft,
   variantTabTargetIndex,
 } from "./canvas-workspace-support";

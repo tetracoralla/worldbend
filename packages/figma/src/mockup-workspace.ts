@@ -91,6 +91,7 @@ export function createMockupWorkspace(input: {
   let savingTemplate = false;
   let pendingTemplateRequestId: number | undefined;
   let nextTemplateRequestId = 1;
+  let templateFeedback: "none" | "saved" | "error" = "none";
   // Continuous plan changes (opacity drags, corner moves) collapse to one
   // preview request per paint. Overlay moves never rebuild the point layer:
   // the moved point is already positioned by the overlay itself, and a
@@ -119,7 +120,10 @@ export function createMockupWorkspace(input: {
   });
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
-  templateName.addEventListener("input", renderTemplateSave);
+  templateName.addEventListener("input", () => {
+    clearTemplateFeedback();
+    renderTemplateSave();
+  });
   saveTemplate.addEventListener("click", () => void saveCurrentTemplate());
 
   function commitCanvasSize(): void {
@@ -253,6 +257,7 @@ export function createMockupWorkspace(input: {
   async function saveCurrentTemplate(): Promise<void> {
     const name = normalizeTemplateName(templateName.value);
     if (!spec || !name || savingTemplate) return;
+    clearTemplateFeedback();
     savingTemplate = true;
     renderTemplateSave();
     shell.status.textContent = input.copy().savingTemplate;
@@ -266,20 +271,36 @@ export function createMockupWorkspace(input: {
       const requestId = nextTemplateRequestId;
       nextTemplateRequestId += 1;
       pendingTemplateRequestId = requestId;
-      input.post({ type: "save-template", requestId, name, template });
+      input.post({
+        type: "save-template",
+        workspace: "mockup",
+        requestId,
+        name,
+        template,
+      });
     } catch (error) {
       savingTemplate = false;
+      pendingTemplateRequestId = undefined;
+      shell.status.textContent = "";
+      templateFeedback = "error";
       renderTemplateSave();
       shell.showError(input.formatError(error));
     }
   }
 
+  function clearTemplateFeedback(): void {
+    if (templateFeedback === "saved") shell.status.textContent = "";
+    if (templateFeedback === "error") shell.showError();
+    templateFeedback = "none";
+  }
+
   function renderTemplateSave(): void {
+    templateName.disabled = busy || savingTemplate || !spec;
     saveTemplate.disabled = busy || savingTemplate || !spec || !normalizeTemplateName(templateName.value);
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
+    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); queueMicrotask(() => shell.back.focus()); },
     leave() { active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); },
     setSource(next) {
       busy = false;
@@ -288,14 +309,15 @@ export function createMockupWorkspace(input: {
       spec = next.task?.kind === "mockup" ? structuredClone(next.task.spec) : defaultMockup(next.sources);
       baseline = structuredClone(spec);
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
-      if (!normalizeTemplateName(templateName.value)) {
-        templateName.value = input.copy().templateNamePlaceholder;
-      }
+      clearTemplateFeedback();
+      if (!savingTemplate) shell.status.textContent = "";
+      shell.showError();
+      templateName.value = input.copy().templateNamePlaceholder;
       renderControls();
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { busy = false; savingTemplate = false; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
+    clearSource(error) { busy = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -317,6 +339,10 @@ export function createMockupWorkspace(input: {
       spec = structuredClone(template.operation.spec);
       baseline = structuredClone(spec);
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
+      clearTemplateFeedback();
+      if (!savingTemplate) shell.status.textContent = "";
+      shell.showError();
+      templateName.value = input.copy().templateNamePlaceholder;
       renderControls();
       renderTemplateSave();
       if (active) void render();
@@ -326,9 +352,10 @@ export function createMockupWorkspace(input: {
       if (!savingTemplate || pendingTemplateRequestId !== requestId) return;
       savingTemplate = false;
       pendingTemplateRequestId = undefined;
+      templateFeedback = error ? "error" : "saved";
+      shell.status.textContent = error ? "" : input.copy().templateSaved;
       renderTemplateSave();
       if (error) shell.showError(error);
-      else shell.status.textContent = input.copy().templateSaved;
     },
     dispose() { previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };

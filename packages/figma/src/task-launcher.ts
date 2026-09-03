@@ -10,6 +10,18 @@ export interface TaskLauncher {
   dispose(): void;
 }
 
+export function taskWorkspaceAvailability(
+  sourceCount: number,
+): Readonly<Record<LaunchableWorkspace, boolean>> {
+  return {
+    templates: sourceCount >= 1 && sourceCount <= 8,
+    canvas: sourceCount === 1,
+    mesh: sourceCount === 1,
+    mockup: sourceCount >= 1 && sourceCount <= 8,
+    remap: sourceCount === 1 || sourceCount === 2,
+  };
+}
+
 export function createTaskLauncher(input: {
   trigger: HTMLButtonElement;
   menu: HTMLElement;
@@ -44,14 +56,14 @@ export function createTaskLauncher(input: {
       setOpen(false, true);
       return;
     }
+    if (event.key === "Tab") {
+      setOpen(false);
+      return;
+    }
     const enabledButtons = buttons.filter((button) => !button.disabled);
     if (enabledButtons.length === 0) return;
     const current = enabledButtons.indexOf(document.activeElement as HTMLButtonElement);
-    let next: number | undefined;
-    if (event.key === "Home") next = 0;
-    if (event.key === "End") next = enabledButtons.length - 1;
-    if (event.key === "ArrowDown") next = (Math.max(current, -1) + 1) % enabledButtons.length;
-    if (event.key === "ArrowUp") next = (current - 1 + enabledButtons.length) % enabledButtons.length;
+    const next = taskMenuTargetIndex(event.key, current, enabledButtons.length);
     if (next === undefined) return;
     event.preventDefault();
     enabledButtons[next]?.focus();
@@ -83,9 +95,15 @@ export function createTaskLauncher(input: {
     setLabels(label, workspaces) {
       input.trigger.setAttribute("aria-label", label);
       input.menu.setAttribute("aria-label", label);
+      const triggerTooltip = input.trigger.querySelector<HTMLElement>(".action-tooltip");
+      if (triggerTooltip) triggerTooltip.textContent = label;
       for (const button of buttons) {
         const workspace = button.dataset.workspace as LaunchableWorkspace | undefined;
-        if (workspace) button.textContent = workspaces[workspace];
+        if (!workspace) continue;
+        const workspaceLabel = workspaces[workspace];
+        button.setAttribute("aria-label", workspaceLabel);
+        const tooltip = button.querySelector<HTMLElement>(".action-tooltip");
+        if (tooltip) tooltip.textContent = workspaceLabel;
       }
     },
     close(options) {
@@ -98,4 +116,21 @@ export function createTaskLauncher(input: {
       document.removeEventListener("pointerdown", onPointerDown);
     },
   };
+}
+
+export function taskMenuTargetIndex(
+  key: string,
+  current: number,
+  length: number,
+): number | undefined {
+  if (length < 1) return undefined;
+  if (key === "Home") return 0;
+  if (key === "End") return length - 1;
+  if (key === "ArrowRight" || key === "ArrowDown") {
+    return current < 0 ? 0 : (current + 1) % length;
+  }
+  if (key === "ArrowLeft" || key === "ArrowUp") {
+    return current <= 0 ? length - 1 : current - 1;
+  }
+  return undefined;
 }

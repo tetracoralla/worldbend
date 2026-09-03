@@ -2,6 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const html = readFileSync(new URL("../ui.html", import.meta.url), "utf8");
+const canvasViewSource = readFileSync(new URL("./canvas-workspace-view.ts", import.meta.url), "utf8");
+const workspaceSources = [
+  ["Sizes", "./canvas-workspace.ts", "view.back.focus()"],
+  ["Mockup", "./mockup-workspace.ts", "shell.back.focus()"],
+  ["Mesh", "./mesh-workspace.ts", "shell.back.focus()"],
+  ["Remap", "./remap-workspace.ts", "shell.back.focus()"],
+  ["Templates", "./template-workspace.ts", "shell.back.focus()"],
+] as const;
 
 describe("Figma product workspace markup", () => {
   it("keeps task workspaces behind one compact source-level launcher", () => {
@@ -22,8 +30,24 @@ describe("Figma product workspace markup", () => {
     expect(objectMarkup).toContain('id="source-name"');
     expect(objectMarkup).toContain('id="task-launcher-button"');
     expect(objectMarkup).toContain('id="task-menu"');
-    for (const workspace of ["templates", "canvas", "mockup", "mesh", "remap"]) {
-      expect(html).toContain(`data-workspace="${workspace}"`);
+    expect(objectMarkup).not.toContain('id="task-launcher-label"');
+    expect(objectMarkup).toContain('data-icon-id="icon-park:tool"');
+    expect(objectMarkup).toContain('aria-orientation="horizontal"');
+    const icons = {
+      templates: "icon-park:page-template",
+      canvas: "icon-park:scale",
+      mockup: "icon-park:layout-four",
+      mesh: "icon-park:grid-nine",
+      remap: "icon-park:distortion",
+    } as const;
+    for (const [workspace, icon] of Object.entries(icons)) {
+      const buttonStart = objectMarkup.indexOf(`data-workspace="${workspace}"`);
+      const buttonEnd = objectMarkup.indexOf("</button>", buttonStart);
+      const buttonMarkup = objectMarkup.slice(buttonStart, buttonEnd);
+      expect(buttonStart).toBeGreaterThan(-1);
+      expect(buttonMarkup).toContain(`data-icon-id="${icon}"`);
+      expect(buttonMarkup).toContain('class="action-tooltip"');
+      expect(buttonMarkup).toContain("aria-label=");
     }
     expect(html).toContain('id="templates-workspace"');
     expect(popoverMarkup).not.toContain('id="task-launcher-button"');
@@ -89,5 +113,19 @@ describe("Figma product workspace markup", () => {
     const popoverMarkup = html.slice(popoverStart, popoverEnd);
     expect(popoverMarkup).toContain('id="output-policy-fit"');
     expect(popoverMarkup).toContain('id="output-policy-original"');
+  });
+
+  it("keeps Sizes template saving compact and icon-led", () => {
+    expect(canvasViewSource).toContain('id="canvas-template-name"');
+    expect(canvasViewSource).toContain('id="canvas-save-template"');
+    expect(canvasViewSource).toContain('data-icon-id="icon-park:save"');
+    expect(canvasViewSource).toContain('class="action-tooltip"');
+  });
+
+  it("moves keyboard focus to Back in every task workspace", () => {
+    for (const [name, path, focusCall] of workspaceSources) {
+      const source = readFileSync(new URL(path, import.meta.url), "utf8");
+      expect(source, name).toContain(`queueMicrotask(() => ${focusCall})`);
+    }
   });
 });

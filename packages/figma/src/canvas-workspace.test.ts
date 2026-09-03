@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canvasPrimaryActionLabel,
   canvasResultPlacements,
+  draftFromStoredCanvasSet,
   specFromDraft,
   variantTabTargetIndex,
 } from "./canvas-workspace";
@@ -94,5 +95,35 @@ describe("Canvas operation projection", () => {
       { kind: "pad", insets: { top: 1, right: 2, bottom: 3, left: 4 }, background: { kind: "transparent" } },
       { kind: "stretch", output: { width: 64, height: 32 } },
     ]);
+  });
+
+  it("restores every named Sizes template variant into an editable draft", () => {
+    const spec = {
+      schema: "worldbend.canvas-set" as const,
+      version: "0.1" as const,
+      variants: [
+        {
+          id: "wide",
+          operation: {
+            kind: "stretch" as const,
+            output: { width: 1200, height: 628 },
+          },
+        },
+        {
+          id: "square",
+          operation: {
+            kind: "contain" as const,
+            output: { width: 1080, height: 1080 },
+            anchor: { x: 0.5, y: 0.5 },
+            background: { kind: "transparent" as const },
+          },
+        },
+      ],
+    };
+    const draft = draftFromStoredCanvasSet(spec, 800, 600);
+
+    expect(draft.activeId).toBe("wide");
+    expect(draft.variants.map((variant) => variant.id)).toEqual(["wide", "square"]);
+    expect(specFromDraft(draft)).toEqual(spec);
   });
 });

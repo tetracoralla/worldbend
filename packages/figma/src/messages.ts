@@ -27,9 +27,9 @@ import {
   type StoredDesignerTask,
 } from "./stored-designer-task";
 import {
-  isFigmaSpatialTemplate,
+  isFigmaTaskTemplate,
   normalizeTemplateName,
-  type FigmaSpatialTemplate,
+  type FigmaTaskTemplate,
   type SavedSpatialTemplate,
 } from "./stored-template-library";
 
@@ -53,10 +53,13 @@ export interface SourcePayload extends SourceRasterPayload {
 
 export type Placement = SourcePayload["placement"];
 
-export interface TemplateMutationReceipt {
-  kind: "save" | "delete";
-  requestId: number;
-}
+export type TemplateMutationReceipt =
+  | {
+      kind: "save";
+      workspace: "canvas" | "mockup";
+      requestId: number;
+    }
+  | { kind: "delete"; requestId: number };
 
 export type MainToUiMessage =
   | { type: "locale"; preference: LocalePreference; locale: SupportedLocale }
@@ -113,9 +116,10 @@ export type UiToMainMessage =
   | { type: "set-locale"; preference: LocalePreference }
   | {
       type: "save-template";
+      workspace: "canvas" | "mockup";
       requestId: number;
       name: string;
-      template: FigmaSpatialTemplate;
+      template: FigmaTaskTemplate;
     }
   | { type: "delete-template"; requestId: number; id: string }
   | { type: "trigger-undo" }
@@ -194,11 +198,13 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
   }
   if (value["type"] === "save-template") {
     return (
-      hasExactKeys(value, ["type", "requestId", "name", "template"]) &&
+      hasExactKeys(value, ["type", "workspace", "requestId", "name", "template"]) &&
+      (value["workspace"] === "canvas" || value["workspace"] === "mockup") &&
       isRequestId(value["requestId"]) &&
       typeof value["name"] === "string" &&
       normalizeTemplateName(value["name"]) === value["name"] &&
-      isFigmaSpatialTemplate(value["template"])
+      isFigmaTaskTemplate(value["template"]) &&
+      value["template"].operation.kind === value["workspace"]
     );
   }
   if (value["type"] === "delete-template") {

@@ -123,4 +123,56 @@ describe("Figma template mutation messages", () => {
       id: "template-1",
     })).toBe(false);
   });
+
+  it("accepts a bounded canonical Sizes task template", () => {
+    expect(isUiToMainMessage({
+      type: "save-template",
+      workspace: "canvas",
+      requestId: 1,
+      name: "Social",
+      template: {
+        schema: "worldbend.figma-task-template",
+        version: "0.1",
+        operation: {
+          kind: "canvas",
+          spec: {
+            schema: "worldbend.canvas-set",
+            version: "0.1",
+            variants: [{
+              id: "square",
+              operation: {
+                kind: "stretch",
+                output: { width: 1080, height: 1080 },
+              },
+            }],
+          },
+        },
+      },
+    })).toBe(true);
+
+    expect(isUiToMainMessage({
+      type: "save-template",
+      workspace: "mockup",
+      requestId: 1,
+      name: "Social",
+      template: {
+        schema: "worldbend.figma-task-template",
+        version: "0.1",
+        operation: {
+          kind: "canvas",
+          spec: {
+            schema: "worldbend.canvas-set",
+            version: "0.1",
+            variants: [{
+              id: "square",
+              operation: {
+                kind: "stretch",
+                output: { width: 1080, height: 1080 },
+              },
+            }],
+          },
+        },
+      },
+    })).toBe(false);
+  });
 });

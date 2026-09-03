@@ -79,6 +79,26 @@ export function draftFromStoredCanvas(
   return draft;
 }
 
+export function draftFromStoredCanvasSet(
+  spec: OwnedCanvasSetSpec,
+  sourceWidth: number,
+  sourceHeight: number,
+): CanvasDraft {
+  const variants = spec.variants.map((stored) => {
+    const restored = draftFromStoredCanvas(
+      stored.operation,
+      sourceWidth,
+      sourceHeight,
+    ).variants[0]!;
+    return { ...restored, id: stored.id };
+  });
+  return {
+    source: { width: sourceWidth, height: sourceHeight },
+    variants,
+    activeId: variants[0]?.id ?? "",
+  };
+}
+
 export function renderVariantTabs(
   view: CanvasWorkspaceView,
   draft: CanvasDraft | undefined,

@@ -5,6 +5,11 @@ export interface CanvasWorkspaceCopy {
   title: string;
   addVariant: string;
   removeVariant: string;
+  templateName: string;
+  templateNamePlaceholder: string;
+  saveTemplate: string;
+  savingTemplate: string;
+  templateSaved: string;
   outputName: string;
   operation: string;
   crop: string;
@@ -45,6 +50,8 @@ export interface CanvasWorkspaceView {
   variants: HTMLDivElement;
   addVariant: HTMLButtonElement;
   removeVariant: HTMLButtonElement;
+  templateName: HTMLInputElement;
+  saveTemplate: HTMLButtonElement;
   variantId: HTMLInputElement;
   operation: HTMLSelectElement;
   outputGroup: HTMLDivElement;
@@ -115,6 +122,8 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
         <input id="canvas-background-color" class="canvas-color" type="color" value="#ffffff" hidden>
         <div class="inspector-divider" aria-hidden="true"></div>
         <button id="canvas-remove-variant" class="canvas-remove" type="button"></button>
+        <div class="inspector-divider" aria-hidden="true"></div>
+        <div class="canvas-template-save"><input id="canvas-template-name" type="text" maxlength="80" autocomplete="off"><button id="canvas-save-template" class="icon-tooltip-host" type="button" aria-label="Save template"><span class="ui-icon" data-icon-id="icon-park:save" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 9C6 7.34315 7.34315 6 9 6H34.2814L42 13.2065V39C42 40.6569 40.6569 42 39 42H9C7.34315 42 6 40.6569 6 39V9Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path fill-rule="evenodd" clip-rule="evenodd" d="M24.0083 6L24 13.3846C24 13.7245 23.5523 14 23 14H15C14.4477 14 14 13.7245 14 13.3846L14 6" fill="none"/><path d="M24.0083 6L24 13.3846C24 13.7245 23.5523 14 23 14H15C14.4477 14 14 13.7245 14 13.3846L14 6H24.0083Z" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M9 6H34.2814" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 26H34" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 34H24.0083" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Save template</span></button></div>
       </aside>
     </div>
     <footer class="canvas-footer">
@@ -131,6 +140,8 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
     variants: required(root, "canvas-variants"),
     addVariant: required(root, "canvas-add-variant"),
     removeVariant: required(root, "canvas-remove-variant"),
+    templateName: required(root, "canvas-template-name"),
+    saveTemplate: required(root, "canvas-save-template"),
     variantId: required(root, "canvas-variant-id"),
     operation: required(root, "canvas-operation"),
     outputGroup: required(root, "canvas-output-group"),
@@ -167,6 +178,11 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
       required<HTMLElement>(root, "canvas-title").textContent = copy.title;
       view.addVariant.textContent = copy.addVariant;
       view.removeVariant.textContent = copy.removeVariant;
+      view.templateName.setAttribute("aria-label", copy.templateName);
+      view.templateName.placeholder = copy.templateNamePlaceholder;
+      view.saveTemplate.setAttribute("aria-label", copy.saveTemplate);
+      const templateTooltip = view.saveTemplate.querySelector<HTMLElement>(".action-tooltip");
+      if (templateTooltip) templateTooltip.textContent = copy.saveTemplate;
       required<HTMLElement>(root, "canvas-output-name-label").textContent = copy.outputName;
       required<HTMLElement>(root, "canvas-operation-label").textContent = copy.operation;
       for (const [value, label] of [["crop", copy.crop], ["trim", copy.trim], ["pad", copy.pad], ["contain", copy.contain], ["cover", copy.cover], ["stretch", copy.stretch]] as const) {

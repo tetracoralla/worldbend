@@ -525,8 +525,9 @@ smuggled into the same checker merely to make an unrelated build green.
 The Figma `perspective` workspace retains the checked operation order
 Transform, Free, Perspective, Warp, Correct, More. Free and Perspective stay
 visible and clickable in every Perspective mode because they are the controls
-that re-enter Distort. One compact icon-and-label launcher
-opens the sibling `canvas`, `mockup`, `mesh`, and `remap` task workspaces.
+that re-enter Distort. One compact icon-only launcher with localized pointer
+hover and keyboard-focus tooltips opens the sibling `templates`, `canvas`,
+`mockup`, `mesh`, and `remap` task workspaces.
 Each owns its draft, controls, messages, and runtime resources; only the active
 workspace renders. Entering and returning cannot mutate Perspective semantic
 state. The self-contained Figma release may still inline those modules into
@@ -559,15 +560,17 @@ Warp parameters remain visible while their operation is active so a designer
 can tune continuous values without reopening a popover.
 More follows Warp at the right edge of the operation choices and uses the same
 quiet control language; its popover is reserved for secondary session actions,
-the explicit output-density policy, and language. The sibling Canvas task has a quiet `Sizes…` entry beside
-the selected source identity, outside both the operation choices and More. It
-never hides an active Perspective operation or turns that operation into a
-nested mode.
+the explicit output-density policy, and language. The sibling task launcher
+sits beside the selected source identity, outside both the operation choices
+and More. Its icon-only temporary panel exposes Templates, Sizes, Mockup, Mesh,
+and Remap without hiding an active Perspective operation or turning that
+operation into a nested mode.
 Navigation into a replacing parameter surface uses a right-facing enter arrow;
 down arrows are reserved for dropdown or disclosure behavior. Product icons
 come from the configured project icon authority and retain its returned SVG
-geometry; text glyphs are not substitutes for More, Close, Link, Check, or
-surface-entry icons. Direct-manipulation handles, pivot dots, and slider thumbs
+geometry; text glyphs are not substitutes for More, Close, Link, Check,
+task-launcher, workspace-task, or surface-entry icons. Direct-manipulation
+handles, pivot dots, and slider thumbs
 remain task geometry rather than generic product icons.
 Transform parameters preserve semantic groups and reading order: Width then
 Height then their link toggle; Skew X then Skew Y; Angle then Placement. The

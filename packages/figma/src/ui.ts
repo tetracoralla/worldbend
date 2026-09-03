@@ -109,7 +109,10 @@ import {
   createProductWorkspaceRouter,
   type ProductWorkspaceRouter,
 } from "./product-workspace";
-import { createTaskLauncher } from "./task-launcher";
+import {
+  createTaskLauncher,
+  taskWorkspaceAvailability,
+} from "./task-launcher";
 import { createCanvasWorkspace } from "./canvas-workspace";
 import type { CanvasWorkspaceCopy } from "./canvas-workspace-view";
 import { createMeshWorkspace, type MeshWorkspaceCopy } from "./mesh-workspace";
@@ -165,7 +168,6 @@ const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
 const taskLauncherButton = required<HTMLButtonElement>("task-launcher-button");
-const taskLauncherLabel = required<HTMLSpanElement>("task-launcher-label");
 const taskMenu = required<HTMLElement>("task-menu");
 const actionUndo = required<HTMLButtonElement>("action-undo");
 const actionRedo = required<HTMLButtonElement>("action-redo");
@@ -396,8 +398,13 @@ const templateWorkspace = createTemplateWorkspace({
   root: templatesWorkspaceRoot,
   copy: templateWorkspaceCopy,
   onBack() { productWorkspace.returnToPerspective(); },
-  onCreate() { productWorkspace.enter("mockup"); },
+  onCreate(target) { productWorkspace.enter(target); },
   onUse(template) {
+    if (template.schema === "worldbend.figma-task-template") {
+      if (!canvasWorkspace.loadTemplate(template.operation.spec)) return false;
+      productWorkspace.enter("canvas");
+      return true;
+    }
     if (!mockupWorkspace.loadTemplate(template)) return false;
     productWorkspace.enter("mockup");
     return true;
@@ -478,12 +485,14 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
   if (message.type === "template-library" || message.type === "template-library-error") {
     templateWorkspace.handleMainMessage(message);
     if (message.mutation?.kind === "save") {
-      mockupWorkspace.finishTemplateSave(
-        message.mutation.requestId,
-        message.type === "template-library-error"
-          ? translate(activeLocale, message.message)
-          : undefined,
-      );
+      const error = message.type === "template-library-error"
+        ? translate(activeLocale, message.message)
+        : undefined;
+      if (message.mutation.workspace === "canvas") {
+        canvasWorkspace.finishTemplateSave(message.mutation.requestId, error);
+      } else {
+        mockupWorkspace.finishTemplateSave(message.mutation.requestId, error);
+      }
     }
     return;
   }
@@ -805,13 +814,7 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     };
     for (const workspace of Object.values(designerWorkspaces)) workspace.setSource(designerSource);
     const sourceCount = loadedSources.length;
-    taskLauncher.setAvailability({
-      templates: sourceCount >= 1 && sourceCount <= 8,
-      canvas: sourceCount === 1,
-      mesh: sourceCount === 1,
-      mockup: sourceCount >= 1 && sourceCount <= 8,
-      remap: sourceCount === 1 || sourceCount === 2,
-    });
+    taskLauncher.setAvailability(taskWorkspaceAvailability(sourceCount));
     initialFrame = cloneFrame(nextInitial);
     baseFrame = cloneFrame(nextActive);
     activeFrame = cloneFrame(nextActive);
@@ -2440,8 +2443,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   activeLocale = locale;
   document.documentElement.lang = locale;
   document.body.dataset.i18nReady = "true";
-  moreOptionsButton.setAttribute("aria-label", translate(locale, "moreOptions"));
-  moreOptionsButton.title = translate(locale, "moreOptions");
+  localizeIconAction(moreOptionsButton, translate(locale, "moreOptions"));
   settingsPopover.setAttribute("aria-label", translate(locale, "moreOptions"));
   modeSwitch.setAttribute("aria-label", translate(locale, "modeGroupLabel"));
   distortKind.setAttribute("aria-label", translate(locale, "distortGroupLabel"));
@@ -2488,7 +2490,6 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
     mesh: translate(locale, "workspaceMesh"),
     remap: translate(locale, "workspaceRemap"),
   });
-  taskLauncherLabel.textContent = translate(locale, "tools");
   actionApplyCopy.textContent = translate(locale, "applyAsCopy");
   actionUndo.textContent = translate(locale, "undoEdit");
   actionRedo.textContent = translate(locale, "redoEdit");
@@ -2519,6 +2520,11 @@ function canvasWorkspaceCopy(): CanvasWorkspaceCopy {
     title: translate(activeLocale, "canvasTitle"),
     addVariant: translate(activeLocale, "addCanvasVariant"),
     removeVariant: translate(activeLocale, "removeCanvasVariant"),
+    templateName: translate(activeLocale, "templateName"),
+    templateNamePlaceholder: translate(activeLocale, "templateNamePlaceholder"),
+    saveTemplate: translate(activeLocale, "saveTemplate"),
+    savingTemplate: translate(activeLocale, "savingTemplate"),
+    templateSaved: translate(activeLocale, "templateSaved"),
     outputName: translate(activeLocale, "canvasOutputName"),
     operation: translate(activeLocale, "canvasOperation"),
     crop: translate(activeLocale, "canvasCrop"),
@@ -2610,7 +2616,11 @@ function templateWorkspaceCopy(): TemplateWorkspaceCopy {
     remove: translate(activeLocale, "templateRemove"),
     confirmRemove: translate(activeLocale, "templateConfirmRemove"),
     sourceCount: translate(activeLocale, "templateSourceCount"),
+    outputCount: translate(activeLocale, "templateOutputCount"),
     incompatible: translate(activeLocale, "templateIncompatible"),
+    mockup: translate(activeLocale, "workspaceMockup"),
+    sizes: translate(activeLocale, "canvasTitle"),
+    createCanvas: translate(activeLocale, "templateCreateCanvas"),
   };
 }
 

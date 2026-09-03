@@ -25,19 +25,21 @@
       #source-name { min-width: 0; margin: 0; overflow: hidden; padding: 0 4px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
       #source-name:empty { display: none; }
       #task-launcher { position: relative; flex: none; }
-      #task-launcher-button { min-height: 28px; display: inline-flex; align-items: center; gap: 5px; border-color: transparent; padding: 4px 7px 4px 9px; color: var(--figma-color-text-secondary, #777); background: transparent; }
+      #task-launcher-button { width: 32px; height: 32px; display: grid; border-color: transparent; border-radius: 7px; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); background: transparent; }
       #task-launcher-button:hover, #task-launcher-button[aria-expanded="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
-      #task-launcher-label { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-      #task-launcher-button .ui-icon { width: 14px; height: 14px; }
-      #task-menu { position: absolute; z-index: 35; top: 34px; left: 0; width: 132px; padding: 5px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 8px; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }
+      #task-launcher-button .ui-icon { width: 18px; height: 18px; }
+      #task-launcher-button[aria-expanded="true"] .action-tooltip { opacity: 0; }
+      #task-menu { position: absolute; z-index: 35; top: 38px; left: 0; width: max-content; display: grid; grid-template-columns: repeat(5, 36px); gap: 4px; padding: 5px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 9px; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }
       #task-menu[hidden] { display: none; }
-      #task-menu button { width: 100%; min-height: 30px; display: block; border: 0; padding: 6px 8px; text-align: left; }
-      #task-menu button:hover, #task-menu button:focus-visible { background: var(--figma-color-bg-hover, #f0f0f0); }
+      #task-menu button { width: 36px; height: 36px; display: grid; border: 0; border-radius: 7px; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); }
+      #task-menu .ui-icon { width: 18px; height: 18px; }
+      #task-menu button:not(:disabled):hover, #task-menu button:focus-visible { color: var(--figma-color-text, #333); background: var(--figma-color-bg-hover, #f0f0f0); }
       #operation-cluster { position: relative; display: flex; align-items: center; gap: 4px; }
       #more-options { width: 32px; height: 32px; display: grid; flex: none; border-color: transparent; border-radius: 0; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); background: transparent; }
       #more-options .ui-icon { width: 18px; height: 18px; }
       #more-options:hover { color: var(--figma-color-text, #333); background: var(--figma-color-bg-hover, #f0f0f0); }
       #more-options[aria-expanded="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      #more-options[aria-expanded="true"] .action-tooltip { opacity: 0; }
       .ui-icon { display: inline-grid; width: 16px; height: 16px; flex: none; place-items: center; color: inherit; pointer-events: none; }
       .ui-icon svg { display: block; width: 100%; height: 100%; }
       #settings-popover { position: absolute; z-index: 30; top: 40px; right: 0; width: 220px; padding: 8px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 10px; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }
@@ -118,6 +120,12 @@
       .canvas-anchor-grid button[aria-pressed="true"]::after { background: var(--figma-color-border-brand-strong, #0d99ff); }
       .canvas-color { width: 100%; height: 32px; margin: -6px 0 12px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 6px; padding: 3px; background: transparent; }
       .canvas-remove { width: 100%; color: var(--figma-color-text-danger, #d32f2f); }
+      .canvas-template-save { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px; }
+      #canvas-template-name { min-width: 0; height: 32px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 6px; padding: 5px 7px; color: var(--figma-color-text, #1e1e1e); background: var(--figma-color-bg, #fff); font: inherit; }
+      #canvas-save-template { width: 32px; height: 32px; display: grid; border-color: transparent; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); }
+      #canvas-save-template:hover { color: var(--figma-color-text, #333); background: var(--figma-color-bg-hover, #f0f0f0); }
+      #canvas-save-template .action-tooltip { top: auto; right: 0; bottom: calc(100% + 7px); left: auto; transform: translate(0, 2px); }
+      #canvas-save-template:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
       .canvas-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 12%)); background: var(--figma-color-bg, #fff); }
       .canvas-footer-actions { display: flex; gap: 8px; }
       #canvas-error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; margin: 0; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
@@ -190,9 +198,14 @@
       .transform-icon-button:hover { color: var(--figma-color-icon, #333); background: var(--figma-color-bg-hover, #f0f0f0); }
       .transform-icon-button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
       .action-tooltip { position: absolute; z-index: 40; top: calc(100% + 7px); left: 50%; max-width: 160px; border-radius: 4px; padding: 4px 6px; color: #fff; background: rgb(30 30 30 / 94%); box-shadow: 0 2px 8px rgb(0 0 0 / 20%); font-size: 10px; font-weight: 500; line-height: 1.25; opacity: 0; pointer-events: none; transform: translate(-50%, -2px); transition: opacity 80ms ease-out, transform 80ms ease-out; white-space: nowrap; }
-      .transform-icon-button:is(:hover, :focus-visible) .action-tooltip { opacity: 1; transform: translate(-50%, 0); }
+      .icon-tooltip-host { position: relative; }
+      :is(.transform-icon-button, .icon-tooltip-host):is(:hover, :focus-visible) .action-tooltip { opacity: 1; transform: translate(-50%, 0); }
       .transform-icon-button:last-child .action-tooltip { right: 0; left: auto; transform: translate(0, -2px); }
       .transform-icon-button:last-child:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
+      #task-menu button:first-child .action-tooltip { left: 0; transform: translate(0, -2px); }
+      #task-menu button:first-child:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
+      #task-menu button:last-child .action-tooltip { right: 0; left: auto; transform: translate(0, -2px); }
+      #task-menu button:last-child:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
       #error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; max-height: 72px; margin: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
       #editor { --edge-pan-left: transparent; --edge-pan-right: transparent; --edge-pan-top: transparent; --edge-pan-bottom: transparent; position: relative; min-width: 0; min-height: 0; flex: 1; padding: 20px; background: var(--figma-color-bg-secondary, #f3f3f3); overflow: hidden; }
       #editor::after { position: absolute; z-index: 1; inset: 0; content: ""; background: linear-gradient(to right, var(--edge-pan-left), transparent 46px), linear-gradient(to left, var(--edge-pan-right), transparent 46px), linear-gradient(to bottom, var(--edge-pan-top), transparent 46px), linear-gradient(to top, var(--edge-pan-bottom), transparent 46px); opacity: .72; pointer-events: none; transition: opacity 100ms ease-out; }
@@ -251,16 +264,16 @@
           <div id="object-group">
             <h1 id="source-name"></h1>
             <div id="task-launcher">
-              <button id="task-launcher-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="task-menu" aria-label="Open tools">
-                <span id="task-launcher-label">Tools</span>
-                <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <button id="task-launcher-button" class="icon-tooltip-host" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="task-menu" aria-label="Open tools">
+                <span class="ui-icon" data-icon-id="icon-park:tool" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 16C44 22.6274 38.6274 28 32 28C29.9733 28 28.0639 27.4975 26.3896 26.6104L9 44L4 39L21.3896 21.6104C20.5025 19.9361 20 18.0267 20 16C20 9.37258 25.3726 4 32 4C34.0267 4 35.9361 4.50245 37.6104 5.38959L30 13L35 18L42.6104 10.3896C43.4975 12.0639 44 13.9733 44 16Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                <span class="action-tooltip" aria-hidden="true">Open tools</span>
               </button>
-              <div id="task-menu" role="menu" aria-label="Tools" hidden>
-                <button type="button" role="menuitem" data-workspace="templates">Templates</button>
-                <button type="button" role="menuitem" data-workspace="canvas">Sizes</button>
-                <button type="button" role="menuitem" data-workspace="mockup">Mockup</button>
-                <button type="button" role="menuitem" data-workspace="mesh">Mesh</button>
-                <button type="button" role="menuitem" data-workspace="remap">Remap</button>
+              <div id="task-menu" role="menu" aria-orientation="horizontal" aria-label="Tools" hidden>
+                <button class="icon-tooltip-host" type="button" role="menuitem" data-workspace="templates" aria-label="Templates"><span class="ui-icon" data-icon-id="icon-park:page-template" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23 4H4V26H23V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H4V43H44V34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 4H31V12H44V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 18H31V26H44V18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Templates</span></button>
+                <button class="icon-tooltip-host" type="button" role="menuitem" data-workspace="canvas" aria-label="Sizes"><span class="ui-icon" data-icon-id="icon-park:scale" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 6H42V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 29L19 29L19 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 6L19 29" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 6H8C6.89543 6 6 6.89543 6 8V40C6 41.1046 6.89543 42 8 42H40C41.1046 42 42 41.1046 42 40V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Sizes</span></button>
+                <button class="icon-tooltip-host" type="button" role="menuitem" data-workspace="mockup" aria-label="Mockup"><span class="ui-icon" data-icon-id="icon-park:layout-four" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="36" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M6 28L24 28" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 20H42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 25V31" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 17V23" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 42V6" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 6H27" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 42H27" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Mockup</span></button>
+                <button class="icon-tooltip-host" type="button" role="menuitem" data-workspace="mesh" aria-label="Mesh"><span class="ui-icon" data-icon-id="icon-park:grid-nine" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="38" height="38" rx="2" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 18H43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M5 30H43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M17 5V43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M30 5V43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Mesh</span></button>
+                <button class="icon-tooltip-host" type="button" role="menuitem" data-workspace="remap" aria-label="Remap"><span class="ui-icon" data-icon-id="icon-park:distortion" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V40H17M4 19V8H17M4 19C4 19 13 13 24 19C35 25 44 19 44 19M44 19V8H17M44 19V40H17M4 29C4 29 13 23 24 29C35 35 44 29 44 29M17 8C17 8 23 16 17 24C11 32 17 40 17 40M31 8C31 8 37 16 31 24C25 32 31 40 31 40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Remap</span></button>
               </div>
             </div>
           </div>
@@ -274,8 +287,9 @@
               <button id="mode-warp" class="mode-button" type="button" aria-pressed="false">Warp</button>
               <button id="mode-rectify" class="mode-button" type="button" aria-pressed="false">Correct</button>
             </div>
-            <button id="more-options" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More options">
+            <button id="more-options" class="icon-tooltip-host" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More options">
               <span class="ui-icon" data-icon-id="icon-park:more" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="24" r="3" fill="currentColor"/><circle cx="24" cy="24" r="3" fill="currentColor"/><circle cx="36" cy="24" r="3" fill="currentColor"/></svg></span>
+              <span class="action-tooltip" aria-hidden="true">More options</span>
             </button>
             <div id="settings-popover" role="menu" aria-label="More options" hidden>
               <button id="action-apply-copy" class="menu-option" type="button" role="menuitem">Apply as New Image</button>

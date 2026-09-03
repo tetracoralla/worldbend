@@ -156,7 +156,7 @@ export function createMeshWorkspace(input: {
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
+    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); queueMicrotask(() => shell.back.focus()); },
     leave() { active = false; shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
     setSource(next) {
       busy = false;
