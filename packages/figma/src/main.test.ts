@@ -413,6 +413,14 @@ describe("Figma selection generations", () => {
     };
     const source = sourceNode("source", pending, page);
     page.selection = [source];
+    // A hidden layer inside the result band must not push the result around.
+    const hidden = {
+      id: "hidden",
+      type: "RECTANGLE",
+      visible: false,
+      absoluteBoundingBox: { x: 150, y: 0, width: 100, height: 80 },
+    };
+    Object.assign(page, { children: [source, hidden] });
     const result = {
       id: "result",
       name: "",
@@ -486,7 +494,8 @@ describe("Figma selection generations", () => {
       expect.objectContaining({ type: "apply-complete", operation: "apply" }),
     );
     expect(result.resize).toHaveBeenCalledWith(120, 96);
-    expect(result).toMatchObject({ x: 25, y: -10, width: 120, height: 96 });
+    expect(result).toMatchObject({ x: 148, y: 0, width: 120, height: 96 });
+    expect(figmaMock.viewport.scrollAndZoomIntoView).toHaveBeenCalledWith([result, source]);
     expect(page.selection).toEqual([source]);
   });
 
@@ -544,6 +553,7 @@ describe("Figma selection generations", () => {
       remove: vi.fn(),
     };
     page.selection = [source, target];
+    Object.assign(page, { children: [source, target] });
     const figmaMock = {
       currentPage: page,
       mixed: Symbol("mixed"),
@@ -595,7 +605,8 @@ describe("Figma selection generations", () => {
     expect(target.resize).not.toHaveBeenCalled();
     expect(target.fills).toEqual([{ type: "IMAGE", imageHash: "old", scaleMode: "FILL" }]);
     expect(figmaMock.createRectangle).toHaveBeenCalledTimes(1);
-    expect(duplicate).toMatchObject({ x: -30, y: 5, width: 120, height: 96 });
+    expect(duplicate).toMatchObject({ x: 158, y: 0, width: 120, height: 96 });
+    expect(figmaMock.viewport.scrollAndZoomIntoView).toHaveBeenCalledWith([duplicate, source, target]);
   });
 
   it("replaces a large result without conflating document placement and raster density", async () => {

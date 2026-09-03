@@ -63,14 +63,16 @@ function canvasSetMessage() {
           bytes: new Uint8Array([1]),
           renderWidth: 1200,
           renderHeight: 628,
-          placement: { x: 0, y: 0, width: 300, height: 157 },
+          // Stale UI-side hints: main-side publication must place beside the
+          // inputs regardless of these x/y values.
+          placement: { x: 5000, y: 5000, width: 300, height: 157 },
         },
         {
           id: "square",
           bytes: new Uint8Array([2]),
           renderWidth: 1080,
           renderHeight: 1080,
-          placement: { x: 324, y: 0, width: 270, height: 270 },
+          placement: { x: -100, y: -100, width: 270, height: 270 },
         },
       ],
     },
@@ -140,6 +142,7 @@ function setup(
     });
   }
   page.selection = target ? [source, target] : [source];
+  Object.assign(page, { children: target ? [source, target] : [source] });
   const figmaMock = {
     currentPage: page,
     mixed: Symbol("mixed"),
@@ -207,8 +210,11 @@ describe("Figma Canvas document transaction", () => {
     });
     expect(figmaMock.commitUndo).toHaveBeenCalledTimes(2);
     expect(figmaMock.createImage).toHaveBeenCalledTimes(2);
-    expect(figmaMock.viewport.scrollAndZoomIntoView).toHaveBeenCalledWith([wide, square]);
+    expect(figmaMock.viewport.scrollAndZoomIntoView).toHaveBeenCalledWith([wide, square, source]);
     expect(pageSelection(figmaMock.currentPage)).toEqual([source]);
+    // Main-side publication placement: beside the source, variants chained.
+    expect(wide).toMatchObject({ x: 148, y: 0, width: 300, height: 157 });
+    expect(square).toMatchObject({ x: 496, y: 0, width: 270, height: 270 });
     expect(wide.setSharedPluginData).toHaveBeenCalledWith(
       "worldbend",
       "canvas",

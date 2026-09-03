@@ -112,27 +112,31 @@ export function postDesignerResult(input: {
       renderHeight: input.height,
       placement: !input.duplicate && input.source.targetPlacement
         ? { ...input.source.targetPlacement }
-        : outputPlacement(input.source.sources, input.width, input.height),
+        : outputDocumentBox(input.source.sources, input.width, input.height),
       ...(input.source.targetNodeId ? { targetNodeId: input.source.targetNodeId } : {}),
       ...(input.duplicate ? { duplicate: true } : {}),
     },
   });
 }
 
-export function outputPlacement(
+/**
+ * Document-space output size for a new designer result. x/y is a canonical
+ * placeholder on purpose: publication placement is decided in main beside
+ * the live inputs with page-wide obstacles, so only width/height here are
+ * authoritative.
+ */
+export function outputDocumentBox(
   sources: readonly LoadedDesignerSource[],
   width: number,
   height: number,
 ): SourceRasterPayload["placement"] {
   const first = sources[0];
   if (!first) return { x: 0, y: 0, width, height };
-  const left = Math.min(...sources.map((source) => source.placement.x));
-  const top = Math.min(...sources.map((source) => source.placement.y));
   const documentScaleX = first.placement.width / first.renderWidth;
   const documentScaleY = first.placement.height / first.renderHeight;
   return {
-    x: left,
-    y: top,
+    x: 0,
+    y: 0,
     width: width * documentScaleX,
     height: height * documentScaleY,
   };

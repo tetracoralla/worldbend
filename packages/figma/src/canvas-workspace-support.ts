@@ -10,6 +10,7 @@ import {
 import type { SourcePayload } from "./messages";
 import type { OwnedCanvasOperation, OwnedCanvasSetSpec } from "./stored-canvas";
 import type { CanvasWorkspaceCopy, CanvasWorkspaceView } from "./canvas-workspace-view";
+import { RESULT_PLACEMENT_GAP } from "./result-placement";
 
 export type CanvasWorkspacePhase = "idle" | "planning" | "ready" | "applying" | "applied";
 
@@ -30,10 +31,10 @@ export function canvasResultPlacements(
   if (replacing && sizes.length === 1) {
     return [{ x: base.x, y: base.y, width: sizes[0]!.width, height: sizes[0]!.height }];
   }
-  let x = base.x + base.width + 48;
+  let x = base.x + base.width + RESULT_PLACEMENT_GAP;
   return sizes.map((size) => {
     const placement = { x, y: base.y, width: size.width, height: size.height };
-    x += size.width + 48;
+    x += size.width + RESULT_PLACEMENT_GAP;
     return placement;
   });
 }

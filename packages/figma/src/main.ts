@@ -38,6 +38,7 @@ import {
   type StoredOperation,
 } from "./stored-operation";
 import type { StoredDesignerTask } from "./stored-designer-task";
+import { placementBeside } from "./result-placement";
 import {
   MAX_SAVED_SPATIAL_TEMPLATES,
   TEMPLATE_LIBRARY_STORAGE_KEY,
@@ -558,16 +559,28 @@ async function applyResult(
     figma.commitUndo();
     const image = figma.createImage(payload.bytes);
     const operation = existing ? "replace" : "apply";
+    const placement = existing
+      ? payload.placement
+      : placementBeside(
+          inputPlacements(figma.currentPage, prepared),
+          payload.placement,
+          pagePlacements(figma.currentPage, prepared),
+        );
     const result = await publishResult({
       ...(existing ? { existing } : {}),
       imageHash: image.hash,
       storedOperation,
       sourceName: source.name,
-      placement: payload.placement,
+      placement,
       renderWidth: payload.renderWidth,
       renderHeight: payload.renderHeight,
     });
-    finishAppliedResult(result, operation, requestGeneration);
+    const zoomContext: SceneNode[] = [source];
+    if (payload.targetNodeId && payload.duplicate) {
+      const pairTarget = await figma.getNodeByIdAsync(payload.targetNodeId);
+      if (pairTarget && isSceneNode(pairTarget)) zoomContext.push(pairTarget);
+    }
+    finishAppliedResult(result, zoomContext, operation, requestGeneration);
   } catch (error) {
     post({
       type: "apply-error",
@@ -634,15 +647,34 @@ async function applyCanvasSet(
     if (requestGeneration !== selectionGeneration || reloadScheduled) {
       throw userError("selectionChanged");
     }
+    // The UI-side chain positions are advisory for new applies: publication
+    // is authoritative here, where page-wide obstacles are readable. Each
+    // variant chains right of the inputs and the variants before it, so a
+    // variant set never covers inputs, page content, or its own siblings.
+    let outputs = payload.outputs;
+    if (!existing) {
+      const inputs = inputPlacements(figma.currentPage, prepared);
+      const obstacles = pagePlacements(figma.currentPage, prepared);
+      const placed: SourcePayload["placement"][] = [];
+      outputs = payload.outputs.map((output) => {
+        const placement = placementBeside(
+          [...inputs, ...placed],
+          output.placement,
+          [...obstacles, ...placed],
+        );
+        placed.push(placement);
+        return { ...output, placement };
+      });
+    }
     const results = await publishCanvasDocumentTransaction({
-      payload,
+      payload: { ...payload, outputs },
       sourceName: source.name,
       ...(existing ? { existing } : {}),
       createImage: (bytes) => figma.createImage(bytes),
       commitUndo: () => figma.commitUndo(),
       publish: publishResult,
     });
-    finishAppliedCanvasResults(results, existing ? "replace" : "apply", requestGeneration);
+    finishAppliedCanvasResults(results, source, existing ? "replace" : "apply", requestGeneration);
   } catch (error) {
     post({
       type: "apply-canvas-error",
@@ -672,8 +704,19 @@ async function applyDesignerResult(
     if (requestGeneration !== selectionGeneration || reloadScheduled || !sameIds(actualIds, expectedIds)) {
       throw userError("selectionChanged");
     }
-    const source = await figma.getNodeByIdAsync(payload.sourceNodeIds[0]!);
-    if (!source || !isSceneNode(source)) throw userError("selectionChanged");
+    const sourceNodes = await Promise.all(
+      payload.sourceNodeIds.map((id) => figma.getNodeByIdAsync(id)),
+    );
+    if (
+      requestGeneration !== selectionGeneration ||
+      reloadScheduled ||
+      !sameIds(figma.currentPage.selection.map((node) => node.id), expectedIds) ||
+      !sourceNodes.every((node): node is SceneNode => node !== null && isSceneNode(node))
+    ) {
+      throw userError("selectionChanged");
+    }
+    const source = sourceNodes[0];
+    if (!source) throw userError("selectionChanged");
     let existing: RectangleNode | undefined;
     if (payload.targetNodeId && !payload.duplicate) {
       const target = await figma.getNodeByIdAsync(payload.targetNodeId);
@@ -691,6 +734,13 @@ async function applyDesignerResult(
       ) throw userError("resultChanged");
       existing = target;
     }
+    if (
+      requestGeneration !== selectionGeneration ||
+      reloadScheduled ||
+      !sameIds(figma.currentPage.selection.map((node) => node.id), expectedIds)
+    ) {
+      throw userError("selectionChanged");
+    }
     if (prepared.task?.kind && prepared.task.kind !== payload.task.kind) throw userError("resultChanged");
     figma.commitUndo();
     const result = await publishResult({
@@ -698,12 +748,23 @@ async function applyDesignerResult(
       imageHash: figma.createImage(payload.bytes).hash,
       storedOperation: { kind: "task", task: payload.task },
       sourceName: source.name,
-      placement: payload.placement,
+      placement: existing
+        ? payload.placement
+        : placementBeside(
+            inputPlacements(figma.currentPage, prepared),
+            payload.placement,
+            pagePlacements(figma.currentPage, prepared),
+          ),
       renderWidth: payload.renderWidth,
       renderHeight: payload.renderHeight,
     });
     preparedSelection = undefined;
-    try { figma.viewport.scrollAndZoomIntoView([result]); } catch {}
+    const zoomContext: SceneNode[] = [...sourceNodes];
+    if (payload.duplicate && payload.targetNodeId) {
+      const pairTarget = await figma.getNodeByIdAsync(payload.targetNodeId);
+      if (pairTarget && isSceneNode(pairTarget)) zoomContext.push(pairTarget);
+    }
+    try { figma.viewport.scrollAndZoomIntoView([result, ...zoomContext]); } catch {}
     try { figma.notify(translate(activeLocale, "designerApplied")); } catch {}
     try { figma.commitUndo(); } catch {}
     post({ type: "apply-designer-complete", generation: requestGeneration, targetNodeId: result.id, operation: existing ? "replace" : "apply" });
@@ -716,12 +777,15 @@ async function applyDesignerResult(
 
 function finishAppliedCanvasResults(
   results: RectangleNode[],
+  source: SceneNode,
   operation: "apply" | "replace",
   generation: number,
 ): void {
   preparedSelection = undefined;
   try {
-    figma.viewport.scrollAndZoomIntoView(results);
+    // Keep the producing input in view beside the results: side-by-side
+    // comparison is the outcome a human checks after publication.
+    figma.viewport.scrollAndZoomIntoView([...results, source]);
   } catch {
     // Viewport movement does not determine publication success.
   }
@@ -745,8 +809,44 @@ function finishAppliedCanvasResults(
   });
 }
 
+function selectionPlacements(selection: readonly SceneNode[]): SourcePayload["placement"][] {
+  return selection.flatMap((node) => {
+    const box = node.absoluteBoundingBox;
+    return box && box.width > 0 && box.height > 0
+      ? [{ x: box.x, y: box.y, width: box.width, height: box.height }]
+      : [];
+  });
+}
+
+function preparedPlacements(prepared: SourcePayload): SourcePayload["placement"][] {
+  const sources = prepared.sources ?? [prepared];
+  return [
+    ...sources.map((source) => ({ ...source.placement })),
+    ...(prepared.targetNodeId ? [{ ...prepared.placement }] : []),
+  ];
+}
+
+function inputPlacements(
+  page: PageNode,
+  prepared: SourcePayload,
+): SourcePayload["placement"][] {
+  const placements = selectionPlacements(page.selection);
+  return placements.length > 0 ? placements : preparedPlacements(prepared);
+}
+
+function pagePlacements(
+  page: PageNode,
+  prepared: SourcePayload,
+): SourcePayload["placement"][] {
+  // Hidden layers still own bounds but are invisible on canvas; they must
+  // not push results around. Masks keep their bounds: they shape content.
+  const placements = selectionPlacements(page.children.filter((node) => node.visible));
+  return placements.length > 0 ? placements : preparedPlacements(prepared);
+}
+
 function finishAppliedResult(
   result: RectangleNode,
+  zoomContext: readonly SceneNode[],
   operation: "apply" | "replace",
   generation: number,
 ): void {
@@ -755,7 +855,9 @@ function finishAppliedResult(
   // a separate host history step before the visible write can be undone.
   preparedSelection = undefined;
   try {
-    figma.viewport.scrollAndZoomIntoView([result]);
+    // Keep the producing inputs in view beside the result: side-by-side
+    // comparison is the outcome a human checks after publication.
+    figma.viewport.scrollAndZoomIntoView([result, ...zoomContext]);
   } catch {
     // Selection and viewport movement do not determine write success.
   }

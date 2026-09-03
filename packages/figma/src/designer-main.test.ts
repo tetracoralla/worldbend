@@ -27,6 +27,7 @@ function setup(selectionCount: number) {
   const page = { type: "PAGE", selection: [] as unknown[], on: vi.fn(), off: vi.fn() };
   const sources = Array.from({ length: selectionCount }, (_, index) => sourceNode(`source-${index + 1}`, index * 120, page));
   page.selection = sources;
+  Object.assign(page, { children: sources });
   const result = {
     id: "result",
     type: "RECTANGLE",
@@ -72,7 +73,7 @@ describe("Figma designer task main boundary", () => {
   });
 
   it("publishes one canonical task result with recoverable shared data", async () => {
-    const { figmaMock, posts, result } = setup(1);
+    const { figmaMock, posts, result, sources } = setup(1);
     await import("./main");
     figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
@@ -97,7 +98,50 @@ describe("Figma designer task main boundary", () => {
     expect(result.setSharedPluginData).toHaveBeenCalledWith(
       "worldbend", "task", expect.stringContaining('"kind":"mesh"'),
     );
+    expect(result).toMatchObject({ x: 148, y: 20, width: 100, height: 80 });
+    expect(figmaMock.viewport.scrollAndZoomIntoView).toHaveBeenCalledWith([result, ...sources]);
     expect(figmaMock.commitUndo).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a designer result when selection changes during source lookup", async () => {
+    const { figmaMock, page, posts, sources } = setup(1);
+    await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
+
+    let resolveLookup!: (value: (typeof sources)[number]) => void;
+    const pendingLookup = new Promise<(typeof sources)[number]>((resolve) => {
+      resolveLookup = resolve;
+    });
+    figmaMock.getNodeByIdAsync.mockImplementationOnce(() => pendingLookup);
+    const selectionHandler = figmaMock.on.mock.calls.find(([type]) => type === "selectionchange")?.[1] as
+      | (() => void)
+      | undefined;
+
+    figmaMock.ui.onmessage?.({
+      type: "apply-designer",
+      payload: {
+        generation: 1,
+        task: { kind: "mesh", spec: createMeshSpec(100, 80, 2) },
+        sourceNodeIds: ["source-1"],
+        bytes: new Uint8Array([9]),
+        renderWidth: 100,
+        renderHeight: 80,
+        placement: { x: 0, y: 20, width: 100, height: 80 },
+      },
+    });
+    await vi.waitFor(() => expect(figmaMock.getNodeByIdAsync).toHaveBeenCalledWith("source-1"));
+    page.selection = [];
+    selectionHandler?.();
+    resolveLookup(sources[0]!);
+
+    await vi.waitFor(() => expect(posts).toContainEqual({
+      type: "apply-designer-error",
+      generation: 1,
+      message: { key: "selectionChanged" },
+    }));
+    expect(figmaMock.createImage).not.toHaveBeenCalled();
+    expect(figmaMock.createRectangle).not.toHaveBeenCalled();
   });
 
   it("persists and removes a validated Spatial Template through client storage", async () => {
