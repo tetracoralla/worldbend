@@ -27,6 +27,8 @@ the first Figma Community release.
   second graphics engine.
 - Added a real Chrome WebGL versus native Remap pixel differential for Lens and
   Displacement at standard and high quality.
+- Kept descriptor-scoped directory publication durable on Linux by reopening
+  traversal-only directory handles for `fsync` without weakening path confinement.
 - Versioned the self-contained Figma archive and its SPDX root package as
   `0.2.0`, with deterministic ZIP contents and checksums.
 

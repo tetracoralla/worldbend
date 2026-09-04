@@ -299,7 +299,7 @@ impl OutputTarget {
                 if !self.overwrite {
                     let _ = remove_file(&staged_parent, Path::new(staged_name));
                 }
-                let _ = self.parent.sync_all();
+                let _ = sync_directory(&self.parent);
                 return Ok(());
             }
             Err(error) if is_cross_device(&error) => {}
@@ -356,7 +356,7 @@ impl OutputTarget {
                 // it cannot turn success into an error that hides publication.
                 let _ = remove_file(&self.parent, Path::new(&temporary_name));
             }
-            let _ = self.parent.sync_all();
+            let _ = sync_directory(&self.parent);
             Ok(())
         })();
 
@@ -504,8 +504,7 @@ impl DirectoryOutputTarget {
                 ));
             }
             check_cancelled(is_cancelled)?;
-            staged_directory
-                .sync_all()
+            sync_directory(&staged_directory)
                 .map_err(render_io("failed to sync output staging directory"))?;
             Ok(())
         })();
@@ -638,8 +637,7 @@ impl DirectoryOutputTarget {
                         "each staged item directory must contain at least one PNG",
                     ));
                 }
-                staged_item
-                    .sync_all()
+                sync_directory(&staged_item)
                     .map_err(render_io("failed to sync staged item directory"))?;
             }
             if directory_count == 0 || file_count == 0 {
@@ -649,8 +647,7 @@ impl DirectoryOutputTarget {
                 ));
             }
             check_cancelled(is_cancelled)?;
-            staged_directory
-                .sync_all()
+            sync_directory(&staged_directory)
                 .map_err(render_io("failed to sync output staging directory"))?;
             Ok(())
         })();
@@ -732,6 +729,22 @@ fn check_cancelled(is_cancelled: &(dyn Fn() -> bool + Sync)) -> TransformResult<
     }
 }
 
+// cap-primitives deliberately uses O_PATH for descriptor-confined directory
+// traversal on Linux. O_PATH is the right authority handle, but Linux rejects
+// fsync on it with EBADF. Reopen `.` through the already-held descriptor with
+// read access before syncing so durability does not weaken path confinement.
+fn sync_directory(directory: &File) -> std::io::Result<()> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let mut options = OpenOptions::new();
+        options.read(true).follow(FollowSymlinks::No);
+        return open(directory, Path::new("."), &options)?.sync_all();
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    directory.sync_all()
+}
+
 impl StagedDirectoryCommit {
     /// Commit the complete output set with one same-parent atomic no-replace
     /// directory rename. No asynchronous work occurs after this call begins.
@@ -750,7 +763,7 @@ impl StagedDirectoryCommit {
                     .with_details(json!({ "reason": error.to_string() }))
             })?;
         self.committed = true;
-        let _ = self.parent.sync_all();
+        let _ = sync_directory(&self.parent);
         Ok(())
     }
 }
@@ -759,7 +772,7 @@ impl Drop for StagedDirectoryCommit {
     fn drop(&mut self) {
         if !self.committed {
             let _ = remove_dir_all(&self.parent, Path::new(&self.staged_name));
-            let _ = self.parent.sync_all();
+            let _ = sync_directory(&self.parent);
         }
     }
 }
@@ -1047,6 +1060,13 @@ fn render_io(message: &'static str) -> impl FnOnce(std::io::Error) -> TransformE
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn descriptor_scoped_directory_handles_support_durable_sync() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        sync_directory(&workspace.directory).unwrap();
+    }
 
     #[test]
     fn rejects_absolute_parent_uri_and_cross_platform_prefixes() {
