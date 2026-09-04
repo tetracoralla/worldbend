@@ -7,10 +7,10 @@ workflow is available without a trial, checkout, subscription, account, or
 product-owned cloud service. Free distribution does not publish or license the
 private Worldbend source repository.
 
-The current code and archive are a `0.2.0` release candidate. They have not been
-submitted as a new Figma version. Preparing the package, copy, security answers,
-and media is authorized; selecting Figma's final Publish action remains an
-owner decision.
+Worldbend `0.2.0` was published to Figma Community as Version 3 on 2026-09-04.
+Figma returned `And you’re live!`, and the public listing readback showed
+`Your resource is live`, Version 3, the current description, release notes,
+three current preview images, and the declared no-network security state.
 
 The plugin does not request Figma's Payments API and contains no purchase
 state. Designers can preview, Apply, replace, and create another image without
@@ -19,10 +19,11 @@ entering payment information or configuring a payout method.
 ## Community listing
 
 - **Name:** Worldbend
-- **Category:** Design tools
+- **Category:** Editing & effects
 - **Tagline:** Perspective, sizes, and reusable spatial transforms in Figma.
 - **Price:** Free
-- **Search terms:** perspective, warp, resize, mockup, distortion
+- **Recommended tag:** Mockup tools
+- **Custom tags:** distort, perspective, transform, warp
 
 ### Description
 
@@ -68,11 +69,11 @@ reconstruction, and unbounded arbitrary deformation are not included.
   Templates loop.
 - `assets/figma-community/worldbend-0.2-primary-loop-1920x1080.png` and
   `assets/figma-community/worldbend-0.2-advanced-transforms-1920x1080.png`
-  are the current carousel candidates. They show the primary loop, More menu,
+  are the published carousel images. They show the primary loop, More menu,
   Composition, Mesh, and Lens & maps from the current built/live surface.
 - Short recordings may supplement the stills only when they show an entire
   completed task rather than transient setup.
-- Every candidate asset must show the current `0.2.0` surface and avoid Figma
+- Every published asset must show the current `0.2.0` surface and avoid Figma
   account chrome, unrelated canvas content, company project names, automated
   pointers, developer diagnostics, or an in-progress Apply state.
 
@@ -111,20 +112,34 @@ Before submission:
 8. Record the submitted plugin ID, publisher, support-contact source, listing
    URL, review state, and submitted source revision in this document.
 
-## 0.2.0 candidate record
+## 0.2.0 publication record
 
 - **Package:** `artifacts/figma/worldbend-figma-0.2.0.zip`
 - **Archive size:** `491193` bytes
 - **Archive SHA-256:**
   `d3bf51cd990b141dd8c0e3c99a5bff82126de162b5215f7da782b43e3fa95b11`
 - **Runtime / unpacked size:** `556412` / `1131923` bytes
-- **Publish state:** Not submitted; awaiting owner acceptance after current
-  package/runtime/media review
+- **Publish state:** Live on Figma Community as of 2026-09-04
+- **Listing URL:**
+  `https://www.figma.com/community/plugin/1675767923532475446/worldbend`
+- **Publisher:** Adam Wong, individual creator
+- **Support contact:** Figma account's existing support contact
+- **Community readback:** Figma displayed `And you’re live!`, then the public
+  resource page displayed `Your resource is live` and `Last updated just now`
 - **Release notes:** Adds Sizes and reusable Templates to the primary loop;
   groups Composition, Mesh, and Lens & maps under Advanced transforms; retains
   free local-only raster processing and the 4096 px boundary
-- **Submitted source revision:** Not yet assigned
-- **Figma version after update:** Not yet assigned
+- **Submitted source revision:** `9be6b9e3c8a5ded248ded12b3908a17908638e7c`
+- **Package-content baseline:** `45fd2a7a85ef3c72e58309fa8e455a62794e97a8`;
+  subsequent Linux durability and clean-checkout fixes did not change the
+  reviewed Figma archive hash
+- **Figma version after update:** Version 3
+- **Media:** Existing 128 px icon; current `0.2.0` thumbnail; primary-loop and
+  advanced-transforms carousel images, in that order
+- **Data security:** No backend, network requests, or authentication; local
+  plugin storage and solo-developer update management disclosed
+- **Remote checks:** clean-checkout and CodeQL passed for the submitted source
+  revision before the Figma Publish action
 
 ## Historical 0.1.0 submission record
 

@@ -3,7 +3,7 @@
 All notable changes to Worldbend are documented here. Versioning begins with
 the first Figma Community release.
 
-## 0.2.0 - Unreleased
+## 0.2.0 - 2026-09-04
 
 ### Figma product loop
 
@@ -42,8 +42,6 @@ the first Figma Community release.
 - Composition and Mesh require explicit selected layers and planes; Lens & maps
   requires explicit coefficients or a selected displacement map. Worldbend does
   not infer planes, depth, camera motion, or deformation intent.
-- The Figma update is not published until its current package, media, listing,
-  and owner acceptance have completed the release checklist.
 
 ## 0.1.0 - 2026-08-30
 
