@@ -29,6 +29,8 @@ the first Figma Community release.
   Displacement at standard and high quality.
 - Kept descriptor-scoped directory publication durable on Linux by reopening
   traversal-only directory handles for `fsync` without weakening path confinement.
+- Made clean-checkout UI regression build the Figma-specific WASM bindings
+  before importing Figma test modules, so local generated files cannot mask drift.
 - Versioned the self-contained Figma archive and its SPDX root package as
   `0.2.0`, with deterministic ZIP contents and checksums.
 

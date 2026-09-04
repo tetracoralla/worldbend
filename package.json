@@ -34,10 +34,10 @@
     "contract:check": "node scripts/generate-web-contract.mjs --check",
     "typecheck": "pnpm --filter @worldbend/web typecheck && pnpm --filter @worldbend/figma typecheck",
     "test:web": "pnpm build:wasm && pnpm --filter @worldbend/web test",
-    "test:figma": "pnpm build:web && pnpm --filter @worldbend/figma test",
+    "test:figma": "pnpm build:web && pnpm build:wasm:figma && pnpm --filter @worldbend/figma test",
     "test:scripts": "node --test scripts/*.test.mjs",
     "carrier:compile-check": "cargo check --locked -p worldbend-wasm --no-default-features && cargo check --locked -p worldbend-cli --bin worldbend --no-default-features --features comfy",
-    "test:ui": "pnpm build:web && pnpm --filter @worldbend/web test && pnpm --filter @worldbend/figma test",
+    "test:ui": "pnpm build:web && pnpm build:wasm:figma && pnpm --filter @worldbend/web test && pnpm --filter @worldbend/figma test",
     "test": "cargo test --workspace && pnpm test:scripts && pnpm test:ui",
     "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm carrier:compile-check && pnpm contract:check && pnpm test:scripts && pnpm test:ui && pnpm performance:smoke && pnpm typecheck && pnpm build:figma:entries && pnpm carrier:figma-runtime-check && pnpm package:figma-designer:from-build && pnpm plugin:stage && pnpm plugin:validate && pnpm runtime:smoke && pnpm capability:check && node scripts/check-built-artifacts.mjs"
   },
