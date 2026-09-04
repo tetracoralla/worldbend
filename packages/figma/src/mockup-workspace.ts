@@ -8,6 +8,9 @@ import { planMockup } from "./designer-plan";
 import { previewScaleFor, scaleSolveByFactor } from "./designer-preview";
 import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
 import { createFrameCoalescer } from "./frame-coalescer";
+import type { Phase } from "./editor-state";
+import { createWorkspaceHistory, type WorkspaceHistory } from "./workspace-history";
+import { handleWorkspaceHistoryShortcut } from "./workspace-shortcuts";
 import {
   canvasPng,
   createDesignerWorkspaceShell,
@@ -82,12 +85,15 @@ export function createMockupWorkspace(input: {
   let source: DesignerWorkspaceSource | undefined;
   let spec: MockupSpecInput | undefined;
   let baseline: MockupSpecInput | undefined;
+  let history: WorkspaceHistory<MockupSpecInput> | undefined;
   let activePlaneId = "plane-1";
   let overlay: DirectPointOverlay | undefined;
   const renderer = new TransformWebGLRenderer(document.createElement("canvas"), { preserveDrawingBuffer: true });
   let generation = 0;
   let busy = false;
   let active = false;
+  let phase: Phase = "idle";
+  let undoRouted = false;
   let savingTemplate = false;
   let pendingTemplateRequestId: number | undefined;
   let nextTemplateRequestId = 1;
@@ -102,21 +108,24 @@ export function createMockupWorkspace(input: {
   shell.reset.addEventListener("click", () => {
     if (!baseline) return;
     spec = structuredClone(baseline);
+    history?.push(spec);
+    phase = "ready";
+    undoRouted = false;
     activePlaneId = spec.planes[0]?.id ?? "plane-1";
     renderControls();
     void render();
   });
   for (const control of [width, height]) control.addEventListener("change", commitCanvasSize);
-  opacity.addEventListener("input", () => updateActivePlane({ opacity: Number(opacity.value) / 100 }));
-  opacity.addEventListener("change", () => previewFrames.flush());
+  opacity.addEventListener("input", () => updateActivePlane({ opacity: Number(opacity.value) / 100 }, false));
+  opacity.addEventListener("change", () => { previewFrames.flush(); commitHistory(); });
   grid.addEventListener("change", () => {
-    updateActivePlane({ grid: grid.checked ? { columns: 4, rows: 4 } : null });
+    updateActivePlane({ grid: grid.checked ? { columns: 4, rows: 4 } : null }, true);
     renderControls();
   });
   for (const control of [columns, rows]) control.addEventListener("change", () => {
     const active = activePlane();
     if (!active?.grid) return;
-    updateActivePlane({ grid: { columns: Number(columns.value), rows: Number(rows.value) } });
+    updateActivePlane({ grid: { columns: Number(columns.value), rows: Number(rows.value) } }, true);
   });
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
@@ -129,13 +138,24 @@ export function createMockupWorkspace(input: {
   function commitCanvasSize(): void {
     if (!spec || !width.validity.valid || !height.validity.valid) return;
     spec = { ...spec, canvas: { width: Number(width.value), height: Number(height.value) } };
+    commitHistory();
     previewFrames.request();
   }
   function activePlane(): MockupPlane | undefined { return spec?.planes.find((plane) => plane.id === activePlaneId); }
-  function updateActivePlane(patch: Partial<MockupPlane>): void {
+  function updateActivePlane(patch: Partial<MockupPlane>, commit: boolean): void {
     if (!spec) return;
     spec = { ...spec, planes: spec.planes.map((plane) => plane.id === activePlaneId ? { ...plane, ...patch } : plane) };
+    phase = "ready";
+    undoRouted = false;
+    if (commit) history?.push(spec);
     previewFrames.request();
+  }
+
+  function commitHistory(): void {
+    if (!spec) return;
+    history?.push(spec);
+    phase = "ready";
+    undoRouted = false;
   }
 
   async function render(quality: "preview" | "high" = "preview", refreshOverlay = true): Promise<boolean> {
@@ -228,8 +248,10 @@ export function createMockupWorkspace(input: {
         spec = { ...spec, planes: spec.planes.map((candidate) => candidate.id === activePlaneId
           ? { ...candidate, transform: { ...candidate.transform, destination: { space: "normalized", quad } } }
           : candidate) };
+        phase = "ready";
+        undoRouted = false;
         previewFrames.request();
-        if (final) previewFrames.flush();
+        if (final) { previewFrames.flush(); history?.push(spec); }
       },
     });
     const copy = input.copy();
@@ -239,6 +261,7 @@ export function createMockupWorkspace(input: {
   async function apply(duplicate: boolean): Promise<void> {
     if (!source || !spec || busy) return;
     busy = true;
+    phase = "applying";
     // A queued preview frame must not redraw capped pixels over the full
     // resolution output between render and encode.
     previewFrames.cancel();
@@ -249,9 +272,19 @@ export function createMockupWorkspace(input: {
       postDesignerResult({ post: input.post, source, task: { kind: "mockup", spec }, bytes: await canvasPng(canvas), width: spec.canvas.width, height: spec.canvas.height, duplicate });
     } catch (error) {
       busy = false;
+      phase = "ready";
       shell.setBusy(false);
       shell.showError(input.formatError(error));
     }
+  }
+
+  function restoreHistory(restored: MockupSpecInput): void {
+    spec = restored;
+    if (!spec.planes.some((plane) => plane.id === activePlaneId)) {
+      activePlaneId = spec.planes[0]?.id ?? "plane-1";
+    }
+    renderControls();
+    void render();
   }
 
   async function saveCurrentTemplate(): Promise<void> {
@@ -300,14 +333,17 @@ export function createMockupWorkspace(input: {
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); queueMicrotask(() => shell.back.focus()); },
-    leave() { active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); },
+    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
+    leave() { overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); },
     setSource(next) {
       busy = false;
       shell.setBusy(false);
       source = next;
       spec = next.task?.kind === "mockup" ? structuredClone(next.task.spec) : defaultMockup(next.sources);
       baseline = structuredClone(spec);
+      history = createWorkspaceHistory(spec);
+      phase = "ready";
+      undoRouted = false;
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
       clearTemplateFeedback();
       if (!savingTemplate) shell.status.textContent = "";
@@ -317,7 +353,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { busy = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
+    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -330,14 +366,23 @@ export function createMockupWorkspace(input: {
       if (!busy || (message.type !== "apply-designer-complete" && message.type !== "apply-designer-error")) return false;
       if (!source || message.generation !== source.selectionGeneration) return true;
       busy = false; shell.setBusy(false); renderTemplateSave();
-      if (message.type === "apply-designer-error") shell.showError(input.formatError(message.message)); else shell.status.textContent = input.copy().applied;
+      if (message.type === "apply-designer-error") { phase = "ready"; shell.showError(input.formatError(message.message)); }
+      else { phase = "applied"; shell.status.textContent = input.copy().applied; }
       return true;
     },
-    handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; },
+    handleKeydown(event) {
+      if (event.key === "Escape") { event.preventDefault(); input.onBack(); return true; }
+      const result = handleWorkspaceHistoryShortcut({ event, phase, undoRouted, history, post: input.post, restore: restoreHistory });
+      undoRouted = result.undoRouted;
+      return result.handled;
+    },
     loadTemplate(template) {
       if (!source || templateSourceCount(template) !== source.sources.length) return false;
       spec = structuredClone(template.operation.spec);
       baseline = structuredClone(spec);
+      history = createWorkspaceHistory(spec);
+      phase = "ready";
+      undoRouted = false;
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
       clearTemplateFeedback();
       if (!savingTemplate) shell.status.textContent = "";

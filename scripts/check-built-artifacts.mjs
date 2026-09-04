@@ -91,12 +91,20 @@ for (const sliderId of [
   }
 }
 for (const controlId of [
+  "workspace-navigation",
+  "workspace-strip-viewport",
+  "workspace-backward",
+  "workspace-forward",
   "control-dock",
   "dock-primary",
-  "object-group",
   "operation-cluster",
+  "mode-strip-viewport",
+  "mode-backward",
+  "mode-forward",
   "mode-transform",
+  "mode-distort",
   "mode-warp",
+  "distort-options",
   "distort-free",
   "distort-perspective",
   "context-controls",
@@ -122,11 +130,10 @@ for (const controlId of [
   "pivot-grid",
   "position-x",
   "position-y",
-  "task-launcher-button",
-  "task-menu",
+  "source-name",
 ]) {
   if (!ui.includes(`id="${controlId}"`)) {
-    throw new Error(`Figma UI is missing Free Transform control ${controlId}`);
+    throw new Error(`Figma UI is missing product workspace control ${controlId}`);
   }
 }
 for (const iconId of [
@@ -139,10 +146,31 @@ for (const iconId of [
   "icon-park:flip-vertically",
   "icon-park:rotate",
   "icon-park:redo",
+  "icon-park:perspective",
 ]) {
   if (!ui.includes(`data-icon-id="${iconId}"`)) {
     throw new Error(`Figma UI is missing tool-rendered product icon ${iconId}`);
   }
+}
+for (const removedControl of [
+  "object-group",
+  "task-launcher-button",
+  "task-menu",
+  "action-undo",
+  "action-redo",
+]) {
+  if (ui.includes(`id="${removedControl}"`)) {
+    throw new Error(`Figma UI restored superseded control ${removedControl}`);
+  }
+}
+if (!ui.includes("workspace-navigation-tooltip")) {
+  throw new Error("Figma workspace navigation must retain a tooltip outside clipped overflow strips");
+}
+if (
+  ui.indexOf('id="more-options"') > ui.indexOf('id="workspace-navigation"') +
+    ui.slice(ui.indexOf('id="workspace-navigation"')).indexOf("</nav>")
+) {
+  throw new Error("Figma global options must remain in the product workspace navigation");
 }
 for (const canvasControlId of [
   "canvas-workspace",
@@ -175,6 +203,7 @@ for (const workspaceId of figmaProfile.workspace.siblingWorkspaceIds) {
   }
 }
 assertIdOrder(ui, figmaProfile.workspace.modeControlIds);
+assertIdOrder(ui, ["distort-free", "distort-perspective"]);
 assertIdOrder(ui, [
   "scale-x-label",
   "scale-y-label",

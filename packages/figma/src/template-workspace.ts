@@ -233,7 +233,7 @@ export function createTemplateWorkspace(input: {
   }
 
   return {
-    enter() { asyncState.enter(); shell.root.hidden = false; render(); queueMicrotask(() => shell.back.focus()); },
+    enter() { asyncState.enter(); shell.root.hidden = false; render(); },
     leave() {
       asyncState.leave();
       shell.root.hidden = true;

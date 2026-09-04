@@ -11,11 +11,9 @@ test("current carrier profiles are closed and reference existing features", asyn
   const profiles = await loadCarrierProfiles();
   assert.deepEqual(profiles.carriers.figma.workspace.modeControlIds, [
     "mode-transform",
-    "distort-free",
-    "distort-perspective",
+    "mode-distort",
     "mode-warp",
     "mode-rectify",
-    "more-options",
   ]);
   assert.deepEqual(profiles.carriers.figma.workspace.siblingWorkspaceIds, [
     "templates", "canvas", "mockup", "mesh", "remap",

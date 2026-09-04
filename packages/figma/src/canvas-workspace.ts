@@ -31,7 +31,6 @@ import {
   cloneBackground,
   draftFromStoredCanvas,
   draftFromStoredCanvasSet,
-  eventTargetEditsText,
   hexToRgba,
   imageRgba,
   inspectorControls,
@@ -46,6 +45,8 @@ import {
   normalizeTemplateName,
 } from "./stored-template-library";
 import type { OwnedCanvasSetSpec } from "./stored-canvas";
+import type { Phase } from "./editor-state";
+import { handleWorkspaceHistoryShortcut } from "./workspace-shortcuts";
 
 type WorkspaceSource = Omit<SourcePayload, "bytes" | "sources"> & { selectionGeneration: number };
 type WorkspacePhase = CanvasWorkspacePhase;
@@ -170,10 +171,9 @@ export function createCanvasWorkspace(input: {
     input.root.inert = false;
     renderer = new CanvasRasterRenderer();
     renderer.canvas.className = "canvas-preview-raster";
-    view.preview.replaceChildren(renderer.canvas);
+    view.preview.replaceChildren(renderer.canvas, view.sourceName);
     render();
     if (source && draft) void requestPlan();
-    queueMicrotask(() => view.back.focus());
   }
 
   function leave(): void {
@@ -419,22 +419,20 @@ export function createCanvasWorkspace(input: {
       input.onBack();
       return true;
     }
-    const command = event.metaKey || event.ctrlKey;
-    if (!command || event.key.toLowerCase() !== "z") return false;
-    if (eventTargetEditsText(event.target)) return false;
-    event.preventDefault();
-    if (phase === "applied" && !event.shiftKey && !undoRouted) {
-      undoRouted = true;
-      input.post({ type: "trigger-undo" });
-      return true;
-    }
-    if (phase !== "ready" || !history) return true;
-    const restored = event.shiftKey ? history.redo() : history.undo();
-    if (restored) {
-      draft = restored;
-      void requestPlan();
-    }
-    return true;
+    const shortcutPhase: Phase = phase === "ready" || phase === "applied" ? phase : "loading";
+    const result = handleWorkspaceHistoryShortcut({
+      event,
+      phase: shortcutPhase,
+      undoRouted,
+      history,
+      post: input.post,
+      restore(restored) {
+        draft = restored;
+        void requestPlan();
+      },
+    });
+    undoRouted = result.undoRouted;
+    return result.handled;
   }
 
   function updateDraft(next: CanvasDraft): void {

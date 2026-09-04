@@ -51,7 +51,7 @@ import {
   type StoredTemplateLibrary,
 } from "./stored-template-library";
 
-figma.showUI(__html__, { width: 600, height: 720, themeColors: true });
+figma.showUI(__html__, { width: 820, height: 760, themeColors: true });
 
 const localeSettings = createLocalePreferenceSettings({
   read: () => figma.clientStorage.getAsync(LOCALE_STORAGE_KEY),

@@ -81,8 +81,8 @@ describe("Figma selection generations", () => {
 
     await import("./main");
     expect(figmaMock.showUI).toHaveBeenCalledWith("", {
-      width: 600,
-      height: 720,
+      width: 820,
+      height: 760,
       themeColors: true,
     });
     figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-Hans-CN", "en-US"] });

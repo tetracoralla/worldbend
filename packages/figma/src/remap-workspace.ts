@@ -2,6 +2,10 @@ import { RemapWebGLRenderer, type RemapOperation, type RemapSpecInput } from "@w
 import { planRemap } from "./designer-plan";
 import { scaledPreviewSize } from "./designer-preview";
 import { createFrameCoalescer } from "./frame-coalescer";
+import { sliderProgress, sliderValueForNumber } from "./slider-domain";
+import type { Phase } from "./editor-state";
+import { createWorkspaceHistory, type WorkspaceHistory } from "./workspace-history";
+import { handleWorkspaceHistoryShortcut } from "./workspace-shortcuts";
 import {
   createDesignerWorkspaceShell,
   fitPreviewCanvas,
@@ -31,10 +35,10 @@ export function createRemapWorkspace(input: {
   const shell = createDesignerWorkspaceShell(input.root);
   shell.inspector.innerHTML = `<label class="designer-field"><span data-role="mode-label"></span><select data-role="mode"><option value="lens"></option><option value="displacement"></option></select></label>
     <div class="designer-row"><label class="designer-field"><span data-role="width-label"></span><input data-role="width" type="number" min="1" max="4096"></label><label class="designer-field"><span data-role="height-label"></span><input data-role="height" type="number" min="1" max="4096"></label></div>
-    <div data-role="lens"><div class="designer-row"><label class="designer-field"><span data-role="k1-label"></span><input data-role="k1" type="number" min="-4" max="4" step="0.01"></label><label class="designer-field"><span data-role="k2-label"></span><input data-role="k2" type="number" min="-4" max="4" step="0.01"></label></div><div class="inspector-divider" aria-hidden="true"></div><button data-role="more" class="advanced-toggle" type="button" aria-expanded="false"><span data-role="more-label"></span><span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button><div data-role="advanced" hidden></div></div>
-    <div data-role="displacement" hidden><div class="designer-row"><label class="designer-field"><span data-role="x-channel-label"></span><select data-role="x-channel"></select></label><label class="designer-field"><span data-role="y-channel-label"></span><select data-role="y-channel"></select></label></div><div class="designer-row"><label class="designer-field"><span data-role="scale-x-label"></span><input data-role="scale-x" type="number" min="-4096" max="4096" step="1"></label><label class="designer-field"><span data-role="scale-y-label"></span><input data-role="scale-y" type="number" min="-4096" max="4096" step="1"></label></div><label class="designer-field"><span data-role="neutral-label"></span><input data-role="neutral" type="number" min="0" max="255" step="1"></label><label class="designer-field"><span data-role="boundary-label"></span><select data-role="boundary"></select></label></div>`;
+    <div data-role="lens">${remapRangeField("k1", -4, 4, -1, 1, .01)}${remapRangeField("k2", -4, 4, -1, 1, .01)}<div class="inspector-divider" aria-hidden="true"></div><button data-role="more" class="advanced-toggle" type="button" aria-expanded="false"><span data-role="more-label"></span><span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button><div data-role="advanced" hidden></div></div>
+    <div data-role="displacement" hidden><div class="designer-row"><label class="designer-field"><span data-role="x-channel-label"></span><select data-role="x-channel"></select></label><label class="designer-field"><span data-role="y-channel-label"></span><select data-role="y-channel"></select></label></div>${remapRangeField("scale-x", -4096, 4096, -512, 512, 1)}${remapRangeField("scale-y", -4096, 4096, -512, 512, 1)}${remapRangeField("neutral", 0, 255, 0, 255, 1)}<label class="designer-field"><span data-role="boundary-label"></span><select data-role="boundary"></select></label></div>`;
   const advanced = role<HTMLElement>(shell.inspector, "advanced");
-  advanced.innerHTML = `<div class="designer-row"><label class="designer-field"><span data-role="k3-label"></span><input data-role="k3" type="number" min="-4" max="4" step="0.01"></label><label class="designer-field"><span data-role="p1-label"></span><input data-role="p1" type="number" min="-4" max="4" step="0.01"></label></div><label class="designer-field"><span data-role="p2-label"></span><input data-role="p2" type="number" min="-4" max="4" step="0.01"></label><div class="designer-row"><label class="designer-field"><span data-role="center-x-label"></span><input data-role="center-x" type="number" min="-1" max="2" step="0.01"></label><label class="designer-field"><span data-role="center-y-label"></span><input data-role="center-y" type="number" min="-1" max="2" step="0.01"></label></div><div class="designer-row"><label class="designer-field"><span data-role="lens-scale-x-label"></span><input data-role="lens-scale-x" type="number" min="0.000001" max="10" step="0.01"></label><label class="designer-field"><span data-role="lens-scale-y-label"></span><input data-role="lens-scale-y" type="number" min="0.000001" max="10" step="0.01"></label></div>`;
+  advanced.innerHTML = `${remapRangeField("k3", -4, 4, -1, 1, .01)}${remapRangeField("p1", -4, 4, -1, 1, .01)}${remapRangeField("p2", -4, 4, -1, 1, .01)}${remapRangeField("center-x", -1, 2, 0, 1, .01)}${remapRangeField("center-y", -1, 2, 0, 1, .01)}${remapRangeField("lens-scale-x", .000001, 10, .1, 2, .01)}${remapRangeField("lens-scale-y", .000001, 10, .1, 2, .01)}`;
   const renderer = new RemapWebGLRenderer(document.createElement("canvas"));
   shell.preview.append(renderer.canvas);
   const controls = controlMap(shell.inspector);
@@ -44,21 +48,32 @@ export function createRemapWorkspace(input: {
   let source: DesignerWorkspaceSource | undefined;
   let spec: RemapSpecInput | undefined;
   let baseline: RemapSpecInput | undefined;
+  let history: WorkspaceHistory<RemapSpecInput> | undefined;
   let generation = 0;
   let busy = false;
   let active = false;
+  let phase: Phase = "idle";
+  let undoRouted = false;
   // Numeric edits preview live at paint cadence; the change event remains the
   // commit boundary that echoes values back into the fields.
   const liveFrames = createFrameCoalescer(() => void render(false));
 
   shell.back.addEventListener("click", input.onBack);
-  shell.reset.addEventListener("click", () => { if (baseline) { spec = structuredClone(baseline); renderControls(); void render(false); } });
+  shell.reset.addEventListener("click", () => {
+    if (!baseline) return;
+    spec = structuredClone(baseline);
+    history?.push(spec);
+    phase = "ready";
+    undoRouted = false;
+    renderControls();
+    void render(false);
+  });
   controls["more"]!.addEventListener("click", () => {
     advanced.hidden = !advanced.hidden;
     controls["more"]!.setAttribute("aria-expanded", String(!advanced.hidden));
   });
   for (const control of Object.values(controls)) {
-    if (control === controls["more"]) continue;
+    if (control === controls["more"] || control.dataset.role?.endsWith("-slider")) continue;
     control.addEventListener("input", () => {
       if (control instanceof HTMLInputElement && control.type === "number") {
         // Live preview stays quiet while any numeric field is empty or
@@ -71,13 +86,17 @@ export function createRemapWorkspace(input: {
       commitControls();
       renderControls();
       liveFrames.flush();
+      commitHistory();
     });
   }
+  for (const name of REMAP_RANGE_NAMES) bindRange(name);
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
 
   function commitControls(): void {
     if (!spec) return;
+    phase = "ready";
+    undoRouted = false;
     const mode = (controls["mode"] as HTMLSelectElement).value;
     const output = { width: number("width"), height: number("height") };
     const operation: RemapOperation = mode === "lens"
@@ -90,6 +109,10 @@ export function createRemapWorkspace(input: {
   function renderControls(): void {
     if (!spec) return;
     set("width", spec.output.width); set("height", spec.output.height);
+    // Keep the inactive branch initialized so switching modes never derives a
+    // zero/empty operation from controls that have not yet been shown.
+    for (const [name, value] of [["k1", 0], ["k2", 0], ["k3", 0], ["p1", 0], ["p2", 0], ["center-x", .5], ["center-y", .5], ["lens-scale-x", .5], ["lens-scale-y", .5], ["scale-x", 24], ["scale-y", 24], ["neutral", 128]] as const) set(name, value);
+    selectSet("x-channel", "red"); selectSet("y-channel", "green"); selectSet("boundary", "transparent");
     const operation = spec.operation;
     const lens = operation.kind === "lens";
     (controls["mode"] as HTMLSelectElement).value = operation.kind;
@@ -104,6 +127,40 @@ export function createRemapWorkspace(input: {
     }
     (controls["mode"] as HTMLSelectElement).querySelector<HTMLOptionElement>('option[value="displacement"]')!.disabled = (source?.sources.length ?? 0) < 2;
     shell.applyNew.hidden = !source?.targetNodeId;
+  }
+
+  function bindRange(name: RemapRangeName): void {
+    const numberInput = controls[name] as HTMLInputElement;
+    const slider = controls[`${name}-slider`] as HTMLInputElement;
+    const syncFromNumber = (): void => {
+      const minimum = Number(slider.min);
+      const maximum = Number(slider.max);
+      slider.value = String(sliderValueForNumber(
+        numberInput.value,
+        minimum,
+        maximum,
+        Number(slider.value),
+      ));
+      slider.style.setProperty(
+        "--range-progress",
+        `${sliderProgress(Number(slider.value), minimum, maximum)}%`,
+      );
+    };
+    numberInput.addEventListener("input", syncFromNumber);
+    numberInput.addEventListener("change", syncFromNumber);
+    slider.addEventListener("input", () => {
+      numberInput.value = slider.value;
+      syncFromNumber();
+      commitControls();
+    });
+    slider.addEventListener("change", () => {
+      numberInput.value = slider.value;
+      commitControls();
+      renderControls();
+      liveFrames.flush();
+      commitHistory();
+    });
+    syncFromNumber();
   }
 
   async function render(high = false): Promise<boolean> {
@@ -140,6 +197,7 @@ export function createRemapWorkspace(input: {
   async function apply(duplicate: boolean): Promise<void> {
     if (!source || !spec || busy) return;
     busy = true;
+    phase = "applying";
     // A queued preview frame must not redraw capped pixels over the full
     // resolution output between render and encode.
     liveFrames.cancel();
@@ -147,19 +205,36 @@ export function createRemapWorkspace(input: {
     try {
       if (!(await render(true))) throw new Error("Remap output is invalid");
       postDesignerResult({ post: input.post, source, task: { kind: "remap", spec }, bytes: await renderer.exportPng(), width: spec.output.width, height: spec.output.height, duplicate });
-    } catch (error) { busy = false; shell.setBusy(false); shell.showError(input.formatError(error)); }
+    } catch (error) { busy = false; phase = "ready"; shell.setBusy(false); shell.showError(input.formatError(error)); }
+  }
+
+  function commitHistory(): void {
+    if (!spec) return;
+    history?.push(spec);
+    phase = "ready";
+    undoRouted = false;
+  }
+
+  function restoreHistory(restored: RemapSpecInput): void {
+    spec = restored;
+    renderControls();
+    void render(false);
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(false); queueMicrotask(() => shell.back.focus()); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
+    enter() { active = true; shell.root.hidden = false; void render(false); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
     setSource(next) {
       busy = false; shell.setBusy(false);
       source = next;
       const first = next.sources[0]; if (!first) return;
       spec = next.task?.kind === "remap" ? structuredClone(next.task.spec) : defaultRemap(first.renderWidth, first.renderHeight, next.sources.length > 1);
-      baseline = structuredClone(spec); renderControls(); if (active) void render();
+      baseline = structuredClone(spec);
+      history = createWorkspaceHistory(spec);
+      phase = "ready";
+      undoRouted = false;
+      renderControls(); if (active) void render();
     },
-    clearSource(error) { busy = false; shell.setBusy(false); source = undefined; spec = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { busy = false; phase = "idle"; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
       const copy = input.copy(); shell.setCopy(copy);
       for (const [name, text] of [["mode-label", copy.mode], ["width-label", copy.width], ["height-label", copy.height], ["k1-label", copy.k1], ["k2-label", copy.k2], ["k3-label", copy.k3], ["p1-label", copy.p1], ["p2-label", copy.p2], ["center-x-label", copy.centerX], ["center-y-label", copy.centerY], ["lens-scale-x-label", copy.scaleX], ["lens-scale-y-label", copy.scaleY], ["x-channel-label", copy.xChannel], ["y-channel-label", copy.yChannel], ["scale-x-label", copy.scaleX], ["scale-y-label", copy.scaleY], ["neutral-label", copy.neutral], ["boundary-label", copy.boundary]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
@@ -173,11 +248,16 @@ export function createRemapWorkspace(input: {
       busy = false;
       shell.setBusy(false);
       renderControls();
-      if (message.type === "apply-designer-error") shell.showError(input.formatError(message.message));
-      else shell.status.textContent = input.copy().applied;
+      if (message.type === "apply-designer-error") { phase = "ready"; shell.showError(input.formatError(message.message)); }
+      else { phase = "applied"; shell.status.textContent = input.copy().applied; }
       return true;
     },
-    handleKeydown(event) { if (event.key !== "Escape") return false; input.onBack(); return true; }, dispose() { liveFrames.cancel(); renderer.dispose(); },
+    handleKeydown(event) {
+      if (event.key === "Escape") { event.preventDefault(); input.onBack(); return true; }
+      const result = handleWorkspaceHistoryShortcut({ event, phase, undoRouted, history, post: input.post, restore: restoreHistory });
+      undoRouted = result.undoRouted;
+      return result.handled;
+    }, dispose() { liveFrames.cancel(); renderer.dispose(); },
   };
 
   function number(name: string): number { return Number((controls[name] as HTMLInputElement).value); }
@@ -193,7 +273,16 @@ export function createRemapWorkspace(input: {
     return true;
   }
   function select(name: string): string { return (controls[name] as HTMLSelectElement).value; }
-  function set(name: string, value: number): void { (controls[name] as HTMLInputElement).value = String(value); }
+  function set(name: string, value: number): void {
+    const numberInput = controls[name] as HTMLInputElement;
+    numberInput.value = String(value);
+    const slider = controls[`${name}-slider`] as HTMLInputElement | undefined;
+    if (!slider) return;
+    const minimum = Number(slider.min);
+    const maximum = Number(slider.max);
+    slider.value = String(sliderValueForNumber(numberInput.value, minimum, maximum, Number(slider.value)));
+    slider.style.setProperty("--range-progress", `${sliderProgress(Number(slider.value), minimum, maximum)}%`);
+  }
   function selectSet(name: string, value: string): void { (controls[name] as HTMLSelectElement).value = value; }
 }
 
@@ -206,3 +295,20 @@ function controlMap(root: HTMLElement): Record<string, HTMLElement> { return Obj
 function fillSelect(select: HTMLSelectElement, values: readonly string[]): void { for (const value of values) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.append(option); } }
 function localizeOptions(select: HTMLSelectElement, copy: RemapWorkspaceCopy): void { for (const option of select.options) option.textContent = copy[option.value as keyof RemapWorkspaceCopy] ?? option.value; }
 function role<T extends HTMLElement>(root: HTMLElement, name: string): T { const value = root.querySelector<HTMLElement>(`[data-role="${name}"]`); if (!value) throw new Error(`Missing remap workspace role ${name}`); return value as T; }
+
+const REMAP_RANGE_NAMES = [
+  "k1", "k2", "k3", "p1", "p2", "center-x", "center-y",
+  "lens-scale-x", "lens-scale-y", "scale-x", "scale-y", "neutral",
+] as const;
+type RemapRangeName = (typeof REMAP_RANGE_NAMES)[number];
+
+function remapRangeField(
+  name: RemapRangeName,
+  numberMin: number,
+  numberMax: number,
+  sliderMin: number,
+  sliderMax: number,
+  step: number,
+): string {
+  return `<label class="designer-field designer-range-field"><span id="remap-${name}-label" data-role="${name}-label"></span><span class="designer-range-pair"><input data-role="${name}-slider" class="transform-slider" type="range" min="${sliderMin}" max="${sliderMax}" step="${step}" aria-labelledby="remap-${name}-label"><input data-role="${name}" type="number" min="${numberMin}" max="${numberMax}" step="${step}" inputmode="decimal" aria-labelledby="remap-${name}-label"></span></label>`;
+}

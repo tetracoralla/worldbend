@@ -42,11 +42,9 @@
         "id": "perspective",
         "modeControlIds": [
           "mode-transform",
-          "distort-free",
-          "distort-perspective",
+          "mode-distort",
           "mode-warp",
-          "mode-rectify",
-          "more-options"
+          "mode-rectify"
         ],
         "siblingWorkspaceIds": ["templates", "canvas", "mockup", "mesh", "remap"]
       },

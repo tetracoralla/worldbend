@@ -2,7 +2,7 @@ export type ProductWorkspace = "perspective" | "canvas" | "mockup" | "mesh" | "r
 
 export interface ProductWorkspaceRouter {
   current(): ProductWorkspace;
-  enter(workspace: Exclude<ProductWorkspace, "perspective">): boolean;
+  enter(workspace: ProductWorkspace): boolean;
   returnToPerspective(): boolean;
 }
 

@@ -8,7 +8,50 @@ export interface DirectPoint {
 export interface DirectPointOverlay {
   set(points: readonly DirectPoint[]): void;
   refresh(): void;
+  interrupt(): void;
   dispose(): void;
+}
+
+type DirectPointPosition = { x: number; y: number };
+
+export interface DirectPointGestureSession {
+  begin(pointerId: number, id: string, point: DirectPointPosition): void;
+  update(pointerId: number, point: DirectPointPosition): boolean;
+  finish(pointerId: number, point?: DirectPointPosition): boolean;
+  interrupt(pointerId?: number): boolean;
+  owns(pointerId: number): boolean;
+}
+
+export function createDirectPointGestureSession(input: {
+  onPreview(id: string, point: DirectPointPosition): void;
+  onCommit(id: string, point: DirectPointPosition): void;
+}): DirectPointGestureSession {
+  let active: { pointerId: number; id: string; lastPoint: DirectPointPosition } | undefined;
+
+  const commit = (pointerId?: number, point?: DirectPointPosition): boolean => {
+    if (!active || (pointerId !== undefined && pointerId !== active.pointerId)) return false;
+    const completed = active;
+    active = undefined;
+    input.onCommit(completed.id, point ?? completed.lastPoint);
+    return true;
+  };
+
+  return {
+    begin(pointerId, id, point) {
+      if (active) commit();
+      active = { pointerId, id, lastPoint: point };
+      input.onPreview(id, point);
+    },
+    update(pointerId, point) {
+      if (!active || active.pointerId !== pointerId) return false;
+      active = { ...active, lastPoint: point };
+      input.onPreview(active.id, point);
+      return true;
+    },
+    finish: commit,
+    interrupt: commit,
+    owns(pointerId) { return active?.pointerId === pointerId; },
+  };
 }
 
 /**
@@ -45,6 +88,7 @@ export function createDirectPointOverlay(input: {
   input.host.append(layer);
   let points: DirectPoint[] = [];
   let observer: ResizeObserver | undefined;
+  let capturedButton: HTMLButtonElement | undefined;
 
   const trackPoint = (id: string, point: { x: number; y: number }): void => {
     const index = points.findIndex((candidate) => candidate.id === id);
@@ -87,15 +131,67 @@ export function createDirectPointOverlay(input: {
     input.onMove(id, point, final);
   };
 
-  const moveFromClient = (id: string, clientX: number, clientY: number, final: boolean): void => {
+  const pointFromClient = (clientX: number, clientY: number): DirectPointPosition => {
     const box = input.canvas.getBoundingClientRect();
-    applyPoint(id, {
+    return {
       x: clamp((clientX - box.left) / Math.max(1, box.width)),
       y: clamp((clientY - box.top) / Math.max(1, box.height)),
-    }, final);
+    };
+  };
+
+  const gesture = createDirectPointGestureSession({
+    onPreview(id, point) { applyPoint(id, point, false); },
+    onCommit(id, point) { applyPoint(id, point, true); },
+  });
+
+  const releaseCapture = (button: HTMLButtonElement | undefined, pointerId: number): void => {
+    if (!button?.hasPointerCapture(pointerId)) return;
+    button.releasePointerCapture(pointerId);
+  };
+
+  const finishPointer = (pointerId: number, point?: DirectPointPosition): boolean => {
+    const button = capturedButton;
+    const finished = gesture.finish(pointerId, point);
+    if (!finished) return false;
+    capturedButton = undefined;
+    if (button) delete button.dataset.activePointerId;
+    releaseCapture(button, pointerId);
+    return true;
+  };
+
+  const interruptPointer = (pointerId?: number): boolean => {
+    const button = capturedButton;
+    const capturedPointer = pointerId ?? (button
+      ? Number(button.dataset.activePointerId)
+      : undefined);
+    const interrupted = gesture.interrupt(pointerId);
+    if (!interrupted) return false;
+    capturedButton = undefined;
+    if (capturedPointer !== undefined && Number.isFinite(capturedPointer)) {
+      releaseCapture(button, capturedPointer);
+    }
+    if (button) delete button.dataset.activePointerId;
+    return true;
+  };
+
+  const onWindowPointerUp = (event: PointerEvent): void => {
+    if (gesture.owns(event.pointerId)) {
+      finishPointer(event.pointerId, pointFromClient(event.clientX, event.clientY));
+    }
+  };
+  const onWindowPointerCancel = (event: PointerEvent): void => {
+    interruptPointer(event.pointerId);
+  };
+  const onWindowBlur = (): void => { interruptPointer(); };
+  const onVisibilityChange = (): void => {
+    if (document.visibilityState === "hidden") interruptPointer();
+  };
+  const onWindowKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") interruptPointer();
   };
 
   const set = (next: readonly DirectPoint[]): void => {
+    interruptPointer();
     points = [...next];
     layer.replaceChildren();
     for (const point of points) {
@@ -106,16 +202,28 @@ export function createDirectPointOverlay(input: {
       button.setAttribute("aria-label", point.label);
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
+        interruptPointer();
+        capturedButton = button;
+        button.dataset.activePointerId = String(event.pointerId);
         button.setPointerCapture(event.pointerId);
-        moveFromClient(point.id, event.clientX, event.clientY, false);
+        gesture.begin(event.pointerId, point.id, pointFromClient(event.clientX, event.clientY));
       });
       button.addEventListener("pointermove", (event) => {
-        if (button.hasPointerCapture(event.pointerId)) moveFromClient(point.id, event.clientX, event.clientY, false);
+        if (!gesture.owns(event.pointerId)) return;
+        // Some embedded hosts return a pointer after dropping capture without
+        // delivering pointerup. Keep the last pressed sample and close once.
+        if (event.buttons === 0) {
+          interruptPointer(event.pointerId);
+          return;
+        }
+        gesture.update(event.pointerId, pointFromClient(event.clientX, event.clientY));
       });
       button.addEventListener("pointerup", (event) => {
-        if (!button.hasPointerCapture(event.pointerId)) return;
-        moveFromClient(point.id, event.clientX, event.clientY, true);
-        button.releasePointerCapture(event.pointerId);
+        finishPointer(event.pointerId, pointFromClient(event.clientX, event.clientY));
+      });
+      button.addEventListener("pointercancel", (event) => { interruptPointer(event.pointerId); });
+      button.addEventListener("lostpointercapture", (event) => {
+        interruptPointer((event as PointerEvent).pointerId);
       });
       button.addEventListener("keydown", (event) => {
         const box = input.canvas.getBoundingClientRect();
@@ -136,7 +244,26 @@ export function createDirectPointOverlay(input: {
     observer.observe(input.host);
     observer.observe(input.canvas);
   }
-  return { set, refresh, dispose() { observer?.disconnect(); layer.remove(); } };
+  window.addEventListener("pointerup", onWindowPointerUp);
+  window.addEventListener("pointercancel", onWindowPointerCancel);
+  window.addEventListener("blur", onWindowBlur);
+  window.addEventListener("keydown", onWindowKeydown, true);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  return {
+    set,
+    refresh,
+    interrupt: interruptPointer,
+    dispose() {
+      interruptPointer();
+      observer?.disconnect();
+      window.removeEventListener("pointerup", onWindowPointerUp);
+      window.removeEventListener("pointercancel", onWindowPointerCancel);
+      window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("keydown", onWindowKeydown, true);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      layer.remove();
+    },
+  };
 }
 
 function clamp(value: number): number { return Math.max(0, Math.min(1, value)); }

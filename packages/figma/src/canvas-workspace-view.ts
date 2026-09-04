@@ -87,12 +87,12 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
   root.innerHTML = `
     <header class="canvas-header">
       <button id="canvas-back" class="canvas-back" type="button"><span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-      <div class="canvas-heading"><h1 id="canvas-source-name"></h1><p id="canvas-title" class="sr-only"></p></div>
+      <div class="canvas-heading"><p id="canvas-title" class="sr-only"></p></div>
       <button id="canvas-add-variant" type="button"></button>
     </header>
     <div id="canvas-variants" class="canvas-variants" role="tablist"></div>
     <div class="canvas-body">
-      <div id="canvas-preview" class="canvas-preview" role="tabpanel"></div>
+      <div id="canvas-preview" class="canvas-preview" role="tabpanel"><output id="canvas-source-name" class="canvas-source-hud" aria-live="off"></output></div>
       <aside class="canvas-inspector">
         <label class="canvas-field"><span id="canvas-output-name-label"></span><input id="canvas-variant-id" type="text" maxlength="64" autocomplete="off" spellcheck="false"></label>
         <label class="canvas-field"><span id="canvas-operation-label"></span><select id="canvas-operation">

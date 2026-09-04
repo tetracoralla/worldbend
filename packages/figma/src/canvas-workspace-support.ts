@@ -179,13 +179,6 @@ export function inspectorControls(
   ];
 }
 
-export function eventTargetEditsText(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
-  );
-}
-
 export function renderAnchors(
   view: CanvasWorkspaceView,
   selected: { x: CanvasAnchor; y: CanvasAnchor },

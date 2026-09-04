@@ -103,9 +103,9 @@ The repository is a source superset, not one universal install. The checked
 profiles in `config/carrier-profiles.json` project the current semantic core
 into task-native distributions:
 
-- Figma ships the stable Perspective workspace and one compact source-level
-  task launcher for independent Templates, Sizes, Mockup, Mesh, and Remap
-  workspaces. Its
+- Figma ships the stable Perspective workspace and one persistent icon
+  workspace navigation across Perspective, Templates, Sizes, Mockup, Mesh, and
+  Remap. Its
   no-CSS WASM build includes only the planners those human routes consume;
 - the Agent plugin ships the full stable headless implementation with no human
   UI, exposes a compact progressive catalog by default, and retains the current

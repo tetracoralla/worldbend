@@ -1,12 +1,20 @@
 import type { ProductWorkspace } from "./product-workspace";
+import { createHorizontalStrip, type HorizontalStrip } from "./horizontal-strip";
 
 export type LaunchableWorkspace = Exclude<ProductWorkspace, "perspective">;
 
-export interface TaskLauncher {
+export interface WorkspaceNavigation {
   setDisabled(disabled: boolean): void;
   setAvailability(available: Readonly<Record<LaunchableWorkspace, boolean>>): void;
-  setLabels(label: string, workspaces: Readonly<Record<LaunchableWorkspace, string>>): void;
-  close(options?: { restoreFocus?: boolean }): void;
+  setCurrent(workspace: ProductWorkspace): void;
+  setLabels(
+    label: string,
+    workspaces: Readonly<Record<ProductWorkspace, string>>,
+    backwardLabel: string,
+    forwardLabel: string,
+  ): void;
+  focusCurrent(): void;
+  refresh(): void;
   dispose(): void;
 }
 
@@ -22,83 +30,110 @@ export function taskWorkspaceAvailability(
   };
 }
 
-export function createTaskLauncher(input: {
-  trigger: HTMLButtonElement;
-  menu: HTMLElement;
-  onChoose(workspace: LaunchableWorkspace): void;
-}): TaskLauncher {
+export function createWorkspaceNavigation(input: {
+  root: HTMLElement;
+  viewport: HTMLElement;
+  backward: HTMLButtonElement;
+  forward: HTMLButtonElement;
+  onChoose(workspace: ProductWorkspace): void;
+}): WorkspaceNavigation {
   const buttons = Array.from(
-    input.menu.querySelectorAll<HTMLButtonElement>("[data-workspace]"),
+    input.viewport.querySelectorAll<HTMLButtonElement>("[data-workspace]"),
   );
-  let open = false;
+  let current: ProductWorkspace = "perspective";
+  let disabled = true;
+  let availability = taskWorkspaceAvailability(0);
+  const tooltip = document.createElement("span");
+  tooltip.className = "workspace-navigation-tooltip";
+  tooltip.hidden = true;
+  tooltip.setAttribute("aria-hidden", "true");
+  input.root.append(tooltip);
+  const strip: HorizontalStrip = createHorizontalStrip({
+    viewport: input.viewport,
+    backward: input.backward,
+    forward: input.forward,
+  });
 
-  const setOpen = (next: boolean, restoreFocus = false): void => {
-    open = next;
-    input.menu.hidden = !next;
-    input.trigger.setAttribute("aria-expanded", String(next));
-    if (next) queueMicrotask(() => buttons.find((button) => !button.disabled)?.focus());
-    else if (restoreFocus) queueMicrotask(() => input.trigger.focus());
+  const render = (): void => {
+    const focusableWorkspace = workspaceNavigationFocusableWorkspace(
+      current,
+      disabled,
+      availability,
+    );
+    for (const button of buttons) {
+      const workspace = button.dataset.workspace as ProductWorkspace | undefined;
+      if (!workspace) continue;
+      const selected = workspace === current;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = workspace === focusableWorkspace ? 0 : -1;
+      button.disabled = isWorkspaceNavigationDisabled(workspace, disabled, availability);
+    }
+    strip.refresh();
   };
-  const onTrigger = (): void => setOpen(!open, open);
-  const onMenuClick = (event: Event): void => {
+  const onClick = (event: Event): void => {
     const target = event.target instanceof Element
       ? event.target.closest<HTMLButtonElement>("[data-workspace]")
       : null;
-    const workspace = target?.dataset.workspace as LaunchableWorkspace | undefined;
-    if (!workspace) return;
-    setOpen(false);
+    const workspace = target?.dataset.workspace as ProductWorkspace | undefined;
+    if (!workspace || !target || target.disabled) return;
     input.onChoose(workspace);
   };
   const onKeydown = (event: KeyboardEvent): void => {
-    if (!open) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setOpen(false, true);
-      return;
-    }
-    if (event.key === "Tab") {
-      setOpen(false);
-      return;
-    }
-    const enabledButtons = buttons.filter((button) => !button.disabled);
-    if (enabledButtons.length === 0) return;
-    const current = enabledButtons.indexOf(document.activeElement as HTMLButtonElement);
-    const next = taskMenuTargetIndex(event.key, current, enabledButtons.length);
+    const enabled = buttons.filter((button) => !button.disabled);
+    if (enabled.length === 0) return;
+    const focused = enabled.indexOf(document.activeElement as HTMLButtonElement);
+    const next = workspaceNavigationTargetIndex(event.key, focused, enabled.length);
     if (next === undefined) return;
     event.preventDefault();
-    enabledButtons[next]?.focus();
+    enabled[next]?.focus();
   };
-  const onPointerDown = (event: PointerEvent): void => {
-    if (!open || !(event.target instanceof Node)) return;
-    if (!input.menu.contains(event.target) && !input.trigger.contains(event.target)) {
-      setOpen(false);
-    }
+  const showTooltip = (button: HTMLButtonElement): void => {
+    tooltip.textContent = button.getAttribute("aria-label") ?? "";
+    tooltip.hidden = false;
+    const rootRect = input.root.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    const half = tooltip.offsetWidth / 2;
+    const center = buttonRect.left - rootRect.left + buttonRect.width / 2;
+    tooltip.style.left = `${Math.max(half + 4, Math.min(rootRect.width - half - 4, center))}px`;
+    tooltip.style.top = `${buttonRect.bottom - rootRect.top + 6}px`;
   };
+  const hideTooltip = (): void => { tooltip.hidden = true; };
+  const tooltipListeners = buttons.map((button) => {
+    const show = (): void => showTooltip(button);
+    button.addEventListener("mouseenter", show);
+    button.addEventListener("mouseleave", hideTooltip);
+    button.addEventListener("focus", show);
+    button.addEventListener("blur", hideTooltip);
+    return { button, show };
+  });
 
-  input.trigger.addEventListener("click", onTrigger);
-  input.menu.addEventListener("click", onMenuClick);
-  input.menu.addEventListener("keydown", onKeydown);
-  document.addEventListener("pointerdown", onPointerDown);
+  input.viewport.addEventListener("click", onClick);
+  input.viewport.addEventListener("keydown", onKeydown);
+  render();
 
   return {
-    setDisabled(disabled) {
-      input.trigger.disabled = disabled;
-      if (disabled) setOpen(false);
+    setDisabled(next) {
+      disabled = next;
+      render();
     },
-    setAvailability(available) {
-      for (const button of buttons) {
-        const workspace = button.dataset.workspace as LaunchableWorkspace | undefined;
-        if (workspace) button.disabled = !available[workspace];
-      }
-      if (open && !buttons.some((button) => !button.disabled)) setOpen(false);
+    setAvailability(next) {
+      availability = next;
+      render();
     },
-    setLabels(label, workspaces) {
-      input.trigger.setAttribute("aria-label", label);
-      input.menu.setAttribute("aria-label", label);
-      const triggerTooltip = input.trigger.querySelector<HTMLElement>(".action-tooltip");
-      if (triggerTooltip) triggerTooltip.textContent = label;
+    setCurrent(next) {
+      current = next;
+      render();
+      buttons.find((button) => button.dataset.workspace === next)?.scrollIntoView({
+        block: "nearest",
+        inline: "nearest",
+      });
+    },
+    setLabels(label, workspaces, backwardLabel, forwardLabel) {
+      input.root.setAttribute("aria-label", label);
+      input.backward.setAttribute("aria-label", backwardLabel);
+      input.forward.setAttribute("aria-label", forwardLabel);
       for (const button of buttons) {
-        const workspace = button.dataset.workspace as LaunchableWorkspace | undefined;
+        const workspace = button.dataset.workspace as ProductWorkspace | undefined;
         if (!workspace) continue;
         const workspaceLabel = workspaces[workspace];
         button.setAttribute("aria-label", workspaceLabel);
@@ -106,19 +141,48 @@ export function createTaskLauncher(input: {
         if (tooltip) tooltip.textContent = workspaceLabel;
       }
     },
-    close(options) {
-      setOpen(false, options?.restoreFocus ?? false);
+    focusCurrent() {
+      queueMicrotask(() => {
+        buttons.find((button) => button.tabIndex === 0)?.focus();
+      });
     },
+    refresh: strip.refresh,
     dispose() {
-      input.trigger.removeEventListener("click", onTrigger);
-      input.menu.removeEventListener("click", onMenuClick);
-      input.menu.removeEventListener("keydown", onKeydown);
-      document.removeEventListener("pointerdown", onPointerDown);
+      input.viewport.removeEventListener("click", onClick);
+      input.viewport.removeEventListener("keydown", onKeydown);
+      for (const { button, show } of tooltipListeners) {
+        button.removeEventListener("mouseenter", show);
+        button.removeEventListener("mouseleave", hideTooltip);
+        button.removeEventListener("focus", show);
+        button.removeEventListener("blur", hideTooltip);
+      }
+      tooltip.remove();
+      strip.dispose();
     },
   };
 }
 
-export function taskMenuTargetIndex(
+export function isWorkspaceNavigationDisabled(
+  workspace: ProductWorkspace,
+  temporarilyDisabled: boolean,
+  availability: Readonly<Record<LaunchableWorkspace, boolean>>,
+): boolean {
+  // Perspective is the recovery workspace. It stays reachable while a source
+  // refresh is in flight or the current task has lost its valid selection.
+  return workspace !== "perspective" && (temporarilyDisabled || !availability[workspace]);
+}
+
+export function workspaceNavigationFocusableWorkspace(
+  current: ProductWorkspace,
+  temporarilyDisabled: boolean,
+  availability: Readonly<Record<LaunchableWorkspace, boolean>>,
+): ProductWorkspace {
+  return isWorkspaceNavigationDisabled(current, temporarilyDisabled, availability)
+    ? "perspective"
+    : current;
+}
+
+export function workspaceNavigationTargetIndex(
   key: string,
   current: number,
   length: number,

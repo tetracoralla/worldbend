@@ -100,8 +100,9 @@ Motion, Spatial Templates and Variation Jobs, production media/vector/tiling,
 assisted plane candidates, and bounded read-only PSD Smart Object projection.
 Carrier profiles intentionally expose different subsets.
 
-The Figma carrier currently has a quiet Perspective workspace and a compact
-launcher for Templates, Sizes, Mockup, Mesh, and Remap. Those completed workspaces are a
+The Figma carrier currently has a quiet Perspective workspace and a persistent
+icon workspace navigation across Perspective, Templates, Sizes, Mockup, Mesh,
+and Remap. Those completed workspaces are a
 compatibility baseline, not a precedent for adding more persistent controls.
 No further human task is authorized by this goal alone.
 

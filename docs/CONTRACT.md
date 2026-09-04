@@ -522,17 +522,23 @@ growth boundaries, not claims about interaction latency or visual quality.
 An intentional budget change requires a current measurement and cannot be
 smuggled into the same checker merely to make an unrelated build green.
 
-The Figma `perspective` workspace retains the checked operation order
-Transform, Free, Perspective, Warp, Correct, More. Free and Perspective stay
-visible and clickable in every Perspective mode because they are the controls
-that re-enter Distort. One compact icon-only launcher with localized pointer
-hover and keyboard-focus tooltips opens the sibling `templates`, `canvas`,
-`mockup`, `mesh`, and `remap` task workspaces.
-Each owns its draft, controls, messages, and runtime resources; only the active
-workspace renders. Entering and returning cannot mutate Perspective semantic
-state. The self-contained Figma release may still inline those modules into
-one HTML file; package inlining does not authorize a single ever-growing
-control surface or persistent capability copy.
+The Figma `perspective` workspace keeps the checked operation order Transform,
+Distort, Warp, Correct. Free and Perspective are Distort-local peer choices:
+the subgroup is visible only while Distort is active, and the top-level
+Distort mode button is the control that re-enters it from any other mode. One
+persistent icon-only workspace navigation with localized pointer-hover and
+keyboard-focus tooltips holds `perspective` plus the sibling `templates`,
+`canvas`, `mockup`, `mesh`, and `remap` task workspaces, overflow scroll
+affordances, and the More control.
+Perspective remains the enabled pointer and keyboard recovery destination while
+a task source is refreshing or becomes invalid. A final selection failure
+returns to that base workspace and presents one error surface rather than
+leaving a disabled task selected.
+Each workspace owns its draft, controls, messages, and runtime resources; only
+the active workspace renders. Entering and returning cannot mutate Perspective
+semantic state. The self-contained Figma release may still inline those
+modules into one HTML file; package inlining does not authorize a single
+ever-growing control surface or persistent capability copy.
 
 ## Figma reuse
 
@@ -546,30 +552,33 @@ later selects the original source and result together. Figma still owns only
 selection, presentation, image export, replacement, and undo state; it does
 not own rectification mathematics.
 
-The 600 x 720 human panel is canvas-first. Its selected source name is the only
-in-panel identity heading. Object identity, operation choice, and the active
+The 820 x 760 human panel is canvas-first. The selected source name is a
+quiet editor-corner readout, and the full-width bottom session bar keeps Reset
+at its left end and Apply at its right end because they act on the whole
+session rather than tune the active operation; session undo and redo are the
+standard shortcuts, not persistent footer buttons. The persistent workspace
+navigation sits above the operation bar, and object identity, operation
+choice, and the active
 operation's continuous parameters share one persistent full-width top operation
-bar. Reset, Undo, and Redo occupy the left end and Apply the right end of a
-separate full-width bottom session bar because they act on the whole session
-rather than tune the active operation. The two bars frame one uninterrupted
+bar. The bars frame one uninterrupted
 rectangular editor and never overlay it. Free and Perspective Distort are
-direct peer choices.
+direct peer choices inside Distort.
 Operation labels use quiet, transparent chrome with one selected emphasis;
 nested background containers must not compete with the canvas. Transform and
 Warp parameters remain visible while their operation is active so a designer
 can tune continuous values without reopening a popover.
-More follows Warp at the right edge of the operation choices and uses the same
+More is the final control of the workspace navigation and uses the same
 quiet control language; its popover is reserved for secondary session actions,
-the explicit output-density policy, and language. The sibling task launcher
-sits beside the selected source identity, outside both the operation choices
-and More. Its icon-only temporary panel exposes Templates, Sizes, Mockup, Mesh,
-and Remap without hiding an active Perspective operation or turning that
+the explicit output-density policy, and language. Its Perspective-only entries
+hide inside task workspaces while language remains global. The workspace
+navigation exposes Perspective, Templates, Sizes, Mockup, Mesh, and Remap as
+icon-only peers without hiding an active Perspective operation or turning that
 operation into a nested mode.
 Navigation into a replacing parameter surface uses a right-facing enter arrow;
 down arrows are reserved for dropdown or disclosure behavior. Product icons
 come from the configured project icon authority and retain its returned SVG
 geometry; text glyphs are not substitutes for More, Close, Link, Check,
-task-launcher, workspace-task, or surface-entry icons. Direct-manipulation
+workspace-tab, workspace-task, or surface-entry icons. Direct-manipulation
 handles, pivot dots, and slider thumbs
 remain task geometry rather than generic product icons.
 Transform parameters preserve semantic groups and reading order: Width then
@@ -704,6 +713,8 @@ exactly once. A real release consumes its final finite viewport coordinate;
 interruption retains the last sample already shown. Distort, Transform, and
 space-pan must release capture and accept a new pointer immediately instead of
 remaining wedged when an embedded host drops the release outside its iframe.
+The shared Mockup and Mesh direct-point overlay follows the same interruption
+rule and commits that last visible point to its task history exactly once.
 If the iframe later receives a move for the owning pointer with `buttons == 0`,
 that is a release-recovery signal: close at the last pressed sample and do not
 apply the re-entry coordinate.

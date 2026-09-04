@@ -107,12 +107,14 @@ import {
 } from "./output-density";
 import {
   createProductWorkspaceRouter,
+  type ProductWorkspace,
   type ProductWorkspaceRouter,
 } from "./product-workspace";
 import {
-  createTaskLauncher,
+  createWorkspaceNavigation,
   taskWorkspaceAvailability,
 } from "./task-launcher";
+import { createHorizontalStrip } from "./horizontal-strip";
 import { createCanvasWorkspace } from "./canvas-workspace";
 import type { CanvasWorkspaceCopy } from "./canvas-workspace-view";
 import { createMeshWorkspace, type MeshWorkspaceCopy } from "./mesh-workspace";
@@ -131,7 +133,7 @@ const meshWorkspaceRoot = required<HTMLElement>("mesh-workspace");
 const remapWorkspaceRoot = required<HTMLElement>("remap-workspace");
 const templatesWorkspaceRoot = required<HTMLElement>("templates-workspace");
 const selectionState = required<HTMLParagraphElement>("selection-state");
-const sourceName = required<HTMLElement>("source-name");
+const sourceName = required<HTMLOutputElement>("source-name");
 const errorMessage = required<HTMLElement>("error");
 const errorText = required<HTMLSpanElement>("error-text");
 const errorDismiss = required<HTMLButtonElement>("error-dismiss");
@@ -141,8 +143,11 @@ const applyButton = required<HTMLButtonElement>("apply");
 const resetButton = required<HTMLButtonElement>("reset");
 const modeSwitch = required<HTMLDivElement>("mode-switch");
 const modeTransformButton = required<HTMLButtonElement>("mode-transform");
+const modeDistortButton = required<HTMLButtonElement>("mode-distort");
 const modeWarpButton = required<HTMLButtonElement>("mode-warp");
 const modeRectifyButton = required<HTMLButtonElement>("mode-rectify");
+const contextControls = required<HTMLDivElement>("context-controls");
+const distortOptions = required<HTMLDivElement>("distort-options");
 const distortKind = required<HTMLDivElement>("distort-kind");
 const distortFreeButton = required<HTMLButtonElement>("distort-free");
 const distortPerspectiveButton = required<HTMLButtonElement>("distort-perspective");
@@ -167,10 +172,13 @@ const actionFlipY = required<HTMLButtonElement>("action-flip-y");
 const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
-const taskLauncherButton = required<HTMLButtonElement>("task-launcher-button");
-const taskMenu = required<HTMLElement>("task-menu");
-const actionUndo = required<HTMLButtonElement>("action-undo");
-const actionRedo = required<HTMLButtonElement>("action-redo");
+const workspaceNavigationRoot = required<HTMLElement>("workspace-navigation");
+const workspaceStripViewport = required<HTMLElement>("workspace-strip-viewport");
+const workspaceBackward = required<HTMLButtonElement>("workspace-backward");
+const workspaceForward = required<HTMLButtonElement>("workspace-forward");
+const modeStripViewport = required<HTMLElement>("mode-strip-viewport");
+const modeBackward = required<HTMLButtonElement>("mode-backward");
+const modeForward = required<HTMLButtonElement>("mode-forward");
 const shortcutHelp = required<HTMLParagraphElement>("shortcut-help");
 const placementToggle = required<HTMLButtonElement>("placement-toggle");
 const placementPanel = required<HTMLDivElement>("advanced-placement");
@@ -360,6 +368,7 @@ const localeView: OptionsMenuView = createLocaleView({
 });
 
 let productWorkspace!: ProductWorkspaceRouter;
+let workspaceNavigation!: ReturnType<typeof createWorkspaceNavigation>;
 const canvasWorkspace = createCanvasWorkspace({
   root: canvasWorkspaceRoot,
   copy: canvasWorkspaceCopy,
@@ -436,20 +445,30 @@ productWorkspace = createProductWorkspaceRouter({
     if (next === "canvas") canvasWorkspace.enter();
     if (next === "mesh" || next === "mockup" || next === "remap" || next === "templates") designerWorkspaces[next].enter();
     if (next !== "perspective") taskRoots[next].hidden = false;
+    renderOptionsContext(next);
+    workspaceNavigation.setCurrent(next);
+    workspaceNavigation.focusCurrent();
     if (next === "perspective") {
       renderMode();
       renderState();
-      queueMicrotask(() => taskLauncherButton.focus());
     }
   },
 });
-const taskLauncher = createTaskLauncher({
-  trigger: taskLauncherButton,
-  menu: taskMenu,
+workspaceNavigation = createWorkspaceNavigation({
+  root: workspaceNavigationRoot,
+  viewport: workspaceStripViewport,
+  backward: workspaceBackward,
+  forward: workspaceForward,
   onChoose(workspace) {
     productWorkspace.enter(workspace);
   },
 });
+const modeStrip = createHorizontalStrip({
+  viewport: modeStripViewport,
+  backward: modeBackward,
+  forward: modeForward,
+});
+renderOptionsContext(productWorkspace.current());
 const pivotPicker: PivotPicker = createPivotPicker({
   container: pivotGrid,
   onSelect(pivot) {
@@ -547,6 +566,7 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
 resetButton.addEventListener("click", () => void resetPerspective());
 applyButton.addEventListener("click", () => void applyPerspective());
 modeTransformButton.addEventListener("click", () => void switchEditorMode("transform"));
+modeDistortButton.addEventListener("click", () => void switchEditorMode("distort"));
 modeWarpButton.addEventListener("click", () => void switchEditorMode("warp"));
 modeRectifyButton.addEventListener("click", () => void switchEditorMode("rectify"));
 distortFreeButton.addEventListener("click", () => void selectDistortMode("free"));
@@ -591,8 +611,6 @@ actionFlipY.addEventListener("click", () => void toggleRecipeFlip("y"));
 actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
 actionApplyCopy.addEventListener("click", () => void applyPerspective(true));
-actionUndo.addEventListener("click", () => void stepHistory("undo"));
-actionRedo.addEventListener("click", () => void stepHistory("redo"));
 errorDismiss.addEventListener("click", clearError);
 placementToggle.addEventListener("click", togglePlacementPanel);
 placementClose.addEventListener("click", () => closePlacementPanel({ restoreFocus: true }));
@@ -814,7 +832,7 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     };
     for (const workspace of Object.values(designerWorkspaces)) workspace.setSource(designerSource);
     const sourceCount = loadedSources.length;
-    taskLauncher.setAvailability(taskWorkspaceAvailability(sourceCount));
+    workspaceNavigation.setAvailability(taskWorkspaceAvailability(sourceCount));
     initialFrame = cloneFrame(nextInitial);
     baseFrame = cloneFrame(nextActive);
     activeFrame = cloneFrame(nextActive);
@@ -846,8 +864,6 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     if (payload.task) productWorkspace.enter(payload.task.kind);
     controls.hidden = productWorkspace.current() !== "perspective";
     delete controls.dataset.loading;
-    syncViewportScene();
-    viewport?.fit();
     renderMode();
     setStatus();
     renderState();
@@ -860,6 +876,11 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
         history.resetToBaseline(currentHistoryEntry());
       }
     }
+    // Fit only after the final mode-specific layout and preview have settled.
+    // Figma can restore the plugin across displays before the iframe reports
+    // its new dimensions; fit-lock then keeps following later mount resizes.
+    syncViewportScene();
+    viewport?.fit();
   } catch (error) {
     if (generation !== activeGeneration) return;
     showSelectionError(
@@ -871,6 +892,10 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
 
 function showSelectionError(generation: number, message: UserMessage): void {
   if (generation !== activeGeneration) return;
+  // A task cannot remain active after its source contract has failed. Return
+  // to the base workspace first so the user gets one usable recovery surface
+  // rather than a disabled task containing a second copy of the same error.
+  productWorkspace.returnToPerspective();
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
   lastShownNodes = undefined;
@@ -949,13 +974,13 @@ async function restoreLoadedState(discardHistory: boolean): Promise<void> {
     );
     if (phase !== "resetting") return;
     phase = "ready";
-    syncViewportScene();
-    viewport?.fit();
     if (editorMode === "transform") await updateTransformPreview();
     if (editorMode === "warp") {
       syncWarpControls(initialFrame.spec.content.warp);
       await updateWarpPreview(false);
     }
+    syncViewportScene();
+    viewport?.fit();
     // Escape discards the whole session. The visible Reset action remains a
     // normal recoverable edit so an accidental click can be undone.
     if (editorMode === "rectify") {
@@ -1857,15 +1882,15 @@ function renderMode(): void {
   const warpSelected = editorMode === "warp";
   const rectifySelected = editorMode === "rectify";
   modeTransformButton.setAttribute("aria-pressed", String(transformSelected));
+  modeDistortButton.setAttribute("aria-pressed", String(distortSelected));
   modeWarpButton.setAttribute("aria-pressed", String(warpSelected));
   modeRectifyButton.setAttribute("aria-pressed", String(rectifySelected));
   controls.dataset.editorMode = editorMode;
   transformOptions.hidden = !transformSelected;
+  distortOptions.hidden = !distortSelected;
+  contextControls.hidden = distortSelected;
   warpOptions.hidden = !warpSelected;
   rectifyOptions.hidden = !rectifySelected;
-  // Free and Perspective stay visible in every Perspective mode: they are the
-  // direct peer choices that re-enter Distort, so hiding them outside Distort
-  // would strand the session in Transform, Warp, or Correct.
   distortFreeButton.setAttribute(
     "aria-pressed",
     String(distortSelected && distortMode === "free"),
@@ -1880,6 +1905,21 @@ function renderMode(): void {
   editor?.setDistortMode(distortMode);
   if (!transformSelected) closePlacementPanel();
   renderScaleLink();
+  modeStrip.refresh();
+}
+
+function renderOptionsContext(workspace: ProductWorkspace): void {
+  const perspective = workspace === "perspective";
+  settingsPopover.dataset.workspace = perspective ? "perspective" : "global";
+  for (const element of [
+    actionApplyCopy,
+    shortcutHelp,
+    outputSettingsTitle,
+    outputPolicyFit,
+    outputPolicyOriginal,
+  ]) {
+    element.hidden = !perspective;
+  }
 }
 
 function readRectifyOutput(): { width: number; height: number } | undefined {
@@ -2355,10 +2395,8 @@ function renderState(): void {
     !current?.targetNodeId ||
     !outputApplicable ||
     (editorMode === "rectify" && !rectifyInputsValid);
-  taskLauncher.setDisabled(!taskReady);
+  workspaceNavigation.setDisabled(!taskReady);
   actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
-  actionUndo.disabled = !ready || !history?.canUndo();
-  actionRedo.disabled = !ready || !history?.canRedo();
   pivotPicker.setDisabled(!positionReady);
   placementToggle.disabled = !positionReady;
   positionXInput.disabled = !positionReady;
@@ -2377,6 +2415,7 @@ function renderState(): void {
     refreshInFlight;
   const rectificationOnly = editorMode === "rectify" && !rectifyParent;
   modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
+  modeDistortButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeWarpButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeRectifyButton.disabled = !ready || !valid || blockingCompose || refreshInFlight;
   const peersDisabled =
@@ -2459,6 +2498,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localeChinese.textContent = translate(locale, "languageChinese");
   localeView.applyCheckedState(preference);
   modeTransformButton.textContent = translate(locale, "modeTransform");
+  modeDistortButton.textContent = translate(locale, "modeDistort");
   modeWarpButton.textContent = translate(locale, "modeWarp");
   modeRectifyButton.textContent = translate(locale, "modeRectify");
   distortFreeButton.textContent = translate(locale, "distortFree");
@@ -2483,16 +2523,17 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionFlipY, translate(locale, "flipVertical"));
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
   localizeIconAction(actionTransformAgain, translate(locale, "transformAgain"));
-  taskLauncher.setLabels(translate(locale, "openTools"), {
+  workspaceNavigation.setLabels(translate(locale, "workspaceGroupLabel"), {
+    perspective: translate(locale, "workspacePerspective"),
     templates: translate(locale, "workspaceTemplates"),
     canvas: translate(locale, "canvasTitle"),
     mockup: translate(locale, "workspaceMockup"),
     mesh: translate(locale, "workspaceMesh"),
     remap: translate(locale, "workspaceRemap"),
-  });
+  }, translate(locale, "previousTools"), translate(locale, "nextTools"));
+  modeBackward.setAttribute("aria-label", translate(locale, "previousModes"));
+  modeForward.setAttribute("aria-label", translate(locale, "nextModes"));
   actionApplyCopy.textContent = translate(locale, "applyAsCopy");
-  actionUndo.textContent = translate(locale, "undoEdit");
-  actionRedo.textContent = translate(locale, "redoEdit");
   shortcutHelp.textContent = translate(locale, "shortcutHelp");
   errorDismiss.setAttribute("aria-label", translate(locale, "dismissError"));
   placementLabel.textContent = translate(locale, "placement");
