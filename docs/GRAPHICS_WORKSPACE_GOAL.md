@@ -101,9 +101,10 @@ assisted plane candidates, and bounded read-only PSD Smart Object projection.
 Carrier profiles intentionally expose different subsets.
 
 The Figma carrier currently has a quiet Perspective workspace and a persistent
-icon workspace navigation across Perspective, Templates, Sizes, Mockup, Mesh,
-and Remap. Those completed workspaces are a
-compatibility baseline, not a precedent for adding more persistent controls.
+repeat-use navigation across Perspective, Sizes, and Templates. Composition,
+Mesh, and Lens & maps remain available as task-labeled advanced transforms
+under More. Those completed workspaces are a compatibility baseline, not a
+precedent for adding more persistent controls.
 No further human task is authorized by this goal alone.
 
 The current Web canvas already coalesces pointer work to animation frames,

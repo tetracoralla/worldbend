@@ -171,15 +171,17 @@ afterEach(() => {
 describe("createPreviewViewport", () => {
   beforeEachStubGlobals();
 
-  it("fits the canvas inside the mount on creation", () => {
+  it("fits the canvas with a proportional interaction halo on creation", () => {
     const mount = fakeMount();
     const { editor, element } = fakeEditor(1000, 600);
     createPreviewViewport(editor, mount as unknown as HTMLElement);
-    // 500/1000 = 0.5 scale, centered vertically in 300 px.
+    // Fit occupies 90% of the limiting axis, leaving 5% on every side for
+    // corner controls and non-interactive HUD labels.
     expect(element.style.width).toBe("1000px");
     expect(element.style.height).toBe("600px");
-    expect(element.style.transform).toBe("translate3d(0px, 0px, 0) scale(0.5)");
-    expect(element.style["--worldbend-viewport-control-scale"]).toBe("2");
+    expect(element.style.transform).toBe("translate3d(25px, 15px, 0) scale(0.45)");
+    expect(Number(element.style["--worldbend-viewport-control-scale"]))
+      .toBeCloseTo(1 / 0.45, 10);
   });
 
   it("zooms in steps and reports the scale", () => {
@@ -586,7 +588,7 @@ describe("createPreviewViewport", () => {
     createPreviewViewport(editor, mount as unknown as HTMLElement);
     expect(element.style.left).toBe("16px");
     expect(element.style.top).toBe("12px");
-    expect(elementTransform(editor).width).toBeCloseTo(460, 10);
+    expect(elementTransform(editor).width).toBeCloseTo(414, 10);
   });
 
   it("restores every viewport-owned style on dispose", () => {
@@ -614,7 +616,7 @@ describe("createPreviewViewport", () => {
     createPreviewViewport(editor, mount as unknown as HTMLElement);
     mount.clientWidth = 250;
     ResizeObserverStub.callback?.([], {} as ResizeObserver);
-    expect(elementTransform(editor).width).toBeCloseTo(250, 10);
+    expect(elementTransform(editor).width).toBeCloseTo(225, 10);
   });
 
   it("pans while pan is active and stops the gesture surface from seeing it", () => {

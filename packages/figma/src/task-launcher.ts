@@ -35,6 +35,8 @@ export function createWorkspaceNavigation(input: {
   viewport: HTMLElement;
   backward: HTMLButtonElement;
   forward: HTMLButtonElement;
+  secondaryControl: HTMLButtonElement;
+  secondaryButtons: readonly HTMLButtonElement[];
   onChoose(workspace: ProductWorkspace): void;
 }): WorkspaceNavigation {
   const buttons = Array.from(
@@ -55,11 +57,14 @@ export function createWorkspaceNavigation(input: {
   });
 
   const render = (): void => {
-    const focusableWorkspace = workspaceNavigationFocusableWorkspace(
+    const requestedFocusableWorkspace = workspaceNavigationFocusableWorkspace(
       current,
       disabled,
       availability,
     );
+    const focusableWorkspace = buttons.some(
+      (button) => button.dataset.workspace === requestedFocusableWorkspace,
+    ) ? requestedFocusableWorkspace : "perspective";
     for (const button of buttons) {
       const workspace = button.dataset.workspace as ProductWorkspace | undefined;
       if (!workspace) continue;
@@ -68,6 +73,17 @@ export function createWorkspaceNavigation(input: {
       button.tabIndex = workspace === focusableWorkspace ? 0 : -1;
       button.disabled = isWorkspaceNavigationDisabled(workspace, disabled, availability);
     }
+    let secondaryActive = false;
+    for (const button of input.secondaryButtons) {
+      const workspace = button.dataset.workspace as ProductWorkspace | undefined;
+      if (!workspace) continue;
+      const selected = workspace === current;
+      secondaryActive ||= selected;
+      button.disabled = isWorkspaceNavigationDisabled(workspace, disabled, availability);
+      if (selected) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    }
+    input.secondaryControl.dataset.active = String(secondaryActive);
     strip.refresh();
   };
   const onClick = (event: Event): void => {
@@ -109,6 +125,7 @@ export function createWorkspaceNavigation(input: {
 
   input.viewport.addEventListener("click", onClick);
   input.viewport.addEventListener("keydown", onKeydown);
+  for (const button of input.secondaryButtons) button.addEventListener("click", onClick);
   render();
 
   return {
@@ -140,16 +157,29 @@ export function createWorkspaceNavigation(input: {
         const tooltip = button.querySelector<HTMLElement>(".action-tooltip");
         if (tooltip) tooltip.textContent = workspaceLabel;
       }
+      for (const button of input.secondaryButtons) {
+        const workspace = button.dataset.workspace as ProductWorkspace | undefined;
+        if (!workspace) continue;
+        const workspaceLabel = workspaces[workspace];
+        button.setAttribute("aria-label", workspaceLabel);
+        const name = button.querySelector<HTMLElement>("[data-workspace-name]");
+        if (name) name.textContent = workspaceLabel;
+      }
     },
     focusCurrent() {
       queueMicrotask(() => {
-        buttons.find((button) => button.tabIndex === 0)?.focus();
+        if (input.secondaryButtons.some((button) => button.dataset.workspace === current)) {
+          input.secondaryControl.focus();
+        } else {
+          buttons.find((button) => button.tabIndex === 0)?.focus();
+        }
       });
     },
     refresh: strip.refresh,
     dispose() {
       input.viewport.removeEventListener("click", onClick);
       input.viewport.removeEventListener("keydown", onKeydown);
+      for (const button of input.secondaryButtons) button.removeEventListener("click", onClick);
       for (const { button, show } of tooltipListeners) {
         button.removeEventListener("mouseenter", show);
         button.removeEventListener("mouseleave", hideTooltip);

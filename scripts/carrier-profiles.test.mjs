@@ -16,7 +16,13 @@ test("current carrier profiles are closed and reference existing features", asyn
     "mode-rectify",
   ]);
   assert.deepEqual(profiles.carriers.figma.workspace.siblingWorkspaceIds, [
-    "templates", "canvas", "mockup", "mesh", "remap",
+    "canvas", "templates", "mockup", "mesh", "remap",
+  ]);
+  assert.deepEqual(profiles.carriers.figma.workspace.primaryWorkspaceIds, [
+    "canvas", "templates",
+  ]);
+  assert.deepEqual(profiles.carriers.figma.workspace.secondaryWorkspaceIds, [
+    "mockup", "mesh", "remap",
   ]);
   assert(profiles.carriers.figma.surfaceFeatureIds.includes("canvas-multi-output"));
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("canvas-multi-output"));

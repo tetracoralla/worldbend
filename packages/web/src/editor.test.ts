@@ -944,14 +944,26 @@ describe("PerspectiveEditor transform gestures", () => {
     await editor.setSource(fakeImage());
     viewport = createPreviewViewport(editor, mount);
     const corner = handleFor(editor, "tr");
+    const overlay = (editor.element.children as unknown as Array<Record<string, unknown>>)
+      .find((child) => child["tag"] === "svg") as {
+        getBoundingClientRect: ReturnType<typeof vi.fn>;
+      };
+    overlay.getBoundingClientRect.mockReturnValue({
+      left: 20,
+      top: 10,
+      width: 360,
+      height: 180,
+    });
 
+    // Initial Fit leaves a 5% halo, so the real top-right handle is at
+    // (380, 10) rather than flush with the 400 x 200 viewport edge.
     corner.emit(
       "pointerdown",
-      pointerEvent({ currentTarget: corner, clientX: 400, clientY: 0 }),
+      pointerEvent({ currentTarget: corner, clientX: 380, clientY: 10 }),
     );
     corner.emit(
       "pointermove",
-      pointerEvent({ buttons: 1, clientX: 490, clientY: 0 }),
+      pointerEvent({ buttons: 1, clientX: 490, clientY: 10 }),
     );
     flushFrame();
 
@@ -965,7 +977,7 @@ describe("PerspectiveEditor transform gestures", () => {
 
     corner.emit(
       "pointerup",
-      pointerEvent({ type: "pointerup", clientX: 490, clientY: 0 }),
+      pointerEvent({ type: "pointerup", clientX: 490, clientY: 10 }),
     );
     expect(editor.captureSpec()).toEqual(shownSpec);
     expect(editor.element.dataset.dragging).toBeUndefined();

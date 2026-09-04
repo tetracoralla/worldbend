@@ -26,6 +26,7 @@
     "runtime:smoke": "node scripts/mcp-runtime-smoke.mjs",
     "performance:probe": "pnpm build:wasm && node --expose-gc scripts/performance-load-probe.mjs",
     "performance:smoke": "node --expose-gc scripts/performance-load-probe.mjs --iterations=20 --warmup=5 --json",
+    "test:remap-parity": "pnpm build:web && node scripts/remap-native-webgl-parity.mjs",
     "test:comfyui": "node scripts/test-comfyui.mjs",
     "package:comfyui-local": "node scripts/package-comfyui-local.mjs",
     "capability:check": "node capabilities/check-provider.mjs",

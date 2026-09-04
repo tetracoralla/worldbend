@@ -51,6 +51,9 @@ before reporting its path, byte size, and SHA-256.
 
 ## Product behavior
 
+- Perspective, Sizes, and Templates form the persistent repeat-use navigation.
+  Composition, Mesh, and Lens & maps remain available under More as advanced
+  transforms; their human labels do not change stored contract identities.
 - Select one locally exportable source layer. Image-filled Rectangles and
   Frames are covered by the current runtime flow.
 - Applying creates a raster Rectangle with an Image fill. The original source,
@@ -68,6 +71,11 @@ before reporting its path, byte size, and SHA-256.
   preview before rendering once. It never upscales the preview bitmap.
 - Output is capped at 4096 pixels per axis because Figma's `createImage` API
   rejects larger images. Larger PNGs must use the native CLI.
+
+Before a Community update, run `pnpm test:remap-parity` on a host with Chrome
+or Chromium. It compares native and actual WebGL Lens/Displacement output at
+standard preview and high final-output quality; this supplements rather than
+replaces the exact Figma Desktop flows.
 
 If a workflow requires perspective-deformed text, components, constraints, or
 Frame children to remain editable, it is outside this raster product contract.

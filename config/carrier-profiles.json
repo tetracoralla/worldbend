@@ -46,7 +46,9 @@
           "mode-warp",
           "mode-rectify"
         ],
-        "siblingWorkspaceIds": ["templates", "canvas", "mockup", "mesh", "remap"]
+        "siblingWorkspaceIds": ["canvas", "templates", "mockup", "mesh", "remap"],
+        "primaryWorkspaceIds": ["canvas", "templates"],
+        "secondaryWorkspaceIds": ["mockup", "mesh", "remap"]
       },
       "package": {
         "runtimeEntries": [

@@ -47,9 +47,10 @@ export async function writePluginLegalMaterial({ destination }) {
   });
 }
 
-export async function writeFigmaLegalMaterial({ destination }) {
+export async function writeFigmaLegalMaterial({ destination, version = workspaceVersion() }) {
   await writeCargoLegalMaterial({
     destination,
+    artifactVersion: version,
     target: wasmTarget,
     rootPackageNames: ["worldbend-wasm"],
     artifactName: "Worldbend Figma plugin WebAssembly runtime",
@@ -89,6 +90,7 @@ async function writeCargoLegalMaterial({
   noticeIntroduction,
   noticeClosure,
   systemLibraryNote,
+  artifactVersion = workspaceVersion(),
 }) {
   const metadata = JSON.parse(
     await run("cargo", [
@@ -154,7 +156,7 @@ async function writeCargoLegalMaterial({
   await mkdir(sbomRoot);
   await writeFile(
     path.join(sbomRoot, sbomFile),
-    `${JSON.stringify(await makeSpdx(crates, { artifactName, documentName }), null, 2)}\n`,
+    `${JSON.stringify(await makeSpdx(crates, { artifactName, documentName, artifactVersion }), null, 2)}\n`,
     "utf8",
   );
 }
@@ -230,7 +232,7 @@ function makeNotices(
   return lines.join("\n");
 }
 
-async function makeSpdx(crates, { artifactName, documentName }) {
+async function makeSpdx(crates, { artifactName, documentName, artifactVersion }) {
   const lockHash = createHash("sha256").update(await readFile(path.join(root, "Cargo.lock"))).digest("hex");
   const documentId = "SPDXRef-DOCUMENT";
   const rootPackageId = "SPDXRef-Package-Worldbend";
@@ -238,7 +240,7 @@ async function makeSpdx(crates, { artifactName, documentName }) {
     {
       SPDXID: rootPackageId,
       name: artifactName,
-      versionInfo: workspaceVersion(),
+      versionInfo: artifactVersion,
       downloadLocation: "NOASSERTION",
       filesAnalyzed: false,
       licenseConcluded: "NOASSERTION",
@@ -267,7 +269,7 @@ async function makeSpdx(crates, { artifactName, documentName }) {
     dataLicense: "CC0-1.0",
     SPDXID: documentId,
     name: documentName,
-    documentNamespace: `https://spdx.org/spdxdocs/${documentName}-${workspaceVersion()}-${lockHash}`,
+    documentNamespace: `https://spdx.org/spdxdocs/${documentName}-${artifactVersion}-${lockHash}`,
     creationInfo: {
       created: "1970-01-01T00:00:00Z",
       creators: ["Tool: worldbend-plugin-legal-generator-1"],

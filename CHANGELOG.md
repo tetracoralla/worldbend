@@ -3,7 +3,43 @@
 All notable changes to Worldbend are documented here. Versioning begins with
 the first Figma Community release.
 
-## 0.1.0 - Unreleased
+## 0.2.0 - Unreleased
+
+### Figma product loop
+
+- Promoted Perspective, Sizes, and Templates to the persistent release
+  navigation. Sizes creates one to eight named Canvas variants, while Templates
+  saves and reopens bounded Size or Composition tasks.
+- Moved Composition, Mesh, and Lens & maps into the task-labeled Advanced
+  transforms section under More, without changing their stored `mockup`,
+  `mesh`, or `remap` contract identities.
+- Reframed low-level Remap coefficients as Lens distortion or Displacement map
+  tasks while retaining the explicit advanced coefficients disclosure.
+- Reserved a proportional 10% interaction halo on initial load and explicit
+  Fit so corner handles remain clear of the source and output HUD labels.
+- Preserved create, replace, Apply as New Image, per-workspace Undo/Redo,
+  selection-generation recovery, bilingual UI, and the 4096 px Figma boundary.
+
+### Convergence and release hardening
+
+- Kept transform, Canvas, Composition, Mesh, and Remap semantics in the existing
+  `worldbend-core` / `worldbend-render` ownership boundary instead of creating a
+  second graphics engine.
+- Added a real Chrome WebGL versus native Remap pixel differential for Lens and
+  Displacement at standard and high quality.
+- Versioned the self-contained Figma archive and its SPDX root package as
+  `0.2.0`, with deterministic ZIP contents and checksums.
+
+### Known limits
+
+- Figma output remains raster and is limited to 4096 pixels per axis.
+- Composition and Mesh require explicit selected layers and planes; Lens & maps
+  requires explicit coefficients or a selected displacement map. Worldbend does
+  not infer planes, depth, camera motion, or deformation intent.
+- The Figma update is not published until its current package, media, listing,
+  and owner acceptance have completed the release checklist.
+
+## 0.1.0 - 2026-08-30
 
 ### Added
 

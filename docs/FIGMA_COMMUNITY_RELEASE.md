@@ -7,6 +7,11 @@ workflow is available without a trial, checkout, subscription, account, or
 product-owned cloud service. Free distribution does not publish or license the
 private Worldbend source repository.
 
+The current code and archive are a `0.2.0` release candidate. They have not been
+submitted as a new Figma version. Preparing the package, copy, security answers,
+and media is authorized; selecting Figma's final Publish action remains an
+owner decision.
+
 The plugin does not request Figma's Payments API and contains no purchase
 state. Designers can preview, Apply, replace, and create another image without
 entering payment information or configuring a payout method.
@@ -15,19 +20,24 @@ entering payment information or configuring a payout method.
 
 - **Name:** Worldbend
 - **Category:** Design tools
-- **Tagline:** Photoshop-familiar transforms, directly in Figma.
+- **Tagline:** Perspective, sizes, and reusable spatial transforms in Figma.
 - **Price:** Free
-- **Search terms:** perspective, warp, distort, transform, mockup
+- **Search terms:** perspective, warp, resize, mockup, distortion
 
 ### Description
 
-Worldbend brings a focused Free Transform workflow to Figma. Select a layer,
-adjust it with live Transform, Distort, Perspective, or Warp controls, and
-apply one high-quality image result without leaving your file.
+Worldbend brings Photoshop-familiar spatial transforms to Figma. Select a
+layer, adjust it with live Transform, Distort, Perspective, Warp, or Correct
+controls, and apply a high-quality image result without leaving your file.
 
 - Scale, rotate, skew, flip, and place with precise values or direct handles.
 - Move four corners freely or use axis-locked Perspective Distort.
 - Choose from ten bounded Warp presets with live preview.
+- Create one to eight named Size variants with explicit crop, trim, pad,
+  contain, cover, or stretch behavior.
+- Save and reopen reusable Size or multi-plane Composition tasks as Templates.
+- Open Composition, bounded Mesh, or Lens & maps from Advanced transforms when
+  the selected layers support them.
 - Reopen a result with its original source to refine or replace it in place.
 - Keep the original source unchanged and use Figma Undo for the applied result.
 - Work locally: source artwork is not uploaded to a Worldbend service.
@@ -35,8 +45,8 @@ apply one high-quality image result without leaving your file.
 Worldbend creates a raster image result so effects, shadows, and composed
 layers remain visually consistent. Figma limits one raster image to 4096 px on
 each axis; Worldbend reports that limit instead of silently reducing quality.
-Vector-preserving output, automatic plane detection, 3D reconstruction, and
-arbitrary mesh deformation are not included in this release.
+Vector-preserving output, automatic plane or depth detection, 3D
+reconstruction, and unbounded arbitrary deformation are not included.
 
 ## Security and privacy disclosure
 
@@ -49,19 +59,26 @@ arbitrary mesh deformation are not included in this release.
 - Bundled third-party notices and an SPDX inventory ship with the reviewed
   development package.
 
-## Listing media
+## Listing media for 0.2.0
 
 - `assets/figma-community/worldbend-icon-128.png` is the 128 x 128 px plugin
   icon.
-- `assets/figma-community/worldbend-perspective-demo.mov` is the owner's
-  first-priority live recording and shows Free and Perspective corner editing.
-- `assets/figma-community/worldbend-transform-demo.mov` shows scale, skew, and
-  rotation in Transform.
-- `assets/figma-community/worldbend-transform-ui.png` shows the completed
-  Transform interface state.
-- All three final media sources show only the current plugin surface. They do
-  not contain the Figma app tab bar, unrelated canvas content, company project
-  names, a Computer Use pointer, or an in-progress Apply state.
+- `assets/figma-community/worldbend-0.2-thumbnail-1920x1080.png` is the
+  1920 x 1080 primary thumbnail describing the Perspective, Sizes, and
+  Templates loop.
+- `assets/figma-community/worldbend-0.2-primary-loop-1920x1080.png` and
+  `assets/figma-community/worldbend-0.2-advanced-transforms-1920x1080.png`
+  are the current carousel candidates. They show the primary loop, More menu,
+  Composition, Mesh, and Lens & maps from the current built/live surface.
+- Short recordings may supplement the stills only when they show an entire
+  completed task rather than transient setup.
+- Every candidate asset must show the current `0.2.0` surface and avoid Figma
+  account chrome, unrelated canvas content, company project names, automated
+  pointers, developer diagnostics, or an in-progress Apply state.
+
+The earlier Perspective/Transform recordings and Transform screenshot remain
+archived as the media submitted with the `0.1.0` listing; they are not current
+`0.2.0` previews.
 
 ## Owner-account boundary
 
@@ -79,16 +96,37 @@ is part of the manifest, but generation alone is not a publication receipt.
 Before submission:
 
 1. Build and run the current package from the exact manifest being submitted.
-2. Exercise create, replace, Apply as New Image, Undo, selection change during
-   Apply, and the 4096 px limit in Figma Desktop.
-3. Confirm the manifest has no extra permissions or network domains and Apply
+2. Exercise Perspective create, replace, Apply as New Image, Undo, selection
+   change during Apply, and the 4096 px limit in Figma Desktop.
+3. Exercise Sizes multi-output, Template save/reopen/delete, Composition,
+   Mesh, Lens, and source-plus-map Displacement from the exact package.
+4. Run `pnpm test:remap-parity` on a Chrome/Chromium release host and retain its
+   current Native/WebGL standard/high-quality measurement.
+5. Confirm the current 1920 x 1080 thumbnail and carousel represent both the
+   primary loop and the discoverable advanced transforms.
+6. Confirm the manifest has no extra permissions or network domains and Apply
    never opens checkout.
-4. Confirm the listing is Free, says raster output, and does not claim editable
+7. Confirm the listing is Free, says raster output, and does not claim editable
    vectors or open-source availability.
-5. Record the submitted plugin ID, publisher, support-contact source, listing
+8. Record the submitted plugin ID, publisher, support-contact source, listing
    URL, review state, and submitted source revision in this document.
 
-## Submission record
+## 0.2.0 candidate record
+
+- **Package:** `artifacts/figma/worldbend-figma-0.2.0.zip`
+- **Archive size:** `491193` bytes
+- **Archive SHA-256:**
+  `d3bf51cd990b141dd8c0e3c99a5bff82126de162b5215f7da782b43e3fa95b11`
+- **Runtime / unpacked size:** `556412` / `1131923` bytes
+- **Publish state:** Not submitted; awaiting owner acceptance after current
+  package/runtime/media review
+- **Release notes:** Adds Sizes and reusable Templates to the primary loop;
+  groups Composition, Mesh, and Lens & maps under Advanced transforms; retains
+  free local-only raster processing and the 4096 px boundary
+- **Submitted source revision:** Not yet assigned
+- **Figma version after update:** Not yet assigned
+
+## Historical 0.1.0 submission record
 
 - **Plugin ID:** `1675767923532475446` (generated by Figma Desktop)
 - **Publisher:** Adam Wong, individual creator

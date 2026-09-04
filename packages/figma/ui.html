@@ -40,7 +40,7 @@
       #operation-cluster { position: relative; grid-column: 1 / -1; display: flex; min-width: 0; align-items: center; gap: 3px; }
       #mode-strip-viewport { flex: 1; }
       #more-options .ui-icon { width: 18px; height: 18px; }
-      #more-options[aria-expanded="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      #more-options[aria-expanded="true"], #more-options[data-active="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
       #more-options[aria-expanded="true"] .action-tooltip { opacity: 0; }
       .ui-icon { display: inline-grid; width: 16px; height: 16px; flex: none; place-items: center; color: inherit; pointer-events: none; }
       .ui-icon svg { display: block; width: 100%; height: 100%; }
@@ -50,7 +50,11 @@
       .menu-section-title { margin: 4px 8px 2px; color: var(--figma-color-text-secondary, #777); font-size: 11px; font-weight: 500; }
       .menu-section-title:not(:first-child) { margin-top: 10px; border-top: 1px solid var(--figma-color-border, #e5e5e5); padding-top: 8px; }
       .menu-option { position: relative; width: 100%; display: block; min-height: 32px; border: 0; padding: 7px 30px 7px 9px; text-align: left; }
+      .advanced-workspace-option { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 8px; align-items: center; }
+      .advanced-workspace-option > .ui-icon { grid-row: 1 / span 2; }
+      .advanced-workspace-option > small { grid-column: 2; }
       .menu-option:hover, .menu-option:focus-visible { background: var(--figma-color-bg-hover, #f0f0f0); }
+      .menu-option[aria-current="page"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
       .menu-check { position: absolute; top: 50%; right: 9px; width: 14px; height: 14px; opacity: 0; transform: translateY(-50%); }
       .menu-option[aria-checked="true"] .menu-check { opacity: 1; }
       .menu-option small { display: block; margin-top: 1px; color: var(--figma-color-text-secondary, #777); font-size: 10px; }
@@ -269,21 +273,35 @@
       <div id="workspace-strip-viewport" class="horizontal-strip-viewport">
         <div id="workspace-items" role="tablist" aria-orientation="horizontal">
           <button id="workspace-tab-perspective" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="perspective" aria-controls="controls" aria-selected="true" aria-label="Perspective"><span class="ui-icon" data-icon-id="icon-park:perspective" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 28V36L31 38.6M44 28L4 32M44 28V20M4 32V44L17 41.4M4 32V16M44 20V12L31 9.4M44 20L4 16M4 16V4L17 6.6M31 9.4V38.6M31 9.4L17 6.6M31 38.6L17 41.4M17 6.6V41.4" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Perspective</span></button>
-          <button id="workspace-tab-templates" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="templates" aria-controls="templates-workspace" aria-selected="false" aria-label="Templates"><span class="ui-icon" data-icon-id="icon-park:page-template" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23 4H4V26H23V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H4V43H44V34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 4H31V12H44V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 18H31V26H44V18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Templates</span></button>
           <button id="workspace-tab-canvas" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="canvas" aria-controls="canvas-workspace" aria-selected="false" aria-label="Sizes"><span class="ui-icon" data-icon-id="icon-park:scale" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 6H42V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 29L19 29L19 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 6L19 29" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 6H8C6.89543 6 6 6.89543 6 8V40C6 41.1046 6.89543 42 8 42H40C41.1046 42 42 41.1046 42 40V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Sizes</span></button>
-          <button id="workspace-tab-mockup" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="mockup" aria-controls="mockup-workspace" aria-selected="false" aria-label="Mockup"><span class="ui-icon" data-icon-id="icon-park:layout-four" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="36" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M6 28L24 28M24 20H42M24 42V6" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Mockup</span></button>
-          <button id="workspace-tab-mesh" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="mesh" aria-controls="mesh-workspace" aria-selected="false" aria-label="Mesh"><span class="ui-icon" data-icon-id="icon-park:grid-nine" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="38" height="38" rx="2" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 18H43M5 30H43M17 5V43M30 5V43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Mesh</span></button>
-          <button id="workspace-tab-remap" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="remap" aria-controls="remap-workspace" aria-selected="false" aria-label="Remap"><span class="ui-icon" data-icon-id="icon-park:distortion" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V40H17M4 19V8H17M4 19C4 19 13 13 24 19C35 25 44 19 44 19M44 19V8H17M44 19V40H17M4 29C4 29 13 23 24 29C35 35 44 29 44 29M17 8C17 8 23 16 17 24C11 32 17 40 17 40M31 8C31 8 37 16 31 24C25 32 31 40 31 40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Remap</span></button>
+          <button id="workspace-tab-templates" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="templates" aria-controls="templates-workspace" aria-selected="false" aria-label="Templates"><span class="ui-icon" data-icon-id="icon-park:page-template" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23 4H4V26H23V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H4V43H44V34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 4H31V12H44V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 18H31V26H44V18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Templates</span></button>
         </div>
       </div>
       <button id="workspace-forward" class="strip-arrow" type="button" aria-label="Next tools" hidden>
         <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </button>
-      <button id="more-options" class="icon-tooltip-host" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More options">
+      <button id="more-options" class="icon-tooltip-host" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More options" data-active="false">
         <span class="ui-icon" data-icon-id="icon-park:more" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="24" r="3" fill="currentColor"/><circle cx="24" cy="24" r="3" fill="currentColor"/><circle cx="36" cy="24" r="3" fill="currentColor"/></svg></span>
         <span class="action-tooltip" aria-hidden="true">More options</span>
       </button>
       <div id="settings-popover" role="menu" aria-label="More options" data-workspace="perspective" hidden>
+        <p id="advanced-tools-title" class="menu-section-title">Advanced transforms</p>
+        <button id="workspace-menu-mockup" class="menu-option advanced-workspace-option" type="button" role="menuitem" data-workspace="mockup" aria-controls="mockup-workspace">
+          <span class="ui-icon" data-icon-id="icon-park:layout-four" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="36" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M6 28L24 28M24 20H42M24 42V6" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span data-workspace-name>Composition</span>
+          <small id="workspace-mockup-detail">Arrange selected layers on editable planes</small>
+        </button>
+        <button id="workspace-menu-mesh" class="menu-option advanced-workspace-option" type="button" role="menuitem" data-workspace="mesh" aria-controls="mesh-workspace">
+          <span class="ui-icon" data-icon-id="icon-park:grid-nine" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="38" height="38" rx="2" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 18H43M5 30H43M17 5V43M30 5V43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>
+          <span data-workspace-name>Mesh</span>
+          <small id="workspace-mesh-detail">Shape one image with a bounded control grid</small>
+        </button>
+        <button id="workspace-menu-remap" class="menu-option advanced-workspace-option" type="button" role="menuitem" data-workspace="remap" aria-controls="remap-workspace">
+          <span class="ui-icon" data-icon-id="icon-park:distortion" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V40H17M4 19V8H17M4 19C4 19 13 13 24 19C35 25 44 19 44 19M44 19V8H17M44 19V40H17M4 29C4 29 13 23 24 29C35 35 44 29 44 29M17 8C17 8 23 16 17 24C11 32 17 40 17 40M31 8C31 8 37 16 31 24C25 32 31 40 31 40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span data-workspace-name>Lens &amp; maps</span>
+          <small id="workspace-remap-detail">Distort one image or use a displacement map</small>
+        </button>
+        <p id="perspective-options-title" class="menu-section-title">Perspective options</p>
         <button id="action-apply-copy" class="menu-option" type="button" role="menuitem">Apply as New Image</button>
         <p id="shortcut-help" class="menu-shortcuts">Shift switches Distort · Space pans · ⌘/Ctrl 0 fits · ⌘/Ctrl 1 shows 100%</p>
         <p id="output-settings-title" class="menu-section-title">Output pixels</p>
@@ -456,9 +474,9 @@
       <output id="zoom-level" class="sr-only" aria-live="polite">100%</output>
     </section>
     <section id="canvas-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-canvas" hidden></section>
-    <section id="mockup-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-mockup" hidden></section>
-    <section id="mesh-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-mesh" hidden></section>
-    <section id="remap-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-remap" hidden></section>
+    <section id="mockup-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-mockup" hidden></section>
+    <section id="mesh-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-mesh" hidden></section>
+    <section id="remap-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-remap" hidden></section>
     <section id="templates-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-templates" hidden></section>
     <script type="module" src="/src/ui.ts"></script>
   </body>

@@ -65,7 +65,7 @@ const archivePath = path.join(artifactsRoot, `${packageName}.zip`);
 await mkdir(artifactsRoot, { recursive: true });
 await rm(packageRoot, { recursive: true, force: true });
 await rm(archivePath, { force: true });
-await writeFigmaLegalMaterial({ destination: packageRoot });
+await writeFigmaLegalMaterial({ destination: packageRoot, version: packageMetadata.version });
 const legalFiles = await listRegularFiles(packageRoot);
 const requiredLegalFiles = [
   "THIRD_PARTY_NOTICES.md",

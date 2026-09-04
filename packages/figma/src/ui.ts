@@ -166,6 +166,11 @@ const warpAmountInput = required<HTMLInputElement>("warp-amount");
 const linkScaleButton = required<HTMLButtonElement>("link-scale");
 const moreOptionsButton = required<HTMLButtonElement>("more-options");
 const settingsPopover = required<HTMLDivElement>("settings-popover");
+const advancedToolsTitle = required<HTMLParagraphElement>("advanced-tools-title");
+const perspectiveOptionsTitle = required<HTMLParagraphElement>("perspective-options-title");
+const workspaceMockupDetail = required<HTMLElement>("workspace-mockup-detail");
+const workspaceMeshDetail = required<HTMLElement>("workspace-mesh-detail");
+const workspaceRemapDetail = required<HTMLElement>("workspace-remap-detail");
 const transformActions = required<HTMLDivElement>("transform-actions");
 const actionFlipX = required<HTMLButtonElement>("action-flip-x");
 const actionFlipY = required<HTMLButtonElement>("action-flip-y");
@@ -459,6 +464,10 @@ workspaceNavigation = createWorkspaceNavigation({
   viewport: workspaceStripViewport,
   backward: workspaceBackward,
   forward: workspaceForward,
+  secondaryControl: moreOptionsButton,
+  secondaryButtons: Array.from(
+    settingsPopover.querySelectorAll<HTMLButtonElement>("button[data-workspace]"),
+  ),
   onChoose(workspace) {
     productWorkspace.enter(workspace);
   },
@@ -1912,6 +1921,7 @@ function renderOptionsContext(workspace: ProductWorkspace): void {
   const perspective = workspace === "perspective";
   settingsPopover.dataset.workspace = perspective ? "perspective" : "global";
   for (const element of [
+    perspectiveOptionsTitle,
     actionApplyCopy,
     shortcutHelp,
     outputSettingsTitle,
@@ -2484,6 +2494,11 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   document.body.dataset.i18nReady = "true";
   localizeIconAction(moreOptionsButton, translate(locale, "moreOptions"));
   settingsPopover.setAttribute("aria-label", translate(locale, "moreOptions"));
+  advancedToolsTitle.textContent = translate(locale, "advancedTools");
+  perspectiveOptionsTitle.textContent = translate(locale, "perspectiveOptions");
+  workspaceMockupDetail.textContent = translate(locale, "workspaceMockupDetail");
+  workspaceMeshDetail.textContent = translate(locale, "workspaceMeshDetail");
+  workspaceRemapDetail.textContent = translate(locale, "workspaceRemapDetail");
   modeSwitch.setAttribute("aria-label", translate(locale, "modeGroupLabel"));
   distortKind.setAttribute("aria-label", translate(locale, "distortGroupLabel"));
   outputSettingsTitle.textContent = translate(locale, "outputPixels");

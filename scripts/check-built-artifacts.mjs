@@ -202,6 +202,19 @@ for (const workspaceId of figmaProfile.workspace.siblingWorkspaceIds) {
     throw new Error(`Figma ${workspaceId} must remain a hidden sibling workspace until explicitly opened`);
   }
 }
+for (const workspaceId of figmaProfile.workspace.primaryWorkspaceIds) {
+  if (!ui.includes(`id="workspace-tab-${workspaceId}"`)) {
+    throw new Error(`Figma primary workspace ${workspaceId} must remain in the persistent navigation`);
+  }
+}
+for (const workspaceId of figmaProfile.workspace.secondaryWorkspaceIds) {
+  if (!ui.includes(`id="workspace-menu-${workspaceId}"`)) {
+    throw new Error(`Figma advanced workspace ${workspaceId} must remain available from More`);
+  }
+  if (ui.includes(`id="workspace-tab-${workspaceId}"`)) {
+    throw new Error(`Figma advanced workspace ${workspaceId} must not compete with the release loop`);
+  }
+}
 assertIdOrder(ui, figmaProfile.workspace.modeControlIds);
 assertIdOrder(ui, ["distort-free", "distort-perspective"]);
 assertIdOrder(ui, [

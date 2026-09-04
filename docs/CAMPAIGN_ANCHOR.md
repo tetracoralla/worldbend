@@ -554,11 +554,13 @@ Figma document mutation and installed Community behavior remain separate host
 observations when the exact build cannot be exercised there; owner visual and
 task-fit acceptance remains separate from technical completion.
 
-Closeout on 2026-08-31 established the authorized local finish line:
+Closeout on 2026-08-31 established the capability floor later refined for the
+0.2 Figma release candidate:
 
-- one icon-only task launcher exposes Templates, Sizes, Mockup, Mesh, and Remap without
-  changing the familiar Perspective mode strip; availability follows the real
-  selected-source count and keyboard navigation skips disabled tasks;
+- the familiar Perspective mode strip remains unchanged; Sizes and Templates
+  are primary repeat-use workspaces, while Composition, Mesh, and Lens & maps
+  enter as task-labeled advanced transforms from More. Availability follows the
+  real selected-source count and keyboard navigation skips disabled tasks;
 - Sizes exposes Crop, Trim, Pad, Contain, Cover, and Stretch, keeps 1..8 named
   ordered outputs, and plans Trim from decoded RGBA through the canonical core;
 - Mockup supports 1..8 ordered planes, Mesh exposes a bounded 2x2..16x16 fixed

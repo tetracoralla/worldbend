@@ -14,9 +14,11 @@ generic batch API. Timeline and Motion are separate ordered, atomic frame
 contracts. PSD interoperability is bounded, read-only Smart Object inspection
 and Spatial Template projection rather than a Photoshop document editor.
 
-> Project status: `0.1.0` is an experimental commercial pre-release. Source is
-> maintained in a private repository. The transform and error contracts are
-> versioned, but compatibility guarantees may tighten before `1.0.0`.
+> Project status: the shared core and Agent toolchain remain an experimental
+> `0.1.0` commercial pre-release; the Figma carrier is preparing a `0.2.0`
+> Community update. Source is maintained in a private repository. The transform
+> and error contracts are versioned, but compatibility guarantees may tighten
+> before `1.0.0`.
 
 ## What is included
 
@@ -38,10 +40,11 @@ and Spatial Template projection rather than a Photoshop document editor.
   default in the plugin, plus the same eight direct tools as an explicit
   compatibility surface, with one granted file root and path-escape rejection;
 - Web/WASM and WebGL2 adapters plus a four-corner editor;
-- a self-contained local Figma plugin with the mature Perspective workspace
-  for Transform, Free/Perspective Distort, fixed Warp presets, and manual
-  four-point correction, plus a sibling Canvas workspace for explicit
-  Contain/Cover output variants;
+- a self-contained local Figma plugin whose repeat-use loop is Perspective,
+  Sizes, and Templates: Transform, Free/Perspective Distort, fixed Warp,
+  four-point correction, ordered Canvas variants, and reusable Size or
+  Composition tasks. Composition, bounded Mesh, and explicit Lens/Displacement
+  tools remain available as advanced transforms under More;
 - an experimental local ComfyUI V3 node pack that applies the same reusable
   TransformSpec, explicit RectifySpec, ordered Canvas Set, or explicit Remap
   to one IMAGE and optional MASK through the bundled native core;
@@ -73,6 +76,9 @@ Repository access is limited to explicitly authorized collaborators.
 ignored `.tools/` directory. `pnpm check` covers formatting, linting, Rust and
 TypeScript tests, real WASM, Web and Figma builds, staged-plugin validation,
 built CLI/MCP stdio behavior, and Capability-provider conformance.
+For a release candidate on a host with Chrome or Chromium, also run
+`pnpm test:remap-parity`; it differentially compares the native and actual
+WebGL Lens/Displacement renderers at preview and final-output quality.
 When the current Python environment already provides torch and Pillow, run
 `pnpm test:comfyui` as the separate real-native adapter regression.
 

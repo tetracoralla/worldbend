@@ -5,14 +5,14 @@ const html = readFileSync(new URL("../ui.html", import.meta.url), "utf8");
 const canvasViewSource = readFileSync(new URL("./canvas-workspace-view.ts", import.meta.url), "utf8");
 const workspaceSources = [
   ["Sizes", "./canvas-workspace.ts"],
-  ["Mockup", "./mockup-workspace.ts"],
+  ["Composition", "./mockup-workspace.ts"],
   ["Mesh", "./mesh-workspace.ts"],
-  ["Remap", "./remap-workspace.ts"],
+  ["Lens & maps", "./remap-workspace.ts"],
   ["Templates", "./template-workspace.ts"],
 ] as const;
 
 describe("Figma product workspace markup", () => {
-  it("keeps every product workspace in one persistent icon navigation", () => {
+  it("keeps the release loop primary and advanced transforms inside More", () => {
     const controlsStart = html.indexOf('<section id="controls"');
     const controlsEnd = html.indexOf("</section>", controlsStart);
     const canvasStart = html.indexOf('<section id="canvas-workspace"');
@@ -31,15 +31,17 @@ describe("Figma product workspace markup", () => {
     expect(navigationMarkup).toContain('id="workspace-forward"');
     expect(navigationMarkup).toContain('id="more-options"');
     expect(navigationMarkup).toContain('id="settings-popover"');
-    const icons = {
+    const primaryIcons = {
       perspective: "icon-park:perspective",
-      templates: "icon-park:page-template",
       canvas: "icon-park:scale",
-      mockup: "icon-park:layout-four",
-      mesh: "icon-park:grid-nine",
-      remap: "icon-park:distortion",
+      templates: "icon-park:page-template",
     } as const;
-    for (const [workspace, icon] of Object.entries(icons)) {
+    const primaryPositions = Object.keys(primaryIcons).map((workspace) =>
+      navigationMarkup.indexOf(`id="workspace-tab-${workspace}"`),
+    );
+    expect(primaryPositions.every((position) => position >= 0)).toBe(true);
+    expect(primaryPositions).toEqual([...primaryPositions].sort((a, b) => a - b));
+    for (const [workspace, icon] of Object.entries(primaryIcons)) {
       const workspaceAttribute = navigationMarkup.indexOf(`data-workspace="${workspace}"`);
       const buttonStart = navigationMarkup.lastIndexOf("<button", workspaceAttribute);
       const buttonEnd = navigationMarkup.indexOf("</button>", buttonStart);
@@ -57,6 +59,33 @@ describe("Figma product workspace markup", () => {
       expect(buttonMarkup).toContain(`aria-controls="${panelId}"`);
       expect(panelOpeningTag).toContain('role="tabpanel"');
       expect(panelOpeningTag).toContain(`aria-labelledby="workspace-tab-${workspace}"`);
+    }
+
+    const secondaryIcons = {
+      mockup: "icon-park:layout-four",
+      mesh: "icon-park:grid-nine",
+      remap: "icon-park:distortion",
+    } as const;
+    const popoverStart = navigationMarkup.indexOf('<div id="settings-popover"');
+    const popoverMarkup = navigationMarkup.slice(popoverStart);
+    expect(popoverStart).toBeGreaterThan(-1);
+    expect(popoverMarkup).toContain('id="advanced-tools-title"');
+    for (const [workspace, icon] of Object.entries(secondaryIcons)) {
+      const buttonId = `workspace-menu-${workspace}`;
+      const buttonStart = popoverMarkup.indexOf(`<button id="${buttonId}"`);
+      const buttonEnd = popoverMarkup.indexOf("</button>", buttonStart);
+      const buttonMarkup = popoverMarkup.slice(buttonStart, buttonEnd);
+      const panelId = `${workspace}-workspace`;
+      const panelStart = html.indexOf(`<section id="${panelId}"`);
+      const panelOpeningTag = html.slice(panelStart, html.indexOf(">", panelStart));
+      expect(buttonStart).toBeGreaterThan(-1);
+      expect(buttonMarkup).toContain(`data-workspace="${workspace}"`);
+      expect(buttonMarkup).toContain(`data-icon-id="${icon}"`);
+      expect(buttonMarkup).toContain(`aria-controls="${panelId}"`);
+      expect(panelStart).toBeGreaterThan(-1);
+      expect(panelOpeningTag).toContain('role="region"');
+      expect(panelOpeningTag).toContain(`aria-labelledby="${buttonId}"`);
+      expect(navigationMarkup).not.toContain(`id="workspace-tab-${workspace}"`);
     }
     expect(html).toContain('id="templates-workspace"');
     expect(html).not.toContain('id="task-launcher-button"');

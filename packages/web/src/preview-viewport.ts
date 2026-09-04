@@ -10,6 +10,10 @@ const MIN_SCALE = 0.1;
 const MAX_SCALE = 8;
 const ZOOM_STEP = 1.25;
 const MAX_FIT_UPSCALE = 4;
+// Fit the complete interactive scene, not only the raster rectangle. The
+// remaining 10% forms a proportional halo for 32 px corner targets and the
+// Figma source/output HUDs without permanently shrinking the editor mount.
+const FIT_OCCUPANCY = 0.9;
 const CONTROL_SCALE_PROPERTY = "--worldbend-viewport-control-scale";
 // Corner buttons are 32 px in the Figma surface. Keeping their centers at
 // least 16 px inside the mount leaves the full hit target reachable.
@@ -354,7 +358,7 @@ export function createPreviewViewport(
     const width = Math.max(1, display.width);
     const height = Math.max(1, display.height);
     if (space.width <= 0 || space.height <= 0) return;
-    const raw = Math.min(space.width / width, space.height / height);
+    const raw = Math.min(space.width / width, space.height / height) * FIT_OCCUPANCY;
     scale = positiveScale(Math.min(raw, MAX_FIT_UPSCALE), scale);
     fitLocked = true;
     centerOffsets();

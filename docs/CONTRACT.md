@@ -527,9 +527,11 @@ Distort, Warp, Correct. Free and Perspective are Distort-local peer choices:
 the subgroup is visible only while Distort is active, and the top-level
 Distort mode button is the control that re-enters it from any other mode. One
 persistent icon-only workspace navigation with localized pointer-hover and
-keyboard-focus tooltips holds `perspective` plus the sibling `templates`,
-`canvas`, `mockup`, `mesh`, and `remap` task workspaces, overflow scroll
-affordances, and the More control.
+keyboard-focus tooltips holds the repeat-use `perspective`, `canvas`, and
+`templates` workspaces plus overflow scroll affordances and the More control.
+More exposes the replacing `mockup`, `mesh`, and `remap` workspaces as
+task-labeled advanced transforms. Their canonical IDs and stored semantics do
+not change with the Composition and Lens & maps human labels.
 Perspective remains the enabled pointer and keyboard recovery destination while
 a task source is refreshing or becomes invalid. A final selection failure
 returns to that base workspace and presents one error surface rather than
@@ -567,13 +569,13 @@ Operation labels use quiet, transparent chrome with one selected emphasis;
 nested background containers must not compete with the canvas. Transform and
 Warp parameters remain visible while their operation is active so a designer
 can tune continuous values without reopening a popover.
-More is the final control of the workspace navigation and uses the same
-quiet control language; its popover is reserved for secondary session actions,
-the explicit output-density policy, and language. Its Perspective-only entries
-hide inside task workspaces while language remains global. The workspace
-navigation exposes Perspective, Templates, Sizes, Mockup, Mesh, and Remap as
-icon-only peers without hiding an active Perspective operation or turning that
-operation into a nested mode.
+More is the final control of the workspace navigation and uses the same quiet
+control language. Its popover contains task-labeled advanced transforms,
+secondary session actions, the explicit output-density policy, and language.
+Its Perspective-only entries hide inside task workspaces while the advanced
+transform entries and language remain available. Perspective, Sizes, and
+Templates remain icon-only primary peers; when an advanced workspace is active,
+More carries its selected emphasis without hiding the current workspace.
 Navigation into a replacing parameter surface uses a right-facing enter arrow;
 down arrows are reserved for dropdown or disclosure behavior. Product icons
 come from the configured project icon authority and retain its returned SVG
@@ -607,6 +609,11 @@ therefore refit or recenter the presentation inside the remaining editor, but
 it must not mutate the canonical spec, transform recipe, pivot, or Warp value.
 After every such reflow all finite handle centers remain inside the editor's
 16 CSS-pixel safe inset, and no control surface overlays a handle. The panel has
+no fixed inner padding tax: initial load and explicit Fit center the complete
+interactive scene at no more than 90% of the available editor extent, leaving
+a proportional halo for the four corner targets and the non-interactive source
+and output HUDs. The halo is presentation-only; 100%, manual zoom, and canonical
+geometry remain unchanged. The panel has
 no persistent zoom button cluster: wheel/trackpad zoom remains pointer-anchored,
 Cmd/Ctrl +/- zooms, Cmd/Ctrl+0 fits, and Cmd/Ctrl+1 restores 100%. The current
 zoom remains exposed to assistive technology. Closing More or Placement with
