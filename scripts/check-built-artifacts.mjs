@@ -272,8 +272,10 @@ assertByteBudget(
   "Figma runtime payload",
 );
 
-const workspacePackage = JSON.parse(workspacePackageText);
-const safeVersion = String(workspacePackage.version).replace(/[^0-9A-Za-z._-]/g, "-");
+const figmaPackage = JSON.parse(
+  await readFile(path.join(figmaRoot, "package.json"), "utf8"),
+);
+const safeVersion = String(figmaPackage.version).replace(/[^0-9A-Za-z._-]/g, "-");
 const figmaPackageName = `worldbend-figma-${safeVersion}`;
 const figmaPackageRoot = path.join(root, "artifacts", "figma", figmaPackageName);
 const figmaArchive = path.join(root, "artifacts", "figma", `${figmaPackageName}.zip`);
