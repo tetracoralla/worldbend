@@ -733,15 +733,15 @@ fn check_cancelled(is_cancelled: &(dyn Fn() -> bool + Sync)) -> TransformResult<
 // traversal on Linux. O_PATH is the right authority handle, but Linux rejects
 // fsync on it with EBADF. Reopen `.` through the already-held descriptor with
 // read access before syncing so durability does not weaken path confinement.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn sync_directory(directory: &File) -> std::io::Result<()> {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        let mut options = OpenOptions::new();
-        options.read(true).follow(FollowSymlinks::No);
-        return open(directory, Path::new("."), &options)?.sync_all();
-    }
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    open(directory, Path::new("."), &options)?.sync_all()
+}
 
-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn sync_directory(directory: &File) -> std::io::Result<()> {
     directory.sync_all()
 }
 
