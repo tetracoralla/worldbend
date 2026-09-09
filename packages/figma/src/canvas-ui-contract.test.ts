@@ -155,6 +155,24 @@ describe("Figma product workspace markup", () => {
     expect(dock).toContain('id="status" class="sr-only"');
   });
 
+  it("keeps unavailable native output keyboard-reachable with visible recovery guidance", () => {
+    const dockStart = html.indexOf('<footer id="action-dock"');
+    const dockEnd = html.indexOf("</footer>", dockStart);
+    const dock = html.slice(dockStart, dockEnd);
+    // A missing effect cannot be fixed by editing inputs, so the guidance
+    // cannot hide behind a disabled button's hover-only tooltip.
+    expect(dock).toContain('id="native-guidance" class="native-guidance" hidden');
+    expect(html).toContain(".native-guidance {");
+    expect(html).toContain('button[aria-disabled="true"] { cursor: default; }');
+
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).toContain("editableEnvironmentBlocked");
+    expect(uiSource).toContain('setAttribute("aria-disabled", "true")');
+    expect(uiSource).toContain('setAttribute("aria-describedby", "native-guidance")');
+    // Transient discovery and unsupported modes keep the quiet disabled form.
+    expect(uiSource).toContain("nativeRendererPending ? \"nativePreparing\"");
+  });
+
   it("names Repeat Last Transform in More instead of showing an ambiguous toolbar glyph", () => {
     const popoverStart = html.indexOf('<div id="settings-popover"');
     const popoverEnd = html.indexOf("</div>", popoverStart);
@@ -209,7 +227,7 @@ describe("Figma product workspace markup", () => {
       ".direct-point { position: absolute; width: 32px; min-width: 0; height: 32px; min-height: 0;",
     );
     expect(html).toContain(
-      "button:not(:disabled):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active",
+      "button:not(:disabled):not([aria-disabled=\"true\"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active",
     );
     expect(html).not.toContain("button:not(:disabled):active { transform:");
   });
@@ -241,6 +259,30 @@ describe("Figma product workspace markup", () => {
       .toBeLessThan(errorSource.indexOf("canvasWorkspace.clearSource"));
     // Alert/status semantics are exercised by the built selection-entry flow;
     // empty selections now share this recovery path without being an error.
+  });
+
+  it("keeps a human placement-parameters export on both authoring surfaces", () => {
+    const actionsStart = html.indexOf('<div id="transform-actions"');
+    const actionsEnd = html.indexOf("</div>", actionsStart);
+    const actions = html.slice(actionsStart, actionsEnd);
+    expect(actions).toContain('id="action-copy-parameters"');
+    expect(actions).toContain('data-icon-id="icon-park:copy"');
+    expect(actions).toContain("Copy placement parameters");
+
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).toContain('actionCopyParameters.addEventListener("click"');
+    // Correct mode is a different operation; its quad is not a placement.
+    expect(uiSource).toContain('editorMode === "rectify"');
+
+    const mockupSource = readFileSync(new URL("./mockup-workspace.ts", import.meta.url), "utf8");
+    expect(mockupSource).toContain('data-role="copy-parameters"');
+    expect(mockupSource).toContain("copyPlacementParameters(placementParametersJson(spec))");
+    // Both labels stay in the shared dictionaries, never hardcoded per surface.
+    const i18nSource = readFileSync(new URL("./i18n.ts", import.meta.url), "utf8");
+    for (const key of ["copyParameters", "parametersCopied", "copyParametersFailed"]) {
+      expect(i18nSource).toMatch(new RegExp(`${key}: ".+",`));
+    }
+    expect(i18nSource).toContain('copyParameters: "复制放置参数"');
   });
 
   it("wires shared direct points to every interruption boundary", () => {

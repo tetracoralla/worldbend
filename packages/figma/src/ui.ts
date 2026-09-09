@@ -29,6 +29,7 @@ import {
 } from "@worldbend/web";
 import type { MainToUiMessage, SourcePayload, UiToMainMessage } from "./messages";
 import { withTimeout } from "./async-timeout";
+import { copyPlacementParameters, placementParametersJson } from "./copy-parameters";
 import { MAX_FIGMA_IMAGE_AXIS } from "./stored-plane";
 import {
   frameFromComposition,
@@ -183,9 +184,11 @@ const transformActions = required<HTMLDivElement>("transform-actions");
 const actionFlipX = required<HTMLButtonElement>("action-flip-x");
 const actionFlipY = required<HTMLButtonElement>("action-flip-y");
 const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
+const actionCopyParameters = required<HTMLButtonElement>("action-copy-parameters");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
 const actionApplyEditable = required<HTMLButtonElement>("action-apply-editable");
+const nativeGuidance = required<HTMLParagraphElement>("native-guidance");
 const workspaceNavigationRoot = required<HTMLElement>("workspace-navigation");
 const workspaceStripViewport = required<HTMLElement>("workspace-strip-viewport");
 const workspaceBackward = required<HTMLButtonElement>("workspace-backward");
@@ -666,6 +669,7 @@ for (const input of [rectifyWidthInput, rectifyHeightInput]) {
 actionFlipX.addEventListener("click", () => void toggleRecipeFlip("x"));
 actionFlipY.addEventListener("click", () => void toggleRecipeFlip("y"));
 actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
+actionCopyParameters.addEventListener("click", () => void copyPlacementParametersToClipboard());
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
 actionApplyCopy.addEventListener("click", () => void applyPerspective(true, false));
 actionApplyEditable.addEventListener("click", () => void applyPerspective(true, true));
@@ -1874,6 +1878,18 @@ async function rotateByQuarter(degrees: number): Promise<void> {
   requestTransformHistoryCommit();
 }
 
+/**
+ * Human export of the live placement document. Correct mode is excluded: its
+ * quad means "source to be corrected", not a destination placement.
+ */
+async function copyPlacementParametersToClipboard(): Promise<void> {
+  if (!menuActionAvailable() || editorMode === "rectify") return;
+  const spec = editor?.captureSpec() ?? activeFrame?.spec;
+  if (!spec) return;
+  const copied = await copyPlacementParameters(placementParametersJson(spec));
+  setStatus({ key: copied ? "parametersCopied" : "copyParametersFailed" });
+}
+
 async function applyTransformAgain(): Promise<void> {
   if (!menuActionAvailable() || !initialFrame || !activeFrame || !editor) return;
   cancelTransformGesturePreview();
@@ -2181,7 +2197,11 @@ async function applyPerspective(duplicate = false, editable = Boolean(current?.n
   const source = current;
   const generation = activeGeneration;
   const spec = editor.captureSpec();
-  if (editable && (!source.nativeRenderer || spec.content.warp)) {
+  if (editable && !source.nativeRenderer) {
+    showError(userMessage(source.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable"));
+    return;
+  }
+  if (editable && spec.content.warp) {
     showError(userMessage("nativeApplyFailed"));
     return;
   }
@@ -2597,9 +2617,26 @@ function renderState(): void {
     !current?.nativeRenderer ? current?.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable" :
     !editableApplicable ? "nativeOutputLimit" : "editableOutputHelp");
   actionApplyEditable.title = editableHelp;
-  for (const button of [actionFlipX, actionFlipY, actionRotateCw]) {
+  // A missing native effect cannot be fixed by editing transform inputs, so
+  // its recovery guidance must stay keyboard-reachable and visible instead of
+  // hiding behind a disabled button's hover-only tooltip.
+  const editableEnvironmentBlocked = menuReady && transformInputsValid && !transformInitializing &&
+    editableApplicable && editableModeSupported && !current?.nativeRenderer && !current?.nativeRendererPending;
+  if (editableEnvironmentBlocked) {
+    actionApplyEditable.disabled = false;
+    actionApplyEditable.setAttribute("aria-disabled", "true");
+    actionApplyEditable.setAttribute("aria-describedby", "native-guidance");
+    nativeGuidance.textContent = translate(activeLocale, current?.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable");
+    nativeGuidance.hidden = false;
+  } else {
+    actionApplyEditable.removeAttribute("aria-disabled");
+    actionApplyEditable.removeAttribute("aria-describedby");
+    nativeGuidance.hidden = true;
+  }
+  for (const button of [actionFlipX, actionFlipY, actionRotateCw, actionCopyParameters]) {
     button.disabled = !positionReady;
   }
+  actionCopyParameters.disabled = !positionReady || editorMode === "rectify";
   actionApplyCopy.hidden = !current?.targetNodeId;
   actionApplyCopy.disabled = !menuReady || !transformInputsValid || transformInitializing ||
     !outputApplicable || (editorMode === "rectify" && !rectifyInputsValid);
@@ -2740,6 +2777,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionFlipX, translate(locale, "flipHorizontal"));
   localizeIconAction(actionFlipY, translate(locale, "flipVertical"));
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
+  localizeIconAction(actionCopyParameters, translate(locale, "copyParameters"));
   actionTransformAgain.textContent = translate(locale, "transformAgain");
   workspaceNavigation.setLabels(translate(locale, "workspaceGroupLabel"), {
     perspective: translate(locale, "workspacePerspective"),
@@ -2864,6 +2902,9 @@ function mockupWorkspaceCopy(): MockupWorkspaceCopy {
     saveTemplate: translate(activeLocale, "saveTemplate"),
     savingTemplate: translate(activeLocale, "savingTemplate"),
     templateSaved: translate(activeLocale, "templateSaved"),
+    copyParameters: translate(activeLocale, "copyParameters"),
+    parametersCopied: translate(activeLocale, "parametersCopied"),
+    copyParametersFailed: translate(activeLocale, "copyParametersFailed"),
   };
 }
 

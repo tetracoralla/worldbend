@@ -1,0 +1,85 @@
+{
+  "schema": "worldbend.mockup",
+  "version": "0.1",
+  "canvas": { "width": 1024, "height": 1536 },
+  "background": { "kind": "transparent" },
+  "seams": [],
+  "planes": [
+    {
+      "id": "background",
+      "sourceId": "background-image",
+      "opacity": 1,
+      "transform": {
+        "schema": "worldbend.transform",
+        "version": "0.1",
+        "destination": {
+          "space": "normalized",
+          "quad": {
+            "tl": { "x": 0, "y": 0 },
+            "tr": { "x": 1, "y": 0 },
+            "br": { "x": 1, "y": 1 },
+            "bl": { "x": 0, "y": 1 }
+          }
+        },
+        "content": { "fit": "stretch" }
+      }
+    },
+    {
+      "id": "prop-railing",
+      "sourceId": "railing-image",
+      "opacity": 1,
+      "transform": {
+        "schema": "worldbend.transform",
+        "version": "0.1",
+        "destination": {
+          "space": "normalized",
+          "quad": {
+            "tl": { "x": 0.68, "y": 0.42 },
+            "tr": { "x": 0.97, "y": 0.38 },
+            "br": { "x": 0.99, "y": 0.78 },
+            "bl": { "x": 0.64, "y": 0.74 }
+          }
+        },
+        "content": { "fit": "stretch" }
+      }
+    },
+    {
+      "id": "figure",
+      "sourceId": "figure-image",
+      "opacity": 1,
+      "transform": {
+        "schema": "worldbend.transform",
+        "version": "0.1",
+        "destination": {
+          "space": "normalized",
+          "quad": {
+            "tl": { "x": 0.34, "y": 0.38 },
+            "tr": { "x": 0.66, "y": 0.38 },
+            "br": { "x": 0.72, "y": 0.86 },
+            "bl": { "x": 0.28, "y": 0.86 }
+          }
+        },
+        "content": { "fit": "stretch" }
+      }
+    },
+    {
+      "id": "prop-plant",
+      "sourceId": "plant-image",
+      "opacity": 1,
+      "transform": {
+        "schema": "worldbend.transform",
+        "version": "0.1",
+        "destination": {
+          "space": "normalized",
+          "quad": {
+            "tl": { "x": 0.02, "y": 0.62 },
+            "tr": { "x": 0.3, "y": 0.66 },
+            "br": { "x": 0.38, "y": 1.04 },
+            "bl": { "x": -0.06, "y": 1.02 }
+          }
+        },
+        "content": { "fit": "stretch" }
+      }
+    }
+  ]
+}

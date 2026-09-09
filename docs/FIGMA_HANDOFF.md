@@ -87,8 +87,10 @@ the exact version, including the observed resource-hash/UUID alias. A failed
 import is retryable after installation; no name-only fallback is used.
 A desktop file can retain a stale shader catalog after an effect is added.
 If Tools can apply the effect but the plugin cannot import it, save and reopen
-that file. An unavailable effect leaves editable output disabled, with recovery
-instructions in its help text.
+that file. An unavailable effect leaves editable output explicitly
+unavailable but keyboard-reachable (`aria-disabled`), with its recovery
+instructions visible in the panel beside the output actions, not only in a
+hover tooltip.
 
 Renderer imports have a five-second deadline and a failed import can be retried;
 source raster export and renderer discovery run concurrently. Source delivery

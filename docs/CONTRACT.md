@@ -627,7 +627,11 @@ resolves the latest source and saved geometry without publishing automatically.
 HD Transform output requests at least two pixels per document unit and keeps
 an already denser saved output; it never doubles the saved density per reopen.
 Correct retains its explicitly entered raster dimensions. Native availability
-or unsupported Warp/Correct disables only editable output. Other workspaces
+or unsupported Warp/Correct disables only editable output. When the optional
+native effect is missing entirely, the editable-output control stays
+keyboard-reachable as an explicitly unavailable action whose recovery
+guidance is visible in the panel; unsupported modes, pending discovery, and
+size limits keep the quiet disabled form with hover help. Other workspaces
 retain their existing task-specific Apply action.
 Editable output checks its logical Frame dimensions against 4096 per axis;
 HD raster density and its fit/reject preference cannot enable an oversized

@@ -122,6 +122,10 @@ Preflight a render without writing:
 Operation data is emitted as JSON on stdout. Exit codes and stable error codes
 separate schema, geometry, media, rendering, filesystem, and internal failures.
 
+For an ordered multi-layer scene — background, props, and a figure as
+separately placed planes, with the solved per-layer matrices a downstream app
+applies — see [`examples/layered-scene/`](examples/layered-scene/README.md).
+
 ## MCP and Codex plugin
 
 Build and run the MCP server with an explicit file root:

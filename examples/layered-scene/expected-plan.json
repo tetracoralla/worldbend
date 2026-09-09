@@ -1,0 +1,786 @@
+{
+  "ok": true,
+  "operation": "mockupInspect",
+  "result": {
+    "background": {
+      "kind": "transparent"
+    },
+    "canvas": {
+      "height": 1536,
+      "width": 1024
+    },
+    "planes": [
+      {
+        "id": "background",
+        "opacity": 1.0,
+        "solve": {
+          "diagnostics": {
+            "bounds": {
+              "height": 1536.0,
+              "width": 1024.0,
+              "x": 0.0,
+              "y": 0.0
+            },
+            "geometry": {
+              "convex": true,
+              "edgeLengths": [
+                1024.0,
+                1536.0,
+                1024.0,
+                1536.0
+              ],
+              "orientation": "clockwise-screen",
+              "selfIntersecting": false,
+              "signedArea": 1572864.0
+            },
+            "matrix": {
+              "determinant": 1572864.0,
+              "invertible": true,
+              "minAbsW": 1.0
+            },
+            "reprojection": {
+              "limit": 0.0018460422530375623,
+              "max": 1.1368683772161603E-13,
+              "mean": 5.684341886080802E-14,
+              "points": [
+                {
+                  "actual": {
+                    "x": 0.0,
+                    "y": 1.1368683772161603E-13
+                  },
+                  "corner": "tl",
+                  "error": 1.1368683772161603E-13,
+                  "expected": {
+                    "x": 0.0,
+                    "y": 0.0
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 1024.0,
+                    "y": 1.1368683772161603E-13
+                  },
+                  "corner": "tr",
+                  "error": 1.1368683772161603E-13,
+                  "expected": {
+                    "x": 1024.0,
+                    "y": 0.0
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 1024.0,
+                    "y": 1536.0
+                  },
+                  "corner": "br",
+                  "error": 0.0,
+                  "expected": {
+                    "x": 1024.0,
+                    "y": 1536.0
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 0.0,
+                    "y": 1536.0
+                  },
+                  "corner": "bl",
+                  "error": 0.0,
+                  "expected": {
+                    "x": 0.0,
+                    "y": 1536.0
+                  }
+                }
+              ]
+            }
+          },
+          "homography": {
+            "inverse": [
+              0.0009765625,
+              0.0,
+              0.0,
+              -0.0,
+              0.0006510416666666666,
+              -7.401486830834377E-17,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "matrix": [
+              1024.0,
+              0.0,
+              0.0,
+              0.0,
+              1536.0,
+              1.1368683772161603E-13,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "resolvedDestination": {
+            "quad": {
+              "bl": {
+                "x": 0.0,
+                "y": 1536.0
+              },
+              "br": {
+                "x": 1024.0,
+                "y": 1536.0
+              },
+              "tl": {
+                "x": 0.0,
+                "y": 0.0
+              },
+              "tr": {
+                "x": 1024.0,
+                "y": 0.0
+              }
+            },
+            "reference": {
+              "height": 1536.0,
+              "width": 1024.0
+            },
+            "sourceSpace": "normalized"
+          },
+          "spec": {
+            "content": {
+              "fit": "stretch"
+            },
+            "destination": {
+              "quad": {
+                "bl": {
+                  "x": 0.0,
+                  "y": 1.0
+                },
+                "br": {
+                  "x": 1.0,
+                  "y": 1.0
+                },
+                "tl": {
+                  "x": 0.0,
+                  "y": 0.0
+                },
+                "tr": {
+                  "x": 1.0,
+                  "y": 0.0
+                }
+              },
+              "space": "normalized"
+            },
+            "schema": "worldbend.transform",
+            "version": "0.1"
+          }
+        },
+        "sourceId": "background-image",
+        "transform": {
+          "content": {
+            "fit": "stretch"
+          },
+          "destination": {
+            "quad": {
+              "bl": {
+                "x": 0.0,
+                "y": 1.0
+              },
+              "br": {
+                "x": 1.0,
+                "y": 1.0
+              },
+              "tl": {
+                "x": 0.0,
+                "y": 0.0
+              },
+              "tr": {
+                "x": 1.0,
+                "y": 0.0
+              }
+            },
+            "space": "normalized"
+          },
+          "schema": "worldbend.transform",
+          "version": "0.1"
+        }
+      },
+      {
+        "id": "prop-railing",
+        "opacity": 1.0,
+        "solve": {
+          "diagnostics": {
+            "bounds": {
+              "height": 614.3999999999999,
+              "width": 358.4,
+              "x": 655.36,
+              "y": 583.6800000000001
+            },
+            "geometry": {
+              "convex": true,
+              "edgeLengths": [
+                303.2492624887981,
+                614.7412385711567,
+                363.6281529254851,
+                493.22371394733227
+              ],
+              "orientation": "clockwise-screen",
+              "selfIntersecting": false,
+              "signedArea": 181193.93279999995
+            },
+            "matrix": {
+              "determinant": 98226.5101089179,
+              "invertible": true,
+              "minAbsW": 0.6551724137931033
+            },
+            "reprojection": {
+              "limit": 0.0018460422530375623,
+              "max": 4.547473508864641E-13,
+              "mean": 3.239604677011178E-13,
+              "points": [
+                {
+                  "actual": {
+                    "x": 696.32,
+                    "y": 645.1199999999998
+                  },
+                  "corner": "tl",
+                  "error": 2.2737367544323206E-13,
+                  "expected": {
+                    "x": 696.32,
+                    "y": 645.12
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 993.2800000000001,
+                    "y": 583.6799999999997
+                  },
+                  "corner": "tr",
+                  "error": 3.595093471822542E-13,
+                  "expected": {
+                    "x": 993.28,
+                    "y": 583.6800000000001
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 1013.76,
+                    "y": 1198.0799999999995
+                  },
+                  "corner": "br",
+                  "error": 4.547473508864641E-13,
+                  "expected": {
+                    "x": 1013.76,
+                    "y": 1198.08
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 655.3599999999999,
+                    "y": 1136.6399999999996
+                  },
+                  "corner": "bl",
+                  "error": 2.5421149729252077E-13,
+                  "expected": {
+                    "x": 655.36,
+                    "y": 1136.6399999999999
+                  }
+                }
+              ]
+            }
+          },
+          "homography": {
+            "inverse": [
+              0.004198712008895478,
+              0.00034989266740795706,
+              -3.149369903632321,
+              0.0005104598503965398,
+              0.0024672226102499415,
+              -1.9470980533525601,
+              0.0008543198856078071,
+              0.00046137240485087953,
+              0.10747941143617243
+            ],
+            "matrix": [
+              114.287816091954,
+              -146.4202298850576,
+              696.32,
+              -168.78344827586204,
+              308.6124137931032,
+              645.1199999999998,
+              -0.1839080459770115,
+              -0.1609195402298852,
+              1.0
+            ]
+          },
+          "resolvedDestination": {
+            "quad": {
+              "bl": {
+                "x": 655.36,
+                "y": 1136.6399999999999
+              },
+              "br": {
+                "x": 1013.76,
+                "y": 1198.08
+              },
+              "tl": {
+                "x": 696.32,
+                "y": 645.12
+              },
+              "tr": {
+                "x": 993.28,
+                "y": 583.6800000000001
+              }
+            },
+            "reference": {
+              "height": 1536.0,
+              "width": 1024.0
+            },
+            "sourceSpace": "normalized"
+          },
+          "spec": {
+            "content": {
+              "fit": "stretch"
+            },
+            "destination": {
+              "quad": {
+                "bl": {
+                  "x": 0.64,
+                  "y": 0.74
+                },
+                "br": {
+                  "x": 0.99,
+                  "y": 0.78
+                },
+                "tl": {
+                  "x": 0.68,
+                  "y": 0.42
+                },
+                "tr": {
+                  "x": 0.97,
+                  "y": 0.38
+                }
+              },
+              "space": "normalized"
+            },
+            "schema": "worldbend.transform",
+            "version": "0.1"
+          }
+        },
+        "sourceId": "railing-image",
+        "transform": {
+          "content": {
+            "fit": "stretch"
+          },
+          "destination": {
+            "quad": {
+              "bl": {
+                "x": 0.64,
+                "y": 0.74
+              },
+              "br": {
+                "x": 0.99,
+                "y": 0.78
+              },
+              "tl": {
+                "x": 0.68,
+                "y": 0.42
+              },
+              "tr": {
+                "x": 0.97,
+                "y": 0.38
+              }
+            },
+            "space": "normalized"
+          },
+          "schema": "worldbend.transform",
+          "version": "0.1"
+        }
+      },
+      {
+        "id": "figure",
+        "opacity": 1.0,
+        "solve": {
+          "diagnostics": {
+            "bounds": {
+              "height": 737.28,
+              "width": 450.55999999999995,
+              "x": 286.72,
+              "y": 583.6800000000001
+            },
+            "geometry": {
+              "convex": true,
+              "edgeLengths": [
+                327.68,
+                739.8355709209986,
+                450.55999999999995,
+                739.8355709209986
+              ],
+              "orientation": "clockwise-screen",
+              "selfIntersecting": false,
+              "signedArea": 286890.3936
+            },
+            "matrix": {
+              "determinant": 175703.2075636364,
+              "invertible": true,
+              "minAbsW": 0.7272727272727273
+            },
+            "reprojection": {
+              "limit": 0.0018460422530375623,
+              "max": 1.1368683772161603E-13,
+              "mean": 8.526512829121202E-14,
+              "points": [
+                {
+                  "actual": {
+                    "x": 348.16,
+                    "y": 583.68
+                  },
+                  "corner": "tl",
+                  "error": 1.1368683772161603E-13,
+                  "expected": {
+                    "x": 348.16,
+                    "y": 583.6800000000001
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 675.84,
+                    "y": 583.68
+                  },
+                  "corner": "tr",
+                  "error": 1.1368683772161603E-13,
+                  "expected": {
+                    "x": 675.84,
+                    "y": 583.6800000000001
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 737.2800000000001,
+                    "y": 1320.96
+                  },
+                  "corner": "br",
+                  "error": 1.1368683772161603E-13,
+                  "expected": {
+                    "x": 737.28,
+                    "y": 1320.96
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 286.72,
+                    "y": 1320.96
+                  },
+                  "corner": "bl",
+                  "error": 0.0,
+                  "expected": {
+                    "x": 286.72,
+                    "y": 1320.96
+                  }
+                }
+              ]
+            }
+          },
+          "homography": {
+            "inverse": [
+              0.0030517578125,
+              0.0002543131510416668,
+              -1.2109375,
+              -0.0,
+              0.0018649631076388888,
+              -1.0885416666666663,
+              -0.0,
+              0.0005086263020833332,
+              0.703125
+            ],
+            "matrix": [
+              327.68,
+              -139.63636363636365,
+              348.16,
+              0.0,
+              377.01818181818186,
+              583.68,
+              0.0,
+              -0.27272727272727265,
+              1.0
+            ]
+          },
+          "resolvedDestination": {
+            "quad": {
+              "bl": {
+                "x": 286.72,
+                "y": 1320.96
+              },
+              "br": {
+                "x": 737.28,
+                "y": 1320.96
+              },
+              "tl": {
+                "x": 348.16,
+                "y": 583.6800000000001
+              },
+              "tr": {
+                "x": 675.84,
+                "y": 583.6800000000001
+              }
+            },
+            "reference": {
+              "height": 1536.0,
+              "width": 1024.0
+            },
+            "sourceSpace": "normalized"
+          },
+          "spec": {
+            "content": {
+              "fit": "stretch"
+            },
+            "destination": {
+              "quad": {
+                "bl": {
+                  "x": 0.28,
+                  "y": 0.86
+                },
+                "br": {
+                  "x": 0.72,
+                  "y": 0.86
+                },
+                "tl": {
+                  "x": 0.34,
+                  "y": 0.38
+                },
+                "tr": {
+                  "x": 0.66,
+                  "y": 0.38
+                }
+              },
+              "space": "normalized"
+            },
+            "schema": "worldbend.transform",
+            "version": "0.1"
+          }
+        },
+        "sourceId": "figure-image",
+        "transform": {
+          "content": {
+            "fit": "stretch"
+          },
+          "destination": {
+            "quad": {
+              "bl": {
+                "x": 0.28,
+                "y": 0.86
+              },
+              "br": {
+                "x": 0.72,
+                "y": 0.86
+              },
+              "tl": {
+                "x": 0.34,
+                "y": 0.38
+              },
+              "tr": {
+                "x": 0.66,
+                "y": 0.38
+              }
+            },
+            "space": "normalized"
+          },
+          "schema": "worldbend.transform",
+          "version": "0.1"
+        }
+      },
+      {
+        "id": "prop-plant",
+        "opacity": 1.0,
+        "solve": {
+          "diagnostics": {
+            "bounds": {
+              "height": 645.1200000000001,
+              "width": 450.56,
+              "x": -61.44,
+              "y": 952.3199999999999
+            },
+            "geometry": {
+              "convex": true,
+              "edgeLengths": [
+                293.2289753758997,
+                589.4007370202382,
+                451.6060584181749,
+                619.837274129267
+              ],
+              "orientation": "clockwise-screen",
+              "selfIntersecting": false,
+              "signedArea": 220830.1056
+            },
+            "matrix": {
+              "determinant": 121100.41885519853,
+              "invertible": true,
+              "minAbsW": 0.6231884057971016
+            },
+            "reprojection": {
+              "limit": 0.0018460422530375623,
+              "max": 2.3437142008433856E-13,
+              "mean": 1.2787771022813353E-13,
+              "points": [
+                {
+                  "actual": {
+                    "x": 20.479999999999997,
+                    "y": 952.3200000000002
+                  },
+                  "corner": "tl",
+                  "error": 2.2740142932498854E-13,
+                  "expected": {
+                    "x": 20.48,
+                    "y": 952.3199999999999
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 307.20000000000005,
+                    "y": 1013.7600000000002
+                  },
+                  "corner": "tr",
+                  "error": 2.3437142008433856E-13,
+                  "expected": {
+                    "x": 307.2,
+                    "y": 1013.76
+                  }
+                },
+                {
+                  "actual": {
+                    "x": 389.12,
+                    "y": 1597.44
+                  },
+                  "corner": "br",
+                  "error": 0.0,
+                  "expected": {
+                    "x": 389.12,
+                    "y": 1597.44
+                  }
+                },
+                {
+                  "actual": {
+                    "x": -61.43999999999995,
+                    "y": 1566.72
+                  },
+                  "corner": "bl",
+                  "error": 4.973799150320701E-14,
+                  "expected": {
+                    "x": -61.44,
+                    "y": 1566.72
+                  }
+                }
+              ]
+            }
+          },
+          "homography": {
+            "inverse": [
+              0.003161731067004504,
+              0.0004215641422672669,
+              -0.4662162162162159,
+              -0.0005441118580426359,
+              0.0025391886708656325,
+              -2.406976744186047,
+              -0.00043413860353813146,
+              0.0009262476047995667,
+              0.1268070395977375
+            ],
+            "matrix": [
+              308.98086956521746,
+              -58.76869565217388,
+              20.479999999999997,
+              134.90086956521753,
+              24.041739130434873,
+              952.3200000000002,
+              0.07246376811594211,
+              -0.3768115942028985,
+              1.0
+            ]
+          },
+          "resolvedDestination": {
+            "quad": {
+              "bl": {
+                "x": -61.44,
+                "y": 1566.72
+              },
+              "br": {
+                "x": 389.12,
+                "y": 1597.44
+              },
+              "tl": {
+                "x": 20.48,
+                "y": 952.3199999999999
+              },
+              "tr": {
+                "x": 307.2,
+                "y": 1013.76
+              }
+            },
+            "reference": {
+              "height": 1536.0,
+              "width": 1024.0
+            },
+            "sourceSpace": "normalized"
+          },
+          "spec": {
+            "content": {
+              "fit": "stretch"
+            },
+            "destination": {
+              "quad": {
+                "bl": {
+                  "x": -0.06,
+                  "y": 1.02
+                },
+                "br": {
+                  "x": 0.38,
+                  "y": 1.04
+                },
+                "tl": {
+                  "x": 0.02,
+                  "y": 0.62
+                },
+                "tr": {
+                  "x": 0.3,
+                  "y": 0.66
+                }
+              },
+              "space": "normalized"
+            },
+            "schema": "worldbend.transform",
+            "version": "0.1"
+          }
+        },
+        "sourceId": "plant-image",
+        "transform": {
+          "content": {
+            "fit": "stretch"
+          },
+          "destination": {
+            "quad": {
+              "bl": {
+                "x": -0.06,
+                "y": 1.02
+              },
+              "br": {
+                "x": 0.38,
+                "y": 1.04
+              },
+              "tl": {
+                "x": 0.02,
+                "y": 0.62
+              },
+              "tr": {
+                "x": 0.3,
+                "y": 0.66
+              }
+            },
+            "space": "normalized"
+          },
+          "schema": "worldbend.transform",
+          "version": "0.1"
+        }
+      }
+    ],
+    "schema": "worldbend.mockup-plan",
+    "seams": [],
+    "version": "0.1"
+  }
+}

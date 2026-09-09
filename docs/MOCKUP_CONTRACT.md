@@ -89,3 +89,7 @@ Rendering stages the complete ordered set, verifies filenames, dimensions,
 hashes, and encoded-byte limits, then publishes one new directory atomically.
 Dry-run performs the same work without publication; any failure or
 cancellation publishes no partial set.
+
+A complete authored scene — its checked-in plan as numeric ground truth and a
+consumer convention check for downstream matrix application — lives at
+`examples/layered-scene/`.

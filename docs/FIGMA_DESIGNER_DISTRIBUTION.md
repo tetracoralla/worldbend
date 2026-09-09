@@ -74,6 +74,10 @@ before reporting its path, byte size, and SHA-256.
   reach the image only when Update HD Image is chosen.
 - Four-corner manipulation lives in the plugin panel; the plugin does not
   pretend to provide native document-canvas transform handles.
+- The Perspective toolbar and the Composition inspector both offer
+  **Copy placement parameters**: the current placement document as JSON on the
+  clipboard, for handoff to another tool. Correct mode is excluded because its
+  quad is not a destination placement.
 - Free Distort moves one corner. Perspective Distort locks to the first
   dominant axis and moves only the documented same-row or same-column pair.
 - Fast outward drags use bounded camera assistance. Perspective assistance

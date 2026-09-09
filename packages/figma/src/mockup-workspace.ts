@@ -5,6 +5,7 @@ import {
   type MockupSpecInput,
 } from "@worldbend/web";
 import { planMockup } from "./designer-plan";
+import { copyPlacementParameters, placementParametersJson } from "./copy-parameters";
 import { previewScaleFor, scaleSolveByFactor } from "./designer-preview";
 import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
 import { createFrameCoalescer } from "./frame-coalescer";
@@ -44,6 +45,9 @@ export interface MockupWorkspaceCopy extends DesignerWorkspaceCopy {
   saveTemplate: string;
   savingTemplate: string;
   templateSaved: string;
+  copyParameters: string;
+  parametersCopied: string;
+  copyParametersFailed: string;
 }
 
 export interface MockupTaskWorkspace extends DesignerTaskWorkspace {
@@ -67,7 +71,7 @@ export function createMockupWorkspace(input: {
     <div class="designer-row" data-role="grid-size"><label class="designer-field"><span data-role="columns-label"></span><input data-role="columns" type="number" min="1" max="64" step="1"></label><label class="designer-field"><span data-role="rows-label"></span><input data-role="rows" type="number" min="1" max="64" step="1"></label></div>
     <div class="inspector-divider" aria-hidden="true"></div>
     <label class="designer-field"><span data-role="template-name-label"></span><input data-role="template-name" type="text" maxlength="80"></label>
-    <button data-role="save-template" type="button"></button>`;
+    <span class="designer-row"><button data-role="save-template" type="button"></button> <button data-role="copy-parameters" type="button"></button></span>`;
   const planes = role<HTMLDivElement>(shell.inspector, "planes");
   const width = role<HTMLInputElement>(shell.inspector, "width");
   const height = role<HTMLInputElement>(shell.inspector, "height");
@@ -78,6 +82,7 @@ export function createMockupWorkspace(input: {
   const rows = role<HTMLInputElement>(shell.inspector, "rows");
   const templateName = role<HTMLInputElement>(shell.inspector, "template-name");
   const saveTemplate = role<HTMLButtonElement>(shell.inspector, "save-template");
+  const copyParametersButton = role<HTMLButtonElement>(shell.inspector, "copy-parameters");
   const canvas = document.createElement("canvas");
   shell.preview.append(canvas);
   const maybeContext = canvas.getContext("2d");
@@ -100,6 +105,7 @@ export function createMockupWorkspace(input: {
   let pendingTemplateRequestId: number | undefined;
   let nextTemplateRequestId = 1;
   let templateFeedback: "none" | "saved" | "error" = "none";
+  let copyFeedback: "none" | "copied" | "error" = "none";
   // Continuous plan changes (opacity drags, corner moves) collapse to one
   // preview request per paint. Overlay moves never rebuild the point layer:
   // the moved point is already positioned by the overlay itself, and a
@@ -133,10 +139,11 @@ export function createMockupWorkspace(input: {
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
   templateName.addEventListener("input", () => {
-    clearTemplateFeedback();
+    clearFeedback();
     renderTemplateSave();
   });
   saveTemplate.addEventListener("click", () => void saveCurrentTemplate());
+  copyParametersButton.addEventListener("click", () => void copyCurrentParameters());
 
   function commitCanvasSize(): void {
     if (!spec || !width.validity.valid || !height.validity.valid) return;
@@ -296,7 +303,7 @@ export function createMockupWorkspace(input: {
   async function saveCurrentTemplate(): Promise<void> {
     const name = normalizeTemplateName(templateName.value);
     if (!spec || !name || savingTemplate) return;
-    clearTemplateFeedback();
+    clearFeedback();
     savingTemplate = true;
     renderTemplateSave();
     shell.status.textContent = input.copy().savingTemplate;
@@ -327,15 +334,26 @@ export function createMockupWorkspace(input: {
     }
   }
 
-  function clearTemplateFeedback(): void {
-    if (templateFeedback === "saved") shell.status.textContent = "";
-    if (templateFeedback === "error") shell.showError();
+  function clearFeedback(): void {
+    if (templateFeedback === "saved" || copyFeedback === "copied") shell.status.textContent = "";
+    if (templateFeedback === "error" || copyFeedback === "error") shell.showError();
     templateFeedback = "none";
+    copyFeedback = "none";
+  }
+
+  async function copyCurrentParameters(): Promise<void> {
+    if (!spec) return;
+    clearFeedback();
+    const copied = await copyPlacementParameters(placementParametersJson(spec));
+    copyFeedback = copied ? "copied" : "error";
+    shell.status.textContent = copied ? input.copy().parametersCopied : "";
+    if (!copied) shell.showError(input.copy().copyParametersFailed);
   }
 
   function renderTemplateSave(): void {
     templateName.disabled = busy || savingTemplate || !spec;
     saveTemplate.disabled = busy || savingTemplate || !spec || !normalizeTemplateName(templateName.value);
+    copyParametersButton.disabled = busy || !spec;
   }
 
   return {
@@ -352,7 +370,7 @@ export function createMockupWorkspace(input: {
       phase = "ready";
       undoRouted = false;
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
-      clearTemplateFeedback();
+      clearFeedback();
       if (!savingTemplate) shell.status.textContent = "";
       shell.showError();
       templateName.value = input.copy().templateNamePlaceholder;
@@ -360,13 +378,14 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
+    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
       for (const [name, text] of [["width-label", copy.width], ["height-label", copy.height], ["opacity-label", copy.opacity], ["grid-label", copy.grid], ["columns-label", copy.columns], ["rows-label", copy.rows], ["template-name-label", copy.templateName]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
       templateName.placeholder = copy.templateNamePlaceholder;
       saveTemplate.textContent = copy.saveTemplate;
+      copyParametersButton.textContent = copy.copyParameters;
       renderOverlay();
     },
     handleMainMessage(message: MainToUiMessage) {
@@ -392,7 +411,7 @@ export function createMockupWorkspace(input: {
       undoRouted = false;
       appliedResultPending = false;
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
-      clearTemplateFeedback();
+      clearFeedback();
       if (!savingTemplate) shell.status.textContent = "";
       shell.showError();
       templateName.value = input.copy().templateNamePlaceholder;

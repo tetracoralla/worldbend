@@ -226,6 +226,7 @@
       #session-actions { display: flex; flex: none; align-items: center; gap: 8px; }
       #apply { padding-inline: 18px; font-weight: 600; }
       #output-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+      .native-guidance { flex: 1 1 100%; margin: 0; max-width: 62ch; font-size: 11px; line-height: 1.5; text-align: right; color: var(--figma-color-text-secondary, #777); }
       #status:empty { display: none; }
       #error { display: flex; align-items: center; gap: 8px; }
       #error-text { min-width: 0; flex: 1; }
@@ -344,10 +345,11 @@
       .worldbend-editor[data-valid="false"] .worldbend-editor__handle::after { border-color: var(--figma-color-border-danger-strong, #f24822); }
       .worldbend-editor[data-valid="false"] .worldbend-editor__canvas { opacity: .35; }
       button { min-height: 34px; border: 1px solid transparent; border-radius: var(--wb-control-radius); background: var(--wb-control-bg); color: inherit; padding: 7px 12px; font: inherit; transition: background var(--wb-motion), border-color var(--wb-motion), box-shadow var(--wb-motion), color var(--wb-motion), transform var(--wb-motion); }
-      button:not(:disabled) { cursor: pointer; }
-      button:not(:disabled):not(.primary):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):hover { background: var(--wb-control-hover); }
-      button:not(:disabled):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active { transform: translateY(.5px); }
-      button:disabled { opacity: .45; }
+      button:not(:disabled):not([aria-disabled="true"]) { cursor: pointer; }
+      button:not(:disabled):not([aria-disabled="true"]):not(.primary):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):hover { background: var(--wb-control-hover); }
+      button:not(:disabled):not([aria-disabled="true"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active { transform: translateY(.5px); }
+      button:disabled, button[aria-disabled="true"] { opacity: .45; }
+      button[aria-disabled="true"] { cursor: default; }
       button:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 2px; }
       button.primary { color: #fff; background: var(--figma-color-bg-brand, #0d99ff); border-color: transparent; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
       button.primary:not(:disabled):hover { background: var(--figma-color-bg-brand-hover, #0587e6); box-shadow: 0 3px 8px rgb(13 153 255 / 22%); }
@@ -550,6 +552,7 @@
                     <button id="action-flip-x" class="transform-icon-button" type="button" aria-pressed="false" aria-label="Flip Horizontal"><span class="ui-icon" data-icon-id="icon-park:flip-horizontally" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 6V42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 34L16 12V34H4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H32V12L44 34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Flip Horizontal</span></button>
                     <button id="action-flip-y" class="transform-icon-button" type="button" aria-pressed="false" aria-label="Flip Vertical"><span class="ui-icon" data-icon-id="icon-park:flip-vertically" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M42 24L6 24" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 4L36 16H14V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M14 44V32H36L14 44Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Flip Vertical</span></button>
                     <button id="action-rotate-cw" class="transform-icon-button" type="button" aria-label="Rotate 90° Clockwise"><span class="ui-icon" data-icon-id="icon-park:rotate" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 24H42V42H12V24Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M6 8V17H15" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M38.4747 13.2985C35.1956 8.87049 29.933 6 24 6C18.1788 6 13.0029 8.76334 9.71272 13.0498L6 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Rotate 90° Clockwise</span></button>
+                    <button id="action-copy-parameters" class="transform-icon-button" type="button" aria-label="Copy placement parameters"><span class="ui-icon" data-icon-id="icon-park:copy" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 12.4316V7.8125C13 6.2592 14.2592 5 15.8125 5H40.1875C41.7408 5 43 6.2592 43 7.8125V32.1875C43 33.7408 41.7408 35 40.1875 35H35.5163" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M32.1875 13H7.8125C6.2592 13 5 14.2592 5 15.8125V40.1875C5 41.7408 6.2592 43 7.8125 43H32.1875C33.7408 43 35 41.7408 35 40.1875V15.8125C35 14.2592 33.7408 13 32.1875 13Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Copy placement parameters</span></button>
                   </div>
                 </div>
                 <span class="transform-action-column-spacer" aria-hidden="true"></span>
@@ -592,6 +595,7 @@
         </div>
         <p id="status" class="sr-only" role="status" aria-live="polite"></p>
         <div id="output-actions">
+          <p id="native-guidance" class="native-guidance" hidden></p>
           <button id="action-apply-editable" type="button" disabled>New Editable Frame</button>
           <button id="action-apply-copy" type="button" disabled hidden>New HD Image</button>
           <button id="apply" class="primary" type="button" disabled>New HD Image</button>

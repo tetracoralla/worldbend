@@ -438,7 +438,20 @@ async function runFixture() {
       await publish("#action-apply-editable", "apply-native", true, "apply");
       // Optional effect availability and non-projective edits never block HD.
       await refresh({ ...original, nativeRenderer: undefined });
-      check(get("#action-apply-editable").disabled && !get("#apply").disabled, "Missing native effect blocked raster delivery");
+      const unavailable = get("#action-apply-editable");
+      check(unavailable.getAttribute("aria-disabled") === "true" && !unavailable.disabled &&
+        !get("#native-guidance").hidden &&
+        get("#native-guidance").textContent === "Editable output requires a supported Frame and a configured perspective effect in this file." &&
+        unavailable.getAttribute("aria-describedby") === "native-guidance",
+        "Unavailable native output hid its focusable recovery guidance");
+      const nativeCalls = window.fixtureMessages.filter(message => message.type === "apply-native").length;
+      unavailable.focus();
+      check(document.activeElement === unavailable, "Unavailable editable output is not keyboard-reachable");
+      unavailable.click();
+      check(!get("#error").hidden, "Unavailable editable activation gave no feedback");
+      check(window.fixtureMessages.filter(message => message.type === "apply-native").length === nativeCalls,
+        "Unavailable editable activation attempted publication");
+      check(!get("#apply").disabled, "Missing native effect blocked raster delivery");
       await publish("#apply", "apply", false, "apply");
       await refresh(payload);
       get("#mode-warp").click(); await ready();
