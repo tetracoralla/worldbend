@@ -23,8 +23,16 @@ async function inventory(directory) {
 export async function publishImmutableArtifact(staging, destination) {
   try { await rename(staging, destination); }
   catch (error) {
-    if (error.code !== 'EEXIST' && error.code !== 'ENOTEMPTY') throw error;
-    if (await inventory(staging) !== await inventory(destination)) {
+    // Windows reports EPERM when the destination directory already exists.
+    // It is reusable only after the same complete inventory check as POSIX.
+    if (!['EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code)) throw error;
+    let existing;
+    try { existing = await inventory(destination); }
+    catch (inspectionError) {
+      if (inspectionError.code === 'ENOENT') throw error;
+      throw inspectionError;
+    }
+    if (await inventory(staging) !== existing) {
       throw new Error(`Existing artifact differs; preserved without overwrite: ${destination}`);
     }
     await rm(staging, { recursive: true });
