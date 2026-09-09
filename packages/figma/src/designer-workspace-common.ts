@@ -13,6 +13,15 @@ export interface DesignerWorkspaceSource {
   targetNodeId?: string;
 }
 
+export function sameDesignerSelection(
+  previous: DesignerWorkspaceSource | undefined,
+  next: DesignerWorkspaceSource,
+): boolean {
+  return previous !== undefined && previous.targetNodeId === next.targetNodeId &&
+    previous.sources.length === next.sources.length &&
+    previous.sources.every((source, index) => source.sourceNodeId === next.sources[index]?.sourceNodeId);
+}
+
 export interface DesignerTaskWorkspace {
   enter(): void;
   leave(): void;

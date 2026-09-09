@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { writeDeterministicZip } from "./deterministic-zip.mjs";
+import { assertFigmaRuntimePrivacy } from "./build-privacy.mjs";
 import { writeFigmaLegalMaterial } from "./generate-plugin-legal.mjs";
 import {
   assertByteBudget,
@@ -55,6 +56,11 @@ if (manifest.main !== "dist/main.js" || manifest.ui !== "dist/ui.html") {
 for (const entry of runtimeEntries) {
   await assertRegularNonemptyFile(path.join(figmaRoot, entry));
 }
+assertFigmaRuntimePrivacy(
+  await readFile(path.join(figmaRoot, "dist/ui.html"), "utf8"),
+  await readFile(path.join(figmaRoot, "dist/main.js"), "utf8"),
+  [repositoryRoot],
+);
 const runtimeBytes = await sumFileBytes(figmaRoot, runtimeEntries);
 assertByteBudget(runtimeBytes, packageProfile.maxRuntimeBytes, "Figma runtime payload");
 const safeVersion = String(packageMetadata.version).replace(/[^0-9A-Za-z._-]/g, "-");
@@ -87,7 +93,49 @@ await mkdir(path.join(packageRoot, "dist"), { recursive: true });
 for (const entry of runtimeEntries) {
   await cp(path.join(figmaRoot, entry), path.join(packageRoot, entry));
 }
-const designerReadme = `# Worldbend for Figma\n\nThis folder is a self-contained Figma Desktop plugin. Keep every file in place.\n\n## Install\n\n1. Extract the entire ZIP.\n2. In Figma Desktop, choose Plugins > Development > Import plugin from manifest.\n3. Select this folder's manifest.json.\n4. Run Worldbend from Plugins > Development.\n\nNo source checkout, Node, pnpm, Rust, local server, or product-owned network service is required.\n\n## Output behavior\n\nSelect one source layer. Worldbend supports locally exportable layers and has been verified with an image-filled Rectangle and a Frame. Applying a transform creates a raster Rectangle with an Image fill; it does not replace the original editable source. Select the original together with one prior Worldbend result to continue editing or replace that result. Raster output is limited to 4096 pixels per axis.\n\n## Third-party components\n\nTHIRD_PARTY_NOTICES.md, licenses/, and sbom/ describe the locked Rust dependency closure used to build the embedded WebAssembly runtime.\n`;
+const designerReadme = `# Worldbend for Figma
+
+This folder is a self-contained Figma Desktop plugin. Keep every file in place.
+
+## Install
+
+1. Extract the entire ZIP.
+2. In Figma Desktop, choose Plugins > Development > Import plugin from manifest.
+3. Select this folder's manifest.json.
+4. Run Worldbend from Plugins > Development.
+
+No source checkout, Node, pnpm, Rust, local server, or product-owned network service is required.
+
+## Output behavior
+
+Select a source on the Figma canvas and adjust its transform in Worldbend.
+New HD Image creates a stable image without changing the original. Raster
+output is limited to 4096 pixels per axis.
+
+Select a saved result alone to reopen its source and transform. Update HD
+Image replaces that image; New HD Image creates another version. Source edits
+appear in the reopened preview and reach the image only after Update. Legacy
+results without a source binding, or results whose source was deleted, need a
+source selected together with them. Invalid saved geometry requires starting
+again from the source.
+
+New Editable Frame is available for supported clipped Frames only when this
+file has access to the matching Worldbend Perspective companion effect. The
+plugin ZIP does not include that effect as an installable resource. Editable
+results keep independent native children, editable directly on the Figma
+canvas, with a sampled perspective appearance that can look softer than HD
+output. Update Frame preserves the selected result; either New action creates
+another result. HD image children cannot be edited directly.
+
+Companion effect: https://www.figma.com/community/shader/1679431734495527701
+Availability depends on Figma approval and the file's access to the effect.
+HD output works independently of the companion effect.
+
+## Third-party components
+
+THIRD_PARTY_NOTICES.md, licenses/, and sbom/ describe the locked Rust dependency closure used to build the embedded WebAssembly runtime.
+`;
+
 await writeFile(path.join(packageRoot, "README.md"), designerReadme, "utf8");
 
 const checksummedEntries = await listRegularFiles(packageRoot);

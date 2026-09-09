@@ -63,6 +63,20 @@ export async function writeFigmaLegalMaterial({ destination, version = workspace
   });
 }
 
+export async function writeWebLegalMaterial({ destination, version = workspaceVersion() }) {
+  await writeCargoLegalMaterial({
+    destination,
+    artifactVersion: version,
+    target: wasmTarget,
+    rootPackageNames: ["worldbend-wasm", "worldbend-perspective-wasm"],
+    artifactName: "Worldbend private Web package",
+    documentName: "worldbend-web",
+    sbomFile: "worldbend-web.spdx.json",
+    noticeIntroduction: "This private Web package embeds the full and focused perspective WebAssembly modules built from locked Rust crates. It declares no Worldbend product license.",
+    noticeClosure: "the locked wasm32-unknown-unknown non-dev Cargo dependency closure of worldbend-wasm and worldbend-perspective-wasm (union across packaged modules)",
+  });
+}
+
 export async function writeComfyLegalMaterial({ destination }) {
   const target = await currentRustHostTarget();
   const safeTarget = safeSegment(target);

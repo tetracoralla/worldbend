@@ -93,7 +93,7 @@ export type SourcePlane =
     };
 export type RemapOperation =
   | {
-      center?: Point1;
+      center?: Point2;
       coefficients: LensCoefficients;
       kind: "lens";
       scale?: LensScale;
@@ -202,6 +202,10 @@ export interface WebContract {
   meshWarpSpecInput: MeshWarpSpec;
   mockupPlanOutput: MockupPlan;
   mockupSpecInput: MockupSpec;
+  planePoseInput: PlanePoseInput;
+  planePoseOutput: PlanePoseOutput;
+  planeStripInput: PlaneStripInput;
+  planeStripOutput: PlaneStripOutput;
   rectifyPlanOutput: RectifyPlan;
   rectifySpecInput: RectifySpec;
   remapPlanOutput: RemapPlan;
@@ -849,6 +853,86 @@ export interface MockupSeam {
   second: MockupEdgeRef;
   tolerancePixels?: number;
 }
+export interface PlanePoseInput {
+  elementSize: Size;
+  pose: PlanePose;
+}
+/**
+ * Explicit local single-plane pose; see PLANE_POSE_CONTRACT.md for order and units.
+ */
+export interface PlanePose {
+  /**
+   * Translation toward the viewer, in CSS pixels.
+   */
+  depth?: number;
+  /**
+   * Perspective distance in CSS pixels. No camera estimation.
+   */
+  perspective: number;
+  perspectiveOrigin?: NormalizedAnchor1;
+  pivot?: NormalizedAnchor2;
+  rotateX?: number;
+  rotateY?: number;
+  rotateZ?: number;
+  translate?: Point1;
+}
+/**
+ * Projection origin as a fraction of the element border box.
+ */
+export interface NormalizedAnchor1 {
+  x: number;
+  y: number;
+}
+/**
+ * Rotation origin as a fraction of the element border box; center by default.
+ */
+export interface NormalizedAnchor2 {
+  x: number;
+  y: number;
+}
+export interface Point1 {
+  x: number;
+  y: number;
+}
+export interface PlanePoseOutput {
+  css: CssTransform;
+  spec: TransformSpec1;
+}
+export interface PlaneStripInput {
+  destinationSize?: Size | null;
+  /**
+   * @minItems 1
+   * @maxItems 32
+   */
+  panels: [PlaneStripPanel, ...PlaneStripPanel[]];
+  spec: TransformSpec2;
+}
+export interface PlaneStripPanel {
+  elementSize: Size;
+  end: number;
+  id: string;
+  /**
+   * Left and right source-space fractions of one shared strip, including caller-chosen gaps.
+   */
+  start: number;
+}
+/**
+ * One front-facing unwarped shared plane. Each panel keeps its own source content.
+ */
+export interface TransformSpec2 {
+  content?: Content;
+  destination: Destination;
+  schema: "worldbend.transform";
+  version: "0.1";
+}
+export interface PlaneStripOutput {
+  items: PlaneStripItem[];
+}
+export interface PlaneStripItem {
+  css: CssTransform;
+  id: string;
+  spec: TransformSpec1;
+}
 export interface RectifyPlan {
   diagnostics: RectifyDiagnostics;
   homography: Homography;
@@ -882,7 +966,7 @@ export interface RemapSpec {
   schema: string;
   version: string;
 }
-export interface Point1 {
+export interface Point2 {
   x: number;
   y: number;
 }
@@ -1236,14 +1320,14 @@ export interface TransformRecipe {
    */
   clearWarp?: boolean;
   flip?: Flip2D;
-  pivot?: Point2;
+  pivot?: Point3;
   /**
    * Clockwise screen-space rotation in degrees. Omit to keep zero rotation.
    */
   rotationDegrees?: number;
   scale?: Scale2D;
   skew?: Skew2D;
-  translation?: Point3;
+  translation?: Point4;
   /**
    * Optional bounded preset warp. Omit to preserve the base spec's warp.
    */
@@ -1262,7 +1346,7 @@ export interface Flip2D {
  * relative values, never destination pixel coordinates. Omit unless the
  * caller explicitly changes the pivot.
  */
-export interface Point2 {
+export interface Point3 {
   x: number;
   y: number;
 }
@@ -1283,7 +1367,7 @@ export interface Skew2D {
 /**
  * Translation in resolved destination units. Omit to keep zero translation.
  */
-export interface Point3 {
+export interface Point4 {
   x: number;
   y: number;
 }

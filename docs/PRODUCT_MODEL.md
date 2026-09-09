@@ -9,8 +9,29 @@ already performs arbitrary graphics work. The exact current capabilities below
 remain authoritative; new deterministic capabilities normally enter the core
 and Agent/direct route before they are considered for human UI.
 
-The active implementation stage, human UI admission rule, autonomy boundary,
-and recovery state are maintained in `docs/GRAPHICS_WORKSPACE_GOAL.md`.
+Implementation plans and recovery notes are kept locally under `.task-notes/`.
+
+## Human UI admission rule
+
+A new human-visible task may enter a carrier only when all of the following are
+current facts:
+
+1. A named designer task and affected graphic object exist; capability breadth
+   or parity with another editor is not sufficient.
+2. Repeated value is observed in real use or explicitly confirmed by the owner.
+3. The task has a task-native direct-manipulation or compact-control model,
+   preview, apply/replace behavior, Undo boundary, error recovery, and focus or
+   workspace return behavior.
+4. Its operation is already closed and validated in the shared core or another
+   named source-of-record contract. The UI does not invent adapter-local
+   geometry or hidden inference.
+5. The complete interaction fits the declared carrier resource and performance
+   boundary without degrading Perspective's continuous-edit path.
+
+Until all five are true, the capability remains headless, Agent-only, or
+unimplemented. Existing human workspaces may be simplified when current use
+shows that they fail this rule; they are not removed merely to satisfy an
+abstract minimalism preference.
 
 ## Product definition
 
@@ -99,6 +120,15 @@ a GUI.
 
 ## Carrier projections
 
+Explicit frontend plane posing and a shared-plane strip are conveniences over
+the same TransformSpec. The strip partitions one mapping into adjacent live
+cards, keeping their top edges collinear and their bottom edges collinear.
+CLI/MCP can emit CSS once with no browser dependency; the focused Web adapter
+also observes resize, coalesces updates, supports bounded pointer tilt and
+preserves content, last-valid state and reusable mappings. These operations
+do not detect a reference image's layout or model a general 3D scene. See
+`docs/PLANE_POSE_CONTRACT.md` and the runnable `packages/web/examples/` example.
+
 The repository is a source superset, not one universal install. The checked
 profiles in `config/carrier-profiles.json` project the current semantic core
 into task-native distributions:
@@ -161,6 +191,14 @@ and freshly verifies:
    applies a density-planned tight raster result; and retains the serialized
    operation data needed for in-place replacement, including a distinct
    normalized-source `RectifySpec` for manual four-point correction;
+   explicit editable Frame and high-resolution image output choices preserve
+   the source, support independent new versions and contextual replacement;
+   editing descendants on the Figma canvas keeps the whole active Frame's
+   preview and draft. The editable Frame carrier retains native children under a private,
+   explicitly provisioned projective Shader, shares result/source bindings,
+   and reopens the same operation for designer or external Agent updates;
+   its bounded surface and support limits are described in
+   `docs/FIGMA_HANDOFF.md`;
 8. an experimental local ComfyUI V3 node pack that validates and applies one
    reusable `TransformSpec` or explicit `RectifySpec` to one IMAGE plus
    optional MASK through a bundled native renderer, and validates/applies an
@@ -304,7 +342,9 @@ Invalid input returns one stable structured error without speculative retries.
   paths, folded custom meshes, or adapter-invented deformation beyond the
   explicit bounded Mesh, Surface Deformation, and Remap contracts;
 - camera pose or 3D scene reconstruction;
-- vector-preserving Figma transforms in the current raster slice;
+- rewriting arbitrary Figma vector paths into projective geometry; the
+  editable Frame carrier preserves native source children and uses a sampled
+  Shader appearance, as specified in `docs/FIGMA_HANDOFF.md`;
 - Comfy input IMAGE batches, Comfy video frame sequences, high-precision
   Comfy control maps, and encoded video/audio rendering; the Agent-only Timeline
   publishes an explicit atomic PNG sequence;

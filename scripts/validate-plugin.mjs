@@ -7,6 +7,7 @@ import path from "node:path";
 import { isWorkspacePluginVersion } from "./plugin-version.mjs";
 import { skillFrontmatter } from "./skill-frontmatter.mjs";
 import { loadCarrierProfiles } from "./carrier-profiles.mjs";
+import { assertWebSdkIntegrity } from "./web-sdk-integrity.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(root, "plugins", "worldbend");
@@ -18,6 +19,8 @@ const STAGING_RESIDUE_PREFIXES = [
   ".capabilities-stage-",
   ".capabilities-backup-",
   ".legal-stage-",
+  ".web-stage-",
+  ".web-backup-",
 ];
 const pluginRootReal = await realpath(pluginRoot);
 const pluginRootMetadata = await lstat(pluginRoot);
@@ -71,6 +74,7 @@ assert(
   /^description:\s*\S.+$/m.test(frontmatter),
   "Skill description must be non-empty",
 );
+await assertWebSdkIntegrity(path.join(skillsRoot, "worldbend/assets/web"), manifest.version);
 
 const mcpPath = resolveInside(pluginRoot, manifest.mcpServers, "mcpServers");
 await assertContainedRegularFile(mcpPath, "MCP configuration");

@@ -1,7 +1,7 @@
 {
   "name": "worldbend",
-  "version": "0.1.0+codex.20260830115212",
-  "description": "Compose, solve, inspect, render, and emit CSS for explicit projective planes.",
+  "version": "0.1.0+codex.20260908161904",
+  "description": "Live CSS perspective, editable Figma handoffs and reusable image mappings from explicit geometry.",
   "author": {
     "name": "openAdam"
   },
@@ -11,14 +11,19 @@
     "corner-pin",
     "transform",
     "css",
-    "rendering"
+    "rendering",
+    "live-dom",
+    "cards",
+    "shared-plane",
+    "figma",
+    "editable-design"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Worldbend",
-    "shortDescription": "Compose and map explicit planes without recalculating perspective.",
-    "longDescription": "Compose typed scale, rotation, skew, translation, and pivot over a saved plane, solve and reuse deterministic perspective geometry, render local raster assets, or emit CSS matrix3d values for live web content.",
+    "shortDescription": "Reuse perspective across live webpages, editable Figma designs and images.",
+    "longDescription": "Align adjacent live cards, create CSS from explicit tilt angles, and prepare core-validated Figma updates using the available Figma tool. Preserve native design content and reuse saved geometry across web and image outputs.",
     "developerName": "openAdam",
     "category": "Productivity",
     "capabilities": [
@@ -26,9 +31,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Compose a 90-degree rotation and 120% scale over this saved ProjectiveSpec.",
-      "Render this new source through the saved ProjectiveSpec.",
-      "Emit CSS matrix3d for this live element and plane."
+      "Keep these adjacent cards on one perspective plane with collinear top and bottom edges.",
+      "Render this new source through the saved TransformSpec.",
+      "Continue this selected editable Worldbend frame through the available Figma tool."
     ]
   }
 }

@@ -1,9 +1,10 @@
-import { access, mkdir, rm } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { platformExecutableName } from "./platform-tooling.mjs";
+import { assertNoPrivateBuildPaths, wasmBuildEnvironment } from "./build-privacy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindgen = path.join(
@@ -13,27 +14,22 @@ const bindgen = path.join(
   "bin",
   platformExecutableName("wasm-bindgen"),
 );
-const input = path.join(
-  root,
-  "target",
-  "wasm32-unknown-unknown",
-  "release",
-  "worldbend_wasm.wasm",
-);
 const profileArgument = process.argv.find((argument) => argument.startsWith("--profile="));
 const unknownArguments = process.argv.slice(2).filter((argument) => argument !== profileArgument);
 if (unknownArguments.length > 0) {
   throw new Error(`Unknown build-wasm arguments: ${unknownArguments.join(", ")}`);
 }
 const profile = profileArgument?.slice("--profile=".length) ?? "full";
-if (!new Set(["full", "figma"]).has(profile)) {
+if (!new Set(["full", "figma", "perspective"]).has(profile)) {
   throw new Error(`Unknown WASM carrier profile: ${profile}`);
 }
+const crate = profile === "perspective" ? "worldbend-perspective-wasm" : "worldbend-wasm";
+const input = path.join(root, "target", "wasm32-unknown-unknown", "release", `${crate.replaceAll("-", "_")}.wasm`);
 const output = path.join(
   root,
   "packages",
   "wasm",
-  profile === "figma" ? "pkg-figma" : "pkg",
+  profile === "full" ? "pkg" : `pkg-${profile}`,
 );
 
 try {
@@ -45,7 +41,7 @@ try {
 const cargoArguments = [
   "build",
   "-p",
-  "worldbend-wasm",
+  crate,
   "--release",
   "--locked",
   "--target",
@@ -67,10 +63,11 @@ await run(bindgen, [
   "worldbend_wasm",
   "--typescript",
 ]);
+assertNoPrivateBuildPaths(await readFile(path.join(output, "worldbend_wasm_bg.wasm")), [root]);
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: "inherit" });
+    const child = spawn(command, args, { cwd: root, stdio: "inherit", env: wasmBuildEnvironment(root) });
     child.once("error", reject);
     child.once("exit", (code) => {
       if (code === 0) resolve();

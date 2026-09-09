@@ -78,5 +78,5 @@ union by merely adding another enum value.
 
 The program is available only in full Agent/CLI builds. Figma and ComfyUI do
 not compile or expose it. A future human workflow requires current designer
-demand and the admission rule in `docs/GRAPHICS_WORKSPACE_GOAL.md`; core
+demand and the admission rule in `docs/PRODUCT_MODEL.md`; core
 availability alone is not sufficient.

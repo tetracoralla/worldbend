@@ -175,6 +175,7 @@ export function inspectorControls(
     view.padLeft,
     view.background,
     view.backgroundColor,
+    ...view.operationChoices.querySelectorAll<HTMLButtonElement>("button"),
     ...view.anchorGrid.querySelectorAll<HTMLButtonElement>("button"),
   ];
 }

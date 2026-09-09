@@ -16,6 +16,7 @@ import {
   createDesignerWorkspaceShell,
   fitPreviewCanvas,
   postDesignerResult,
+  sameDesignerSelection,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -55,6 +56,7 @@ export function createMeshWorkspace(input: {
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
+  let appliedResultPending = false;
   // Live point moves collapse to one preview request per paint. The overlay
   // never rebuilds on a move: the dragged or nudged point is already
   // positioned by the overlay itself, and a rebuild would destroy the
@@ -68,6 +70,7 @@ export function createMeshWorkspace(input: {
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
     renderControls();
     void render();
   });
@@ -77,6 +80,7 @@ export function createMeshWorkspace(input: {
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
     void render();
   });
   shell.apply.addEventListener("click", () => void apply(false));
@@ -126,6 +130,7 @@ export function createMeshWorkspace(input: {
         spec = { ...spec, mesh: { ...spec.mesh, vertices } };
         phase = "ready";
         undoRouted = false;
+        appliedResultPending = false;
         moveFrames.request();
         if (final) {
           moveFrames.flush();
@@ -186,6 +191,7 @@ export function createMeshWorkspace(input: {
     setSource(next) {
       busy = false;
       shell.setBusy(false);
+      if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
       const first = next.sources[0];
       if (!first) return;
@@ -197,7 +203,7 @@ export function createMeshWorkspace(input: {
       renderControls();
       if (active) void render();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -209,13 +215,13 @@ export function createMeshWorkspace(input: {
       if (!source || message.generation !== source.selectionGeneration) return true;
       busy = false;
       shell.setBusy(false);
-      if (message.type === "apply-designer-error") { phase = "ready"; shell.showError(input.formatError(message.message)); }
-      else { phase = "applied"; shell.status.textContent = input.copy().applied; }
+      if (message.type === "apply-designer-error") { phase = "ready"; appliedResultPending = false; shell.showError(input.formatError(message.message)); }
+      else { phase = "ready"; appliedResultPending = true; undoRouted = false; shell.status.textContent = input.copy().applied; }
       return true;
     },
     handleKeydown(event) {
       if (event.key === "Escape") { event.preventDefault(); input.onBack(); return true; }
-      const result = handleWorkspaceHistoryShortcut({ event, phase, undoRouted, history, post: input.post, restore: restoreHistory });
+      const result = handleWorkspaceHistoryShortcut({ event, phase, appliedResultPending, undoRouted, history, post: input.post, restore: restoreHistory });
       undoRouted = result.undoRouted;
       return result.handled;
     },

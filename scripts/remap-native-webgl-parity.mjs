@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -169,6 +169,11 @@ function parityCases() {
 async function startServer({ cases, scratch }) {
   const source = await readFile(sourcePath);
   const module = await readFile(webModulePath);
+  // Rollup can extract shared modules across the Web package's public entries.
+  // Serve the built JS inventory so relative chunk imports reach real code.
+  const modules = new Map(await Promise.all((await readdir(path.dirname(webModulePath), { withFileTypes: true }))
+    .filter(entry => entry.isFile() && entry.name.endsWith(".js"))
+    .map(async entry => ["/" + entry.name, await readFile(path.join(path.dirname(webModulePath), entry.name))])));
   const native = new Map();
   for (const testCase of cases) {
     native.set(`/${testCase.id}.png`, await readFile(path.join(scratch, `${testCase.id}.png`)));
@@ -178,6 +183,7 @@ async function startServer({ cases, scratch }) {
     const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
     if (pathname === "/") return send(response, 200, "text/html; charset=utf-8", html);
     if (pathname === "/web.js") return send(response, 200, "text/javascript; charset=utf-8", module);
+    if (modules.has(pathname)) return send(response, 200, "text/javascript; charset=utf-8", modules.get(pathname));
     if (pathname === "/source.png") return send(response, 200, "image/png", source);
     const nativeImage = native.get(pathname);
     if (nativeImage) return send(response, 200, "image/png", nativeImage);
@@ -197,7 +203,6 @@ async function startServer({ cases, scratch }) {
 
 function parityPage(cases) {
   return `<!doctype html><meta charset="utf-8"><title>Worldbend Remap parity</title><script type="module">
-import { RemapWebGLRenderer } from "/web.js";
 const cases = ${JSON.stringify(cases)};
 const load = (url) => new Promise((resolve, reject) => {
   const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = url;
@@ -210,6 +215,7 @@ const rgba = (source, width, height) => {
 };
 const compare = ${compareRgba.toString()};
 try {
+  const { RemapWebGLRenderer } = await import("/web.js");
   const source = await load("/source.png");
   const measurements = [];
   for (const testCase of cases) {
@@ -229,7 +235,7 @@ try {
 </script>`;
 }
 
-async function findChrome() {
+export async function findChrome() {
   const candidates = [
     process.env.CHROME_BIN,
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -244,7 +250,7 @@ async function findChrome() {
   throw new Error("Chrome or Chromium is required for Native/WebGL Remap parity; set CHROME_BIN");
 }
 
-async function launchChrome(executable) {
+export async function launchChrome(executable, extraArgs = []) {
   const profile = await mkdtemp(path.join(tmpdir(), "worldbend-parity-chrome-"));
   const args = [
     "--headless=new",
@@ -253,6 +259,7 @@ async function launchChrome(executable) {
     "--no-default-browser-check",
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
+    ...extraArgs,
     "about:blank",
   ];
   const child = spawn(executable, args, { stdio: ["ignore", "ignore", "pipe"] });
@@ -272,7 +279,7 @@ async function launchChrome(executable) {
   return { process: child, debugUrl: `http://${parsed.host}`, profile };
 }
 
-async function closeChrome(browser) {
+export async function closeChrome(browser) {
   const child = browser.process;
   if (child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");
@@ -292,13 +299,13 @@ function unrefDelay(milliseconds) {
   });
 }
 
-async function createPage(debugUrl, url) {
+export async function createPage(debugUrl, url) {
   const response = await fetch(`${debugUrl}/json/new?${encodeURIComponent(url)}`, { method: "PUT" });
   if (!response.ok) throw new Error(`Chrome could not create parity page: ${response.status}`);
   return response.json();
 }
 
-async function readPageResult(webSocketUrl) {
+export async function readPageResult(webSocketUrl, viewport) {
   const socket = new WebSocket(webSocketUrl);
   const pending = new Map();
   let nextId = 0;
@@ -322,6 +329,12 @@ async function readPageResult(webSocketUrl) {
   });
   const deadline = Date.now() + 30_000;
   try {
+    if (viewport) {
+      await send("Emulation.setDeviceMetricsOverride", {
+        width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: false,
+      });
+      await send("Page.navigate", { url: viewport.url });
+    }
     while (Date.now() < deadline) {
       const response = await send("Runtime.evaluate", {
         expression: "globalThis.__WORLDBEND_PARITY__ ?? null",

@@ -6,11 +6,16 @@ packages/*/dist/
 packages/*/demo-dist/
 packages/wasm/pkg/
 packages/wasm/pkg-figma/
+packages/wasm/pkg-perspective/
 plugins/worldbend/bin/
+plugins/worldbend/skills/worldbend/assets/web/
 .tools/
 .playwright-cli/
+.v2c/
+.video_agent/
 output/playwright/
 artifacts/
 .DS_Store
 *.log
 /bin/
+.task-notes/

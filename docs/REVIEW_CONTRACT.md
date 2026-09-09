@@ -62,6 +62,7 @@ surface, Product Skill, installed provider manifest, and live transport.
 | Assisted perception Provider | One explicitly selected bounded Provider may return no candidate or up to three validated plane candidates with source facts, uncalibrated scores, and typed uncertainty. A caller must explicitly author the accepted RectifySpec before deterministic execution. | Highest-score auto-application, a probability claim, implicit crop/aspect choice, Provider math entering the core, missing uncertainty, or provider fallback hidden from the caller. |
 | PSD Smart Object interoperability | Bounded read-only PSD/PSB inspection, source facts, stable record IDs, explicit importability reasons, caller-selected eligible objects, and Spatial Template projection follow `docs/PSD_SMART_OBJECT_INTEROP_CONTRACT.md`; source access remains descriptor-confined. | Embedded payload extraction, linked-file fetching, PSD writing, silent layer selection, ignored Warp/alternate transform, parser panic escape, or Photoshop semantics entering the core. |
 | Single-raster Program semantics | One `worldbend.raster-program@0.1` chains 1..8 uniquely identified Transform, Rectify, and Canvas stages under `docs/RASTER_PROGRAM_CONTRACT.md`. It preflights every next output and cumulative pixels, keeps intermediates in memory, preserves order, and publishes exactly one final PNG after cancellation and response checks. | Intermediate publication/redecode, stage reordering, partial success, allocation before the cumulative check, branching/fan-in/fan-out, adapter-local math, or exposure in Figma/Comfy without a current consumer. |
+| Live plane pose and shared strips | Pose and plane_strip resolve through the one core solver into a reusable TransformSpec plus CSS per `docs/PLANE_POSE_CONTRACT.md`; strip panels share one parent homography with collinear top and bottom edges, ordered correlated IDs, and all-or-nothing publication on any invalid panel; live web bindings keep single-writer element ownership, latest-update coalescing, last-valid recovery after invalid input, and full listener and inline-style restoration on disposal or member rebinding. | Adapter-local transform math, per-panel size tiers or independent tilts replacing the shared mapping, partial style publication after a rejected plan, a stale async result overwriting newer input, silent clamping or corner reordering, a disposed or replaced binding still writing styles, or rebinding leaking the previous group's observers and declarations. |
 | Stable errors | Every `docs/CONTRACT.md` product error remains reachable or explicitly reserved; CLI/MCP mappings agree; Capability narrowing is closed and intentional; messages/details and echoed input stay bounded. | Unknown product error falls through as a misleading known error, long input is reflected, or Capability accepts a shape its Profile rejects. |
 | Geometry diagnostics | Inspect, solve, compose, CSS, and render use core solving; reprojection, horizon, determinant, bounds, and inversion keep their declared meaning. Orientation-reversing homographies caused by explicit flips remain legal. | Render bypasses `solve_spec`, determinant sign is “repaired,” horizon checks differ, or diagnostics describe geometry not executed. |
 | Raster and side effects | Inverse mapping, pixel centers, premultiplied-alpha filtering, transparent outside samples, output limits, return feasibility, staging, and atomic publication follow `docs/CONTRACT.md`; dry-run executes the same preflight without publication. | Mutation precedes final preflight, overwrite occurs without authority, cancellation leaves staging/output, or dry-run and write disagree. |
@@ -73,7 +74,7 @@ surface, Product Skill, installed provider manifest, and live transport.
 | Comfy single-image route | V3 node IDs/types stay stable, strict TransformSpec validation crosses the real native CLI, IMAGE/MASK alpha round-trips under the declared 8-bit and premultiplied-alpha rules, the exact all-zero `[1,64,64]` no-alpha `LoadImage` sentinel expands to the IMAGE dimensions while every non-empty mismatch fails, omitted normalized targets bind to source IMAGE dimensions, and `B != 1` fails before a render. | Python transform math, silent tensor clamp, mask polarity reversal, acceptance of a non-empty or differently shaped mismatched MASK, hidden batch iteration, PATH-selected binary, leaked child/temp state, or local package inventory presented as installed-host proof. |
 | Comfy Canvas route | Strict Canvas Set validation crosses the native CLI once, Apply returns ordered heterogeneous IMAGE/MASK lists plus the resolved plan, replay requires matching dimensions and never resolves Trim again, and the 16 Mi-pixel cumulative limit includes every output. | Different sizes are stacked into one tensor batch, Python plans geometry, one child is launched per variant, list order drifts, Trim is recomputed, high-precision maps are advertised through the 8-bit boundary, or installed-host behavior is inferred from adapter tests. |
 | Comfy Remap route | Strict Remap validation and execution cross the reduced native CLI, lens rejects a map, displacement requires one, optional map MASK supplies alpha, and one retained Remap can synchronize compatible IMAGE/MASK/control inputs. | Python lens/displacement math, hidden map defaults, wrong mask polarity, unrequested map acceptance, high-precision claims through the 8-bit PNG boundary, or installed-host behavior inferred from adapter tests. |
-| Figma human route | The installed development plugin operates only on the selected authorized document, retains transform/replacement state, preserves undo/recovery and localization, and keeps both live manifest entrypoints present throughout either partial build. Its explicit density policy enforces the 4096 px per-axis image limit without conflating raster pixels and document placement: Fit to Figma proportionally fits only pixels, while Keep original pixels blocks only an over-limit Apply and recovers immediately when geometry returns within the limit. A quiet editor-corner readout shows source -> requested -> applied pixels when fitted. New results publish beside every producing input on the inputs' top edge, one fixed gap right of the inputs' combined right edge, stepping right across nearby same-band page content only while the cumulative detour stays within one output plus its surrounding gaps, then dropping below wider obstacles or longer rows; replacements keep their position, and publication keeps the producing inputs in view beside the result. Its 820 x 760 panel uses one persistent icon workspace navigation (Perspective, Sizes, Templates, and More) above one full-width top operation bar for mode/active parameters, one full-width bottom session bar for Reset/Apply, and one uninterrupted rectangular editor exactly between them; session undo and redo ride the standard shortcuts routed per workspace rather than persistent footer buttons. Active Transform/Warp parameters stay visible; operation labels use transparent low-emphasis chrome and one pale-blue selected surface. More is the final control and contains Composition, Mesh, and Lens & maps as task-labeled advanced transforms plus secondary session, output-density, and language actions; its Perspective-only entries hide inside task workspaces, and More carries selected emphasis while an advanced workspace is active. Transform keeps Width -> Height -> Link, Skew X -> Skew Y, and Angle -> Placement as three continuous visual groups over one shared pair of parameter columns plus a dedicated 32 CSS-pixel action column, so all five sliders have equal screen-space widths of at least 110 CSS px and a narrower frequent-use domain than their precise numeric fields. Frequent transform commands are authority-rendered icon buttons with localized hover/focus tooltips; one repeatable clockwise 90-degree command covers the 180-degree and counter-clockwise equivalents by repeated presses, while its icon still depicts one object receiving one directional action rather than a continuous cycle. Placement replaces rather than overlays the parameter region and uses a right-facing enter arrow; down arrows remain reserved for dropdown/disclosure semantics. More, Close, Link, Check, workspace-tab, workspace-task, surface-entry, Flip, Rotate, and Repeat product icons retain assets from the configured icon authority rather than font glyphs or locally drawn SVG paths. Every primary workspace navigation icon exposes the same localized name on pointer hover and keyboard focus without persistent visible labels; advanced entries expose names and task descriptions in More, and entering one returns focus to More. A bar-height change may refit or recenter the preview, but it leaves the canonical spec, recipe, pivot, and Warp value unchanged and keeps every finite handle center inside the editor safe inset. Zoom remains available by direct input and standard shortcuts without persistent zoom chrome. | Stale selection applies, state silently resets, failed work replaces a node, an over-limit raster is published, density fitting silently changes placement or aspect ratio, the size readout hides a fit or covers interaction, returning within budget leaves Apply disabled, technical metadata or a generic operation heading enters the task UI, nested selected chrome competes with the canvas, More leaves the workspace navigation, hides active-operation commands, or makes advanced work undiscoverable, semantic parameter siblings are split by an unrelated control, parameter rows use different column tracks or slider widths, duplicate rotation buttons expose outcomes already reachable by repetition, an icon exposes the repetition/cycle mechanism instead of the single action or lacks a localized hover/focus tooltip, the bars float over or leave gaps beside the editor, a slider is too short for deliberate adjustment or silently clamps precise typed values, a down arrow falsely implies a dropdown for a replacing surface, a product icon is a font glyph or locally invented path, a primary workspace icon retains a visible text label or loses its localized hover/focus name, an advanced entry lacks its task description, keyboard focus is dropped after entering a workspace, layout reflow changes canonical geometry, a control covers a handle, Escape dismisses a transient surface and also cancels the edit, or a UI/main build transiently removes its sibling entrypoint, a new result covers an input or same-band page content, teleports past a wide frame or long row, a replacement moves, or publication frames the result alone without the producing inputs. |
+| Figma human route | The installed development plugin operates only on the selected authorized document, retains transform/replacement state, preserves undo/recovery and localization, and keeps both live manifest entrypoints present throughout either partial build. Its explicit density policy enforces the 4096 px per-axis image limit without conflating raster pixels and document placement: Fit to Figma proportionally fits only pixels, while Keep original pixels blocks only an over-limit Apply and recovers immediately when geometry returns within the limit. A quiet editor-corner readout shows source -> requested -> applied pixels when fitted. New results publish beside every producing input on the inputs' top edge, one fixed gap right of the inputs' combined right edge, stepping right across nearby same-band page content only while the cumulative detour stays within one output plus its surrounding gaps, then dropping below wider obstacles or longer rows; replacements keep their position, and publication keeps the producing inputs in view beside the result. Its 820 x 760 panel uses one persistent icon workspace navigation (Perspective, Sizes, Templates, and More) above one full-width top operation bar for mode/active parameters, one full-width bottom session bar for Reset and publication actions, and one uninterrupted rectangular editor exactly between them; session undo and redo ride the standard shortcuts routed per workspace rather than persistent footer buttons. Active Transform/Warp parameters stay visible; operation labels use transparent low-emphasis chrome and one pale-blue selected surface. More is the final control and contains Composition, Mesh, and Lens & maps as task-labeled advanced transforms plus secondary session, output-density, and language actions; its Perspective-only entries hide inside task workspaces, and More carries selected emphasis while an advanced workspace is active. Transform keeps Width -> Height -> Link, Skew X -> Skew Y, and Angle -> Placement as three continuous visual groups over one shared pair of parameter columns plus a dedicated 32 CSS-pixel action column, so all five sliders have equal screen-space widths of at least 110 CSS px and a narrower frequent-use domain than their precise numeric fields. Frequent transform commands are authority-rendered icon buttons with localized hover/focus tooltips; one repeatable clockwise 90-degree command covers the 180-degree and counter-clockwise equivalents by repeated presses, while its icon still depicts one object receiving one directional action rather than a continuous cycle. Placement replaces rather than overlays the parameter region and uses a right-facing enter arrow; down arrows remain reserved for dropdown/disclosure semantics. More, Close, Link, Check, workspace-tab, workspace-task, surface-entry, Flip, and Rotate product icons retain assets from the configured icon authority rather than font glyphs or locally drawn SVG paths. Repeat Last Transform is an explicit text command in More rather than an ambiguous repeat glyph. Every primary workspace navigation icon exposes the same localized name on pointer hover and keyboard focus without persistent visible labels; advanced entries expose names and task descriptions in More, and entering one returns focus to More. A bar-height change may refit or recenter the preview, but it leaves the canonical spec, recipe, pivot, and Warp value unchanged and keeps every finite handle center inside the editor safe inset. Zoom remains available by direct input and standard shortcuts without persistent zoom chrome. | Stale selection applies, state silently resets, failed work replaces a node, an over-limit raster is published, density fitting silently changes placement or aspect ratio, the size readout hides a fit or covers interaction, returning within budget leaves Apply disabled, technical metadata or a generic operation heading enters the task UI, nested selected chrome competes with the canvas, More leaves the workspace navigation, hides active-operation commands, or makes advanced work undiscoverable, semantic parameter siblings are split by an unrelated control, parameter rows use different column tracks or slider widths, duplicate rotation buttons expose outcomes already reachable by repetition, an icon exposes the repetition/cycle mechanism instead of the single action or lacks a localized hover/focus tooltip, Repeat Last Transform returns to an ambiguous glyph-only action, the bars float over or leave gaps beside the editor, a slider is too short for deliberate adjustment or silently clamps precise typed values, a down arrow falsely implies a dropdown for a replacing surface, a product icon is a font glyph or locally invented path, a primary workspace icon retains a visible text label or loses its localized hover/focus name, an advanced entry lacks its task description, keyboard focus is dropped after entering a workspace, layout reflow changes canonical geometry, a control covers a handle, Escape dismisses a transient surface and also cancels the edit, or a UI/main build transiently removes its sibling entrypoint, a new result covers an input or same-band page content, teleports past a wide frame or long row, a replacement moves, or publication frames the result alone without the producing inputs. |
 | Figma task workspaces | Sizes and Templates are primary replacing workspaces; Composition (`mockup`), Mesh, and Lens & maps (`remap`) enter from More as advanced replacing workspaces. All return to Perspective without entering `EditorMode` or changing the frozen operation order. Perspective remains the enabled keyboard and pointer recovery destination while a task source is refreshing or invalid; a final selection failure returns there with one error surface. Templates stores bounded canonical Composition/Canvas task values and correlates every save/delete response; storage read failure initializes a usable read-only fallback, rejects every mutation without calling storage, and leaving invalidates in-flight Use work. Sizes owns six canonical Canvas operations and 1..8 named outputs; Composition owns 1..8 explicit selected planes; Mesh owns a fixed-boundary 2..16 grid; Lens & maps owns explicit Lens or source-plus-map Displacement. Every preview consumes a canonical plan, every result retains its canonical spec, and all routes enforce the 4096-axis boundary and recoverable create/replace publication. Hidden workspaces are inert and Perspective state survives the round trip. | A task appends controls to Perspective, recomputes semantic math in TypeScript, silently chooses a map/plane/lens, an unrelated mutation completes a save/delete, a failed storage read permits an empty in-memory library to overwrite stored data, rejected storage blocks the rest of initialization, an async Use navigates after leaving, source loss leaves a disabled task selected or duplicates its error, direct manipulation is interrupted by rebuilding an active handle or leaves its last visible point outside history, a hidden workspace renders, stale selection applies, a duplicate template name saves an indistinguishable entry, failure leaves partial nodes, source generation is lost, or returning changes Perspective semantics. |
 | Perspective gesture semantics | After a 4 CSS-pixel intent threshold, the dominant physical drag axis locks until release. Horizontal drag changes only the dragged corner's x and gives its same-row corner the opposite x delta; vertical drag changes only the dragged corner's y and gives its same-column corner the opposite y delta. The other two corners and every unrelated coordinate remain fixed. Keyboard chooses the arrow axis directly; explicit Perspective mode and the Shift temporary inverse use the same gesture-start quad. | One gesture moves three corners, the pair switches under diagonal jitter, perpendicular coordinates drift, modifiers make an already-distorted quad jump, or an adapter invents a different mapping. |
 | Direct manipulation | Image geometry may zoom, but handles and pivot retain their declared screen-space visual and hit sizes at Fit, manual zoom, and post-release camera recovery. Distort keeps zoom fixed; away from the edge its camera pan stays fixed apart from core-derived scene/workspace offset. An outward pointer in the bounded edge zone causes capped compositor assistance only on active axes, while the editor compensates the frozen gesture mapping so the grabbed control remains coupled. Free may sustain edge pan; Perspective consumes one pair-normalized assist step per fresh active-axis pointer sample and settles while the pointer is still. Return, release, cancellation, capture loss, blur, and page hide stop it promptly. Exact release commits its final sample; interruption or a re-entry move with no pressed buttons closes at the last pressed sample. Post-release recovery and Fit may cross the ordinary 10% zoom floor, must keep every finite corner center inside the 16 px safe inset, and may not change geometry. | A parent compositor scale shrinks hit targets, edge motion starts without outward intent, a still Perspective pointer keeps expanding its pair, motion continues after return/release, a locked perpendicular axis pans, the grabbed control detaches, an older sample commits, Fit strands a corner at the ordinary zoom floor, a positive recovery is labeled 0%, or recovery changes canonical geometry. |
@@ -193,6 +194,27 @@ must disclose the substitution or any uncovered seam.
   panic, camelCase fields, and approximately `1e15` translation values;
 - switch Figma selection or source generation during export/apply, then verify
   the target, visible result, selection, undo state, and residual artifacts;
+  hold native lookup/import preflight pending and change the source; all
+  producing workspaces must reject without writing, then accept a fresh retry;
+- hold a selection export pending across several settled selection changes;
+  require only the newest queued source to export, with no stale source/error
+  delivered. Edit a linked source descendant during the initial export and
+  require invalidation even before the first prepared snapshot exists;
+- move the text caret and change the selected text range without changing
+  selected nodes; require no preview reload or draft invalidation, including
+  while an export is pending. A real content edit must still refresh even if
+  caret events continue; changing page or selecting away and back must reload;
+- complete Apply in Perspective and every producing task workspace, require
+  the source or source/result selection and draft controls to remain live,
+  make one local parameter edit, and publish a second result without reopening
+  or reselecting; before that edit, require one standard Undo to remove only
+  the fresh host result, and after it require Undo to resume local draft
+  history;
+- after replacing a selected result, deliver the host's own node-change
+  refresh and require the preview size/placement to match the saved output,
+  without compounding the just-applied transform. Result-only selection must
+  remain the same selection even when rendering resolves internal content;
+  verify that its pending host Undo survives the refresh;
 - enter Canvas with a non-default Perspective draft, create four aspect-ratio
   variants, return, and require exact Perspective state preservation; force a
   later Canvas-result failure and require zero created nodes, then verify one
@@ -206,6 +228,18 @@ must disclose the substitution or any uncovered seam.
   sizes, measure each handle and pivot with its final screen-space bounding box
   at Fit, manual zoom, and post-recovery zoom; a declared CSS width alone does
   not establish the hit target after ancestor transforms;
+- in the current built Figma panel, press each corner without moving the
+  pointer and sample its screen-space rectangle and transform during
+  `pointerdown`; require no coordinate jump, equal width and height, and the
+  same result after release. Repeat for a shared task direct point and the
+  Transform pivot so generic button feedback cannot replace geometry-owned
+  transforms;
+- render the current panel with Figma's `figma-light` and `figma-dark` host
+  classes and semantic variables. Require chrome and canvas tokens to update
+  without reload, keep the source/output HUDs and reference line legible, and
+  preserve geometry, selection, enabled state, and focus. A standalone preview
+  may exercise the system-color-scheme fallback but does not establish the
+  installed Figma host integration;
 - at the current Figma panel dimensions, inspect the default Distort surface,
   persistent Transform controls, persistent Warp controls, expanded Placement,
   the full-width bottom session bar, More menu, and the four canvas zoom
@@ -254,6 +288,10 @@ must disclose the substitution or any uncovered seam.
   restores focus to the trigger. A
   successful build with stale disclosed output or a rejected first-frame
   example is a runtime failure;
+- when changing the Figma sampler, run `pnpm test:figma-shader` with Chrome or
+  Chromium and inspect actual host pixels. The GPU check covers the shader's
+  premultiplied texture contract, interpolation, orientation and source bounds;
+  it does not establish parity after Figma's compositing or shape coverage;
 - run `pnpm test:remap-parity` on a release host with Chrome or Chromium and
   require actual native and WebGL Lens/Displacement pixels to remain within the
   script's declared standard/high-quality tolerances; a TypeScript-only formula
@@ -299,8 +337,7 @@ and the zero-model direct route for already structured input. Derive exact
 payloads, concurrency, duration, and instrumentation from current risk, and
 disclose any phase or host behavior not observed.
 
-Current historical measurements in `docs/CAMPAIGN_ANCHOR.md` are observations,
-not SLAs. The performance probe has no timing gate until the product declares a
+Historical performance measurements are observations, not SLAs. The performance probe has no timing gate until the product declares a
 reproducible workload and threshold. It fails only on correctness or benchmark
 integrity. A faster core number cannot compensate for unbounded queue/resource
 growth, unsafe effects, worse tail latency, or higher Agent context cost.
@@ -478,6 +515,67 @@ substitution status separately. Current provider-seeded conformance is not
 cross-provider evidence.
 
 ### Runtime human flow — Agent/Reviewer reports PASS, FAIL, or BLOCKED
+
+For the Figma output workflow, select a native source, then select and edit
+its text and move child elements on the Figma canvas. Require the whole-source
+preview, current transform draft and local history to survive. Publish both
+an independent editable Frame and a high-resolution image. Select either
+result alone after reopening; test update, new same-type and new other-type
+output. Verify stable update IDs, distinct new IDs and unchanged original
+content. Repeated image reopen/update must retain density without repeated
+multiplication or transformation. Editing its source with Worldbend closed
+must refresh the reopened preview, leaving the image unchanged until Update.
+Unsupported native output must leave HD output usable. Inspect all visible
+output labels, keyboard activation and footer layout in both locales.
+Check the built selection entry in both languages, light/dark host colors,
+and compact windows down to the 300 px host minimum: the empty illustration
+must identify the canvas selection workflow without fake controls; loading
+must replace it; invalid selections
+must retain the actual recovery text and a reachable, non-overlapping Restore
+action. Selecting valid content again must recover the normal editor.
+
+Delay optional renderer discovery beyond source export; require usable image
+preview/output immediately and correct Frame availability when discovery
+finishes before or after image decoding. Late replies must not reset a draft
+or enable another selection's output. Repeat HD output at unchanged source
+and resolution and compare actual PNG pixels while checking that only one
+full-resolution source read occurs. Refresh content, increase resolution,
+fail a read and deliver an obsolete reply; require fresh pixels, recovery and
+no stale publication or retained failed source.
+Use an opaque pale border around a contrasting interior and inspect actual
+GPU-rendered plane-edge pixels, including explicit flips and Warp. A dynamic
+sampling branch must not pull distant interior colors into that border.
+Check native logical bounds separately from the HD fit/reject preference.
+After publication from a descendant selection, the first document Undo must
+restore the result even if Desktop first replays a blurred field's text history.
+With a descendant still selected, change the native effect, invoke Restore
+transform, and require the repaired result preview and selection to survive.
+Leaving that result or changing its saved record during repair must prevent
+the write.
+Zoom dark and light artwork beneath source/size overlays and require fixed,
+crisp text with stable contrast; hover primary actions without losing contrast.
+
+For the native Figma carrier, follow `docs/FIGMA_HANDOFF.md`: provision
+and inspect an exact Shader build using real pixels, generate from a native
+Frame through visual controls, edit text/image fills with the plugin closed,
+reopen only the result, and compare the full source preview with the actual
+output. Include output smaller than the source so ancestor clipping cannot
+hide content during export. Verify stable IDs, parameter drift rejection,
+stale external handoff rejection, publication rollback, and host Undo/Redo of
+geometry plus shared records. Inspect native Figma Agent content edits and
+external MCP geometry edits separately; source tests cannot stand in for them.
+Include duplicate adoption without touching its original, native Resize/Scale
+and content reflow, nested parent placement and stale reparenting. Verify the
+actual visible mapping before and after an unchanged update of a resized
+Frame, including fractional dimensions. Use CENTER and SCALE constraints on
+native Content: creation, replacement and rollback must not move or resize it.
+Refresh an open plugin after an external Agent changes its shared operation;
+the next Apply must not revive the old mapping, a local draft must remain
+recoverable, and manual viewport navigation must survive the refresh. Verify the
+installed native MCP request preparer, the actual Figma request execution and
+the visual readback separately. A bundled renderer identity or an owned-account
+import does not prove that a designer can acquire the public effect. One Undo
+does not establish a usable multi-step host history.
 
 Exercise the real Web/Figma primary flow, cumulative mode changes, source
 replacement, Apply/Apply-as-New, Transform Again, undo/redo/reset/cancel,

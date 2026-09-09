@@ -9,6 +9,7 @@ members = [
   "crates/worldbend-cli",
   "crates/worldbend-mcp",
   "crates/worldbend-wasm",
+  "crates/worldbend-perspective-wasm",
 ]
 
 [workspace.package]

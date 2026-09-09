@@ -26,6 +26,14 @@ assert.deepEqual(marketplace.plugins[0].source, {
   path: "./plugins/worldbend",
 });
 
+// Host-owned projections use a namespaced marketplace. Resolve the actual
+// enabled Worldbend, not an inactive historical worldbend-local installation.
+const currentListing = await runJson("codex", ["plugin", "list", "--json"]);
+const enabledWorldbend = (currentListing.installed ?? []).filter(candidate => candidate.name === manifest.name && candidate.enabled);
+assert(enabledWorldbend.length <= 1, "Multiple Worldbend plugins are enabled; resolve their ownership before checking");
+if (install && enabledWorldbend[0]?.marketplaceName?.startsWith("agent-host-")) {
+  throw new Error("Agent Host owns the active Worldbend installation. Build package:agent-host and use component preview/import to update it; do not install a competing independent plugin.");
+}
 let installedPath;
 if (install) {
   let registered;
@@ -87,12 +95,13 @@ if (install) {
 const listing = await runJson("codex", [
   "plugin",
   "list",
-  "--marketplace",
-  marketplace.name,
   "--json",
 ]);
-const entry = listing.installed?.find((candidate) => candidate.name === manifest.name);
-assert(entry, "Worldbend is not installed from the local marketplace");
+const activeEntries = (listing.installed ?? []).filter(candidate => candidate.name === manifest.name && candidate.enabled);
+assert.equal(activeEntries.length, 1, "Exactly one Worldbend installation must be enabled");
+const entry = activeEntries[0];
+assert(entry.marketplaceName === marketplace.name || entry.marketplaceName?.startsWith("agent-host-"), "Worldbend is not installed from a supported owned marketplace");
+if (entry.marketplaceName !== marketplace.name) installedPath = undefined;
 assert.equal(entry.version, manifest.version);
 assert.equal(entry.enabled, true);
 if (entry.source?.path !== undefined) {

@@ -4,6 +4,10 @@ Worldbend's Figma runtime is self-contained. It needs Figma Desktop, but it
 does not need a source checkout, Node, pnpm, Rust, a local server, or network
 access at runtime.
 
+Designers should use the free [Community plugin](https://www.figma.com/community/plugin/1675767923532475446/worldbend).
+Figma delivers approved updates through that listing. The development archive
+below is for contributors and isolated verification, not the normal update path.
+
 ## Install an internal development build
 
 1. Obtain `worldbend-figma-<version>.zip` from an authorized private build.
@@ -56,10 +60,18 @@ before reporting its path, byte size, and SHA-256.
   transforms; their human labels do not change stored contract identities.
 - Select one locally exportable source layer. Image-filled Rectangles and
   Frames are covered by the current runtime flow.
-- Applying creates a raster Rectangle with an Image fill. The original source,
-  including editable Frame children, stays unchanged.
-- Select the original source together with a prior Worldbend result to
-  continue editing or replace that result in place.
+- New HD Image creates a raster Rectangle with an Image fill. The original
+  source stays unchanged. New Editable Frame is available
+  for supported clipped Frames when the companion effect is available; see
+  [FIGMA_HANDOFF.md](FIGMA_HANDOFF.md) for acquisition, rendering and Undo limits.
+- Select a saved result alone to reopen its source and transform. Update HD
+  Image or Update Frame replaces that result in place; either New action
+  creates an independent result. Legacy results without a source binding, or
+  results whose source was deleted, need a source selected together with them.
+  Invalid saved geometry requires starting again from the source.
+- Edit native Frame children directly on the Figma canvas. An HD image is a
+  stable snapshot: edits to its source appear in the reopened preview and
+  reach the image only when Update HD Image is chosen.
 - Four-corner manipulation lives in the plugin panel; the plugin does not
   pretend to provide native document-canvas transform handles.
 - Free Distort moves one corner. Perspective Distort locks to the first
@@ -77,8 +89,11 @@ or Chromium. It compares native and actual WebGL Lens/Displacement output at
 standard preview and high final-output quality; this supplements rather than
 replaces the exact Figma Desktop flows.
 
-If a workflow requires perspective-deformed text, components, constraints, or
-Frame children to remain editable, it is outside this raster product contract.
+HD images do not retain editable children. Editable Frames retain independent
+native content with a sampled perspective appearance; they do not turn text
+or vector paths into projectively deformed vector geometry. The companion effect
+is not bundled as an installable resource in this ZIP, so installing the plugin
+alone does not establish editable-output availability in another account.
 
 ## Free Community distribution
 
@@ -87,4 +102,4 @@ private GitHub repository or the internal ZIP. The Community listing is free:
 the plugin does not request Figma's Payments API, open checkout, require a
 trial, or collect payment details. See
 [`FIGMA_COMMUNITY_RELEASE.md`](FIGMA_COMMUNITY_RELEASE.md) for listing copy,
-privacy disclosure, required media, and the account-owned submission boundary.
+privacy disclosure, media, and submission checks.

@@ -90,6 +90,7 @@ export function createCanvasWorkspace(input: {
   let phase: WorkspacePhase = "idle";
   let planGeneration = 0;
   let undoRouted = false;
+  let appliedResultPending = false;
   let visibleError = "";
   let savingTemplate = false;
   let pendingTemplateRequestId: number | undefined;
@@ -197,6 +198,7 @@ export function createCanvasWorkspace(input: {
     sourceImage = image;
     sourceRgba = undefined;
     undoRouted = false;
+    if (!same) appliedResultPending = false;
     visibleError = "";
     savedNotice = false;
     if (!same || !draft) {
@@ -238,6 +240,7 @@ export function createCanvasWorkspace(input: {
     history = undefined;
     plan = undefined;
     phase = "idle";
+    appliedResultPending = false;
     visibleError = error;
     savedNotice = false;
     savingTemplate = false;
@@ -371,6 +374,7 @@ export function createCanvasWorkspace(input: {
     if (message.type === "apply-canvas-error") {
       if (!source || message.generation !== activeGeneration(source)) return true;
       phase = "ready";
+      appliedResultPending = false;
       visibleError = input.formatError(message.message);
       renderActivePreview();
       render();
@@ -378,7 +382,10 @@ export function createCanvasWorkspace(input: {
     }
     if (message.type === "apply-canvas-complete") {
       if (!source || message.generation !== activeGeneration(source)) return true;
-      phase = "applied";
+      // Publishing is non-terminal. Keep the original draft and every control
+      // live so another parameter variant can be generated immediately.
+      phase = "ready";
+      appliedResultPending = true;
       undoRouted = false;
       visibleError = "";
       render();
@@ -423,6 +430,7 @@ export function createCanvasWorkspace(input: {
     const result = handleWorkspaceHistoryShortcut({
       event,
       phase: shortcutPhase,
+      appliedResultPending,
       undoRouted,
       history,
       post: input.post,
@@ -440,6 +448,8 @@ export function createCanvasWorkspace(input: {
     draft = next;
     history?.push(next);
     phase = "ready";
+    appliedResultPending = false;
+    undoRouted = false;
     visibleError = "";
     render();
     void requestPlan();
@@ -550,6 +560,9 @@ export function createCanvasWorkspace(input: {
   function renderInspector(variant: CanvasVariantDraft, copy: CanvasWorkspaceCopy): void {
     view.variantId.value = variant.id;
     view.operation.value = variant.kind;
+    for (const button of view.operationChoices.querySelectorAll<HTMLButtonElement>("button[data-operation]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.operation === variant.kind));
+    }
     view.outputGroup.hidden = !["contain", "cover", "stretch"].includes(variant.kind);
     view.cropGroup.hidden = variant.kind !== "crop";
     view.trimGroup.hidden = variant.kind !== "trim";

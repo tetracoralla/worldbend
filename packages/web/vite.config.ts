@@ -8,9 +8,12 @@ export default defineConfig({
   build: {
     assetsInlineLimit: 10_000_000,
     lib: {
-      entry: path.join(directory, "src/index.ts"),
+      entry: {
+        index: path.join(directory, "src/index.ts"),
+        perspective: path.join(directory, "src/perspective.ts"),
+      },
       formats: ["es"],
-      fileName: "index",
+      fileName: (_format, entryName) => `${entryName}.js`,
     },
     sourcemap: false,
     emptyOutDir: true,

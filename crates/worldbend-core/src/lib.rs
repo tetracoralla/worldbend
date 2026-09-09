@@ -16,12 +16,16 @@ mod mockup;
 mod model;
 #[cfg(feature = "motion")]
 mod motion;
+#[cfg(feature = "css")]
+mod pose;
 #[cfg(feature = "program")]
 mod raster_program;
 mod rectify;
 #[cfg(feature = "remap")]
 mod remap;
 mod solver;
+#[cfg(feature = "css")]
+mod strip;
 #[cfg(feature = "surface-deformation")]
 mod surface_deformation;
 #[cfg(feature = "template")]
@@ -68,6 +72,8 @@ pub use motion::{
     FrameRate, MOTION_PLAN_SCHEMA, MOTION_SCHEMA, MOTION_VERSION, MotionEasing, MotionFrameTiming,
     MotionKeyframe, MotionPlan, MotionSpec, RationalTime, motion_timeline_spec, plan_motion,
 };
+#[cfg(feature = "css")]
+pub use pose::{PlanePose, PlanePoseInput, PlanePoseOutput, project_plane_pose};
 #[cfg(feature = "program")]
 pub use raster_program::{
     MAX_RASTER_PROGRAM_PIXELS, MAX_RASTER_PROGRAM_STAGES, RASTER_PROGRAM_INSPECTION_SCHEMA,
@@ -88,6 +94,10 @@ pub use solver::{
     Homography, InspectOutput, MatrixDiagnostics, ReprojectionDiagnostics, ReprojectionPoint,
     SolveDiagnostics, SolveOutput, inspect_spec, inverse_transform_point, solve_quad, solve_spec,
     transform_point,
+};
+#[cfg(feature = "css")]
+pub use strip::{
+    PlaneStripInput, PlaneStripItem, PlaneStripOutput, PlaneStripPanel, project_plane_strip,
 };
 #[cfg(feature = "surface-deformation")]
 pub use surface_deformation::{

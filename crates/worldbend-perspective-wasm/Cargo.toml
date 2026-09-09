@@ -1,0 +1,16 @@
+[package]
+name = "worldbend-perspective-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Small browser-only adapter for shared Worldbend perspective geometry"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+worldbend-core = { path = "../worldbend-core", default-features = false, features = ["css"] }
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true

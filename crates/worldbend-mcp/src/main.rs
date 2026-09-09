@@ -1,3 +1,4 @@
+mod figma_handoff;
 mod worker_limits;
 
 use clap::{Parser, ValueEnum};
@@ -39,14 +40,15 @@ use worldbend_agent_fs::{
 use worldbend_core::{
     AffineComposition, CanvasBackground, CanvasSetPlan, CanvasSetSpec, Content, Destination,
     ErrorCode, InspectOutput, MeshWarpPlan, MeshWarpSpec, MockupExtractPlan, MockupExtractSpec,
-    MockupPlan, MockupSpec, MotionPlan, MotionSpec, RasterProgramInspection, RasterProgramSpec,
-    RectifyPlan, RectifySpec, RemapPlan, RemapSpec, Size, SolveOutput, SpatialTemplateInspection,
+    MockupPlan, MockupSpec, MotionPlan, MotionSpec, PlanePoseInput, PlanePoseOutput,
+    PlaneStripInput, PlaneStripOutput, RasterProgramInspection, RasterProgramSpec, RectifyPlan,
+    RectifySpec, RemapPlan, RemapSpec, Size, SolveOutput, SpatialTemplateInspection,
     SpatialTemplateSpec, SurfaceDeformationPlan, SurfaceDeformationSpec, TimelinePlan,
     TimelineSpec, TransformError, TransformRecipe, TransformResult, TransformSpec,
     VariationJobPlan, VariationJobSpec, bounded_text, compose_affine, emit_css_transform,
     inspect_raster_program, inspect_spatial_template, inspect_spec, plan_mesh_warp, plan_mockup,
     plan_mockup_extract, plan_motion, plan_remap, plan_surface_deformation, plan_timeline,
-    plan_variation_job, rectify_plane, solve_spec,
+    plan_variation_job, project_plane_pose, project_plane_strip, rectify_plane, solve_spec,
 };
 use worldbend_interop::{
     MAX_PSD_SOURCE_BYTES, PsdSmartObjectRequest, PsdSmartObjectResponse,
@@ -849,6 +851,10 @@ struct CssInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 enum OperationId {
+    FigmaInspect,
+    FigmaApply,
+    PlaneStrip,
+    Pose,
     Compose,
     Solve,
     Inspect,
@@ -885,7 +891,11 @@ enum OperationId {
 }
 
 impl OperationId {
-    const ALL: [Self; 33] = [
+    const ALL: [Self; 37] = [
+        Self::FigmaInspect,
+        Self::FigmaApply,
+        Self::PlaneStrip,
+        Self::Pose,
         Self::Compose,
         Self::Solve,
         Self::Inspect,
@@ -923,6 +933,10 @@ impl OperationId {
 
     const fn id(self) -> &'static str {
         match self {
+            Self::FigmaInspect => "figma_inspect",
+            Self::FigmaApply => "figma_apply",
+            Self::PlaneStrip => "plane_strip",
+            Self::Pose => "pose",
             Self::Compose => "compose",
             Self::Solve => "solve",
             Self::Inspect => "inspect",
@@ -961,6 +975,10 @@ impl OperationId {
 
     const fn title(self) -> &'static str {
         match self {
+            Self::FigmaInspect => "Prepare an editable Figma inspection",
+            Self::FigmaApply => "Prepare an editable Figma update",
+            Self::PlaneStrip => "Place cards on one shared plane",
+            Self::Pose => "Pose a live plane",
             Self::Compose => "Compose transform",
             Self::Solve => "Solve projective plane",
             Self::Inspect => "Inspect projective plane",
@@ -999,6 +1017,18 @@ impl OperationId {
 
     const fn summary(self) -> &'static str {
         match self {
+            Self::FigmaInspect => {
+                "Prepare a bounded Figma use_figma request to read an editable result and visual preview. No Figma access until that tool runs."
+            }
+            Self::FigmaApply => {
+                "Solve geometry and prepare one stale-safe Figma update request from a current snapshot. Run the returned request with Figma use_figma to publish."
+            }
+            Self::PlaneStrip => {
+                "Partition one perspective mapping into ordered panels with aligned top/bottom edges, caller-chosen gaps and live CSS."
+            }
+            Self::Pose => {
+                "Turn explicit tilt angles and perspective into reusable four-corner geometry and live CSS for a card, video or DOM element."
+            }
             Self::Compose => {
                 "Compose explicit affine, flip, and bounded Warp values over a saved plane without rasterizing."
             }
@@ -1101,6 +1131,18 @@ impl OperationId {
 
     const fn search_terms(self) -> &'static str {
         match self {
+            Self::FigmaInspect => {
+                "figma editable native frame inspect preview handoff designer selection 设计稿 可编辑 交接"
+            }
+            Self::FigmaApply => {
+                "figma editable native frame apply update handoff designer perspective 设计稿 可编辑 更新 交接"
+            }
+            Self::PlaneStrip => {
+                "strip cards carousel row shared perspective plane collinear aligned edges gap video css dom 共线 边缘 轮播 卡片 透视"
+            }
+            Self::Pose => {
+                "pose perspective tilt rotateX rotateY rotateZ angle depth card video iframe dom web css projection 倾斜 透视 卡片 网页"
+            }
             Self::Compose => {
                 "compose transform scale rotate rotation skew translate pivot flip warp affine"
             }
@@ -2686,7 +2728,7 @@ impl WorldbendServer {
     /// Search the compact deterministic operation catalog.
     #[tool(
         name = "worldbend.search",
-        description = "Search Worldbend operation IDs by deterministic terms. Skip this call when the operation ID is already known.",
+        description = "Find Worldbend operations for live webpage perspective, shared-plane cards with collinear edges, explicit tilt, image placement, rectification or deformation. Skip when the operation ID is known.",
         annotations(
             title = "Search Worldbend operations",
             read_only_hint = true,
@@ -2729,7 +2771,7 @@ impl WorldbendServer {
     /// used by its direct compatibility tool.
     #[tool(
         name = "worldbend.run",
-        description = "Run one known Worldbend operation. Arguments are validated against that operation's exact closed schema; use describe only when needed. Assisted assessments never apply transforms implicitly.",
+        description = "Execute Worldbend geometry: plane_strip for aligned live cards, pose for tilt, css for DOM mapping. figma_inspect and figma_apply prepare bounded requests for the available Figma tool; they do not execute Figma changes. Exact closed arguments; describe only when needed. Assisted assessments never auto-apply.",
         annotations(
             title = "Run Worldbend operation",
             read_only_hint = false,
@@ -2749,6 +2791,26 @@ impl WorldbendServer {
         };
         let arguments = Parameters(input.arguments);
         match input.operation {
+            OperationId::FigmaInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaInspectInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::inspect),
+            )
+            .into_value(),
+            OperationId::FigmaApply => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaApplyInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::apply),
+            )
+            .into_value(),
+            OperationId::PlaneStrip => ToolEnvelope::from_result(
+                parse_tool_input::<PlaneStripInput>(Value::Object(arguments.0))
+                    .and_then(|input| project_plane_strip(&input)),
+            )
+            .into_value(),
+            OperationId::Pose => ToolEnvelope::from_result(
+                parse_tool_input::<PlanePoseInput>(Value::Object(arguments.0))
+                    .and_then(|input| project_plane_pose(&input)),
+            )
+            .into_value(),
             OperationId::Compose => self.compose(arguments).into_value(),
             OperationId::Solve => self.solve(arguments).into_value(),
             OperationId::Inspect => self.inspect(arguments).into_value(),
@@ -3916,7 +3978,7 @@ impl ServerHandler for WorldbendServer {
                 "Use one direct Worldbend tool for semantic transform composition, explicit destination geometry, explicit source-plane rectification, ordered Canvas Set rendering, bounded common Warp presets, inspection, render, or CSS. Canvas operations and variants are caller-chosen; Worldbend does not choose crops or infer content. Rectification requires caller-supplied source corners and output dimensions. Plane detection, aspect inference, and custom mesh warp are not provided. Corner order is always TL, TR, BR, BL."
             }
             ToolSurface::Catalog => {
-                "Call worldbend.run directly when the operation ID and arguments are known. Use worldbend.search only to find an unfamiliar operation and worldbend.describe only to fetch its exact closed schema. Worldbend executes caller-supplied deterministic geometry and Canvas programs; it does not choose crops, detect planes, infer dimensions, or plan creative work. Corner order is always TL, TR, BR, BL."
+                "Worldbend creates live webpage perspective for cards, videos, iframes and DOM, and reusable image mappings. Use plane_strip for adjacent cards sharing collinear top/bottom edges; pose for explicit tilt angles and perspective distance; css for a saved four-corner mapping. Agent-authored design parameters are valid inputs. Call worldbend.run for known operations; search for unfamiliar operations and describe for unknown schemas. Geometry and Canvas execution are deterministic; creative choice stays with the caller. Corner order is TL, TR, BR, BL."
             }
         };
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
@@ -7467,7 +7529,10 @@ where
     R: tokio::io::AsyncRead + Unpin,
 {
     let mut bytes = Vec::with_capacity(maximum.min(64 * 1024));
-    let mut chunk = [0_u8; 8 * 1024];
+    // Keep the bounded I/O buffer out of the Future's inline state. Two
+    // streams nested through join/select/timeout multiplied stack copies in
+    // unoptimized catalog renders and overflowed the Tokio worker stack.
+    let mut chunk = vec![0_u8; 8 * 1024];
     loop {
         let remaining = maximum.saturating_sub(bytes.len());
         let read_limit = remaining.saturating_add(1).min(chunk.len());
@@ -7573,6 +7638,14 @@ fn search_operation_catalog(input: SearchInput) -> TransformResult<SearchResult>
 
 fn describe_operation(operation: OperationId) -> OperationDescriptor {
     let (input_schema, output_schema) = match operation {
+        OperationId::FigmaInspect => {
+            operation_schemas::<figma_handoff::FigmaInspectInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaApply => {
+            operation_schemas::<figma_handoff::FigmaApplyInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::PlaneStrip => operation_schemas::<PlaneStripInput, PlaneStripOutput>(),
+        OperationId::Pose => operation_schemas::<PlanePoseInput, PlanePoseOutput>(),
         OperationId::Compose => operation_schemas::<ComposeInput, AffineComposition>(),
         OperationId::Solve => operation_schemas::<SolveInput, SolveOutput>(),
         OperationId::Inspect => operation_schemas::<InspectInput, InspectOutput>(),

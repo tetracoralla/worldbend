@@ -72,6 +72,7 @@ export function figmaBuildConfig(buildTarget: string): UserConfig {
             // only the Figma surface and route its WASM import through the
             // compressed single-file loader below.
             "@worldbend/web": path.join(workspace, "packages/web/src/index.ts"),
+            "@worldbend/wasm/perspective": path.join(directory, "src/figma-no-css-runtime.ts"),
             "@worldbend/wasm": path.join(directory, "src/figma-wasm-runtime.ts"),
             "@worldbend/wasm-bindings": figmaWasmBindings,
           },

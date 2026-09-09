@@ -1923,6 +1923,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "worldbend-perspective-wasm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "worldbend-core",
+]
+
+[[package]]
 name = "worldbend-render"
 version = "0.1.0"
 dependencies = [

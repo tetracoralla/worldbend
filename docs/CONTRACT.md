@@ -52,6 +52,12 @@ controls, handles, and curves are not part of v0.1.
 
 Unknown fields are rejected at every Agent-authored boundary.
 
+The opt-in editable Figma carrier and shared result/source handoff are owned
+by `docs/FIGMA_HANDOFF.md`. They consume this same TransformSpec and core
+inverse, preserving source orientation and corner identity. Visual controls,
+native content editing and multimodal Agent inspection are authoring surfaces;
+the serialized operation does not require a text-based human workflow.
+
 ## Explicit planar rectification data
 
 Rectification is a separate operation contract, not an optional
@@ -84,6 +90,20 @@ returns an identity output TransformSpec. Rasterization uses the same native
 inverse sampler, premultiplied-alpha filtering, limits, and atomic publication
 as ordinary render. Extending the mapping outside the selected source quad is
 not part of the rectification promise.
+
+## Explicit plane pose and shared strips
+
+Explicit tilt/perspective posing of one live plane and ordered shared-plane
+strips are authoring conveniences over the same `TransformSpec` and CSS
+adapter, not camera estimation or a second transform model. Pose values are
+caller-authored; the core rejects non-finite, out-of-range, and
+horizon-crossing poses with existing codes and never silently clamps,
+reorders, or flips corners. One strip partitions one solved plane into 1..32
+ordered panels whose top edges stay collinear and whose bottom edges stay
+collinear; any invalid panel rejects the complete plan with no partial
+results. Exact input order, units, carrier availability, live web binding
+ownership, and disposal semantics are owned by
+`docs/PLANE_POSE_CONTRACT.md`.
 
 ## Explicit Canvas and multi-output data
 
@@ -556,7 +576,7 @@ not own rectification mathematics.
 
 The 820 x 760 human panel is canvas-first. The selected source name is a
 quiet editor-corner readout, and the full-width bottom session bar keeps Reset
-at its left end and Apply at its right end because they act on the whole
+at its left end and publication actions at its right end because they act on the whole
 session rather than tune the active operation; session undo and redo are the
 standard shortcuts, not persistent footer buttons. The persistent workspace
 navigation sits above the operation bar, and object identity, operation
@@ -565,6 +585,67 @@ operation's continuous parameters share one persistent full-width top operation
 bar. The bars frame one uninterrupted
 rectangular editor and never overlay it. Free and Perspective Distort are
 direct peer choices inside Distort.
+The panel opts into Figma host theme colors. Figma's live semantic variables
+own ordinary chrome, while `figma-light` and `figma-dark` select the local
+canvas, checker, HUD, reference-line, and handle contrast tokens. Theme changes
+are presentation-only and require no plugin restart, persisted preference, or
+manual theme switch. A system-color-scheme media query is only the standalone
+preview fallback when the Figma host classes are absent.
+An empty selection shows a compact before/after design illustration and a
+localized instruction to select content on the Figma canvas, with a quiet
+hint that existing results can be reopened. The illustration is decorative,
+not an interactive sample. Loading and invalid selections have separate
+states; errors retain their specific recovery instructions and any Restore
+transform action in normal flow. Clearing a selection is not an error alert.
+Successful Apply is non-terminal. Publication keeps the producing source or
+source/result selection stable, returns the active workspace to its ready
+draft, and leaves Reset, Apply, and every valid editing control available so
+the designer can adjust parameters and publish another result immediately.
+The main-thread source snapshot remains observed and reusable after successful
+publication. A replacement updates the known output dimensions; the UI rebases
+subsequent host refreshes from the just-published frame so saved geometry is
+not applied twice. A refresh of the same selection preserves the pending host
+Undo route until a local edit or explicit undo consumes it.
+An external change to the saved mapping loads that new mapping rather than
+rebasing a stale one over it. A displaced unapplied Perspective draft remains
+recoverable through local Undo, with visible feedback. Same-selection refreshes
+preserve the designer's manual zoom/pan instead of forcing a new fit.
+Content-only refreshes also retain local edit history and affine control values;
+new source pixels do not establish a new geometry baseline.
+Before the next local edit, one standard Undo may still route to Figma's host
+history to remove the fresh result; the first local edit disarms that host
+route and resumes draft history. Completion text is assistive-only: the
+visible footer contains Reset and the output actions. Perspective exposes
+New Editable Frame and New HD Image from a source; a selected result also
+exposes Update Frame or Update HD Image. New output always preserves the
+selected result, including when keeping its type. Native output retains an
+independent Content clone; raster output is a stable snapshot linked to its
+producing source. Selecting descendants of the active Frame keeps that whole
+Frame as the session source while node edits refresh the preview. Closing the
+plugin stops preview refresh, not Figma's native content editing. Reopening
+resolves the latest source and saved geometry without publishing automatically.
+HD Transform output requests at least two pixels per document unit and keeps
+an already denser saved output; it never doubles the saved density per reopen.
+Correct retains its explicitly entered raster dimensions. Native availability
+or unsupported Warp/Correct disables only editable output. Other workspaces
+retain their existing task-specific Apply action.
+Editable output checks its logical Frame dimensions against 4096 per axis;
+HD raster density and its fit/reject preference cannot enable an oversized
+Frame or block an otherwise supported Frame. Host Undo uses the same active
+Frame context while its descendants are selected, including delayed host
+restoration, and stops repairing if selection leaves that context.
+Explicit Restore transform also resolves the containing result when its
+descendants remain selected; successful repair returns to that result's
+preview without changing the selection. Selection, generation and saved
+record are checked again before the write.
+Desktop text-history replay into a blurred field must not precede and consume
+the publication Undo; a focused field retains its native text-edit history.
+Source names and output dimensions are fixed interface overlays outside the
+zoomed scene. They retain their screen size and readable opaque backgrounds
+over both light and dark artwork, without blurred text shadows.
+The rendered canvas uses a neutral transparency checker in either host theme
+so both dark and light artwork remain inspectable. It is presentation-only;
+the surrounding editor chrome follows the host and exports retain source alpha.
 Operation labels use quiet, transparent chrome with one selected emphasis;
 nested background containers must not compete with the canvas. Transform and
 Warp parameters remain visible while their operation is active so a designer
@@ -625,9 +706,17 @@ Its stored-data and UI-message guards accept finite normalized destination
 coordinates outside `[0,1]`; they do not silently clamp a valid outward plane.
 Private plugin data is limited to adapter-local raster dimensions. One
 generation-tagged selection snapshot supplies source
-bytes, spec, target identity, and output dimensions for an apply. Selection or
+bytes, spec, target identity, and output dimensions for an apply. Text caret or
+range changes with the same page and ordered node selection preserve that
+snapshot and any pending content-refresh deadline. Actual selection or
 relevant node changes advance the generation on their leading edge and
-invalidate in-flight export/apply work before the debounced reload. Logical
+invalidate in-flight export/apply work before the debounced reload. Selection
+and source edits during asynchronous publication preflight still invalidate
+the request; only the actual host-write section suppresses self-generated
+node changes. Selection reloads share one asynchronous export queue: after the active load settles or
+times out, only the latest settled generation may start. Observe the source
+being exported, including linked sources during the first load, so edits in
+that window cannot install obsolete pixels. Logical
 transform geometry and Figma document placement remain distinct from raster
 density. The default `Fit to Figma` policy proportionally reduces only the
 published image pixels when either requested axis exceeds 4096 px; it preserves
@@ -677,9 +766,20 @@ planner uses a conservative per-triangle projective derivative bound; it never
 reconstructs a preset formula or substitutes an amount-based guess. That
 request is bounded to 4096 px per axis, timed out, and rejected if source
 identity, target identity, selection, or generation changes before completion.
+The Perspective UI may retain one decoded source at the exact requested
+dimensions for repeated Transform or Correct outputs in that same snapshot.
+Any selection/source reload invalidates it immediately; a failed or obsolete read
+cannot populate the slot. Reusing a denser or smaller raster across differing
+requests is not an equivalent sampling path. Optional native-renderer
+discovery runs independently of source delivery and cannot hold image preview
+or HD output readiness; its completion is tied to the current generation and
+source/result identities.
 The final renderer consumes that decoded source, uses mipmapped anisotropic
 filtering for minification and a high-quality cubic reconstruction fallback
 for magnified regions, and rasterizes only once.
+The WebGL transform renderer evaluates source gradients and mipmapped sampling
+before per-fragment UV/quality branches.
+Plane edges must not acquire colors from unrelated interior mip levels.
 
 This improves plugin-induced blur when a large or vector-backed Figma node was
 initially previewed near 1x. It cannot recreate pixels Figma discarded while
@@ -725,6 +825,10 @@ rule and commits that last visible point to its task history exactly once.
 If the iframe later receives a move for the owning pointer with `buttons == 0`,
 that is a release-recovery signal: close at the last pressed sample and do not
 apply the re-entry coordinate.
+Every corner, edge, pivot, and task direct-point control keeps an exact square
+screen-space hit box. Generic button hover and press motion never applies to
+these coordinate-bearing controls because replacing their transform would move
+the apparent geometry before the pointer itself moved.
 
 Preview zoom is a compositor transform rather than a per-frame canvas resize.
 It scales image geometry and control coordinates, while the declared handle and

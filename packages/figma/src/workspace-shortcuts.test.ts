@@ -23,7 +23,7 @@ describe("workspace history shortcuts", () => {
       key("z", { metaKey: true, shiftKey: true }),
       key("y", { ctrlKey: true }),
     ]) {
-      expect(handleWorkspaceHistoryShortcut({ event, phase: "ready", undoRouted: false, history, post, restore }).handled).toBe(true);
+      expect(handleWorkspaceHistoryShortcut({ event, phase: "ready", appliedResultPending: false, undoRouted: false, history, post, restore }).handled).toBe(true);
       expect(event.defaultPrevented).toBe(true);
     }
     expect(restore.mock.calls.map(([value]) => value)).toEqual(["undo", "redo", "redo"]);
@@ -34,7 +34,8 @@ describe("workspace history shortcuts", () => {
     const post = vi.fn();
     const first = handleWorkspaceHistoryShortcut({
       event: key("z", { metaKey: true }),
-      phase: "applied",
+      phase: "ready",
+      appliedResultPending: true,
       undoRouted: false,
       history: undefined,
       post,

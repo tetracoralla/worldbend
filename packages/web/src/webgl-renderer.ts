@@ -59,14 +59,20 @@ vec4 catmullRomSample(vec2 uv) {
 }
 
 void main() {
+  // Evaluate derivatives AND mip sampling before non-uniform UV/quality
+  // branches. Sampling inside them can select coarse mip levels at the plane
+  // boundary and bleed unrelated interior colors into an otherwise pale edge.
+  vec2 uvDx = dFdx(sourceUv);
+  vec2 uvDy = dFdy(sourceUv);
+  vec2 size = vec2(textureSize(sourceTexture, 0));
+  float footprint = max(length(uvDx * size), length(uvDy * size));
+  vec4 filtered = texture(sourceTexture, sourceUv);
   if (sourceUv.x < 0.0 || sourceUv.x > 1.0 || sourceUv.y < 0.0 || sourceUv.y > 1.0) {
     outputColor = vec4(0.0);
   } else {
-    vec2 texel = sourceUv * vec2(textureSize(sourceTexture, 0));
-    float footprint = max(length(dFdx(texel)), length(dFdy(texel)));
     outputColor = highQuality && footprint <= 1.0
       ? catmullRomSample(sourceUv)
-      : texture(sourceTexture, sourceUv);
+      : filtered;
   }
 }`;
 
