@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { writeDeterministicZip } from "./deterministic-zip.mjs";
+import { assertFigmaRuntimePrivacy } from "./build-privacy.mjs";
 import { writeFigmaLegalMaterial } from "./generate-plugin-legal.mjs";
 import {
   assertByteBudget,
@@ -55,6 +56,11 @@ if (manifest.main !== "dist/main.js" || manifest.ui !== "dist/ui.html") {
 for (const entry of runtimeEntries) {
   await assertRegularNonemptyFile(path.join(figmaRoot, entry));
 }
+assertFigmaRuntimePrivacy(
+  await readFile(path.join(figmaRoot, "dist/ui.html"), "utf8"),
+  await readFile(path.join(figmaRoot, "dist/main.js"), "utf8"),
+  [repositoryRoot],
+);
 const runtimeBytes = await sumFileBytes(figmaRoot, runtimeEntries);
 assertByteBudget(runtimeBytes, packageProfile.maxRuntimeBytes, "Figma runtime payload");
 const safeVersion = String(packageMetadata.version).replace(/[^0-9A-Za-z._-]/g, "-");

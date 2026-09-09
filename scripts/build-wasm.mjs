@@ -1,9 +1,10 @@
-import { access, mkdir, rm } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { platformExecutableName } from "./platform-tooling.mjs";
+import { assertNoPrivateBuildPaths, wasmBuildEnvironment } from "./build-privacy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindgen = path.join(
@@ -62,10 +63,11 @@ await run(bindgen, [
   "worldbend_wasm",
   "--typescript",
 ]);
+assertNoPrivateBuildPaths(await readFile(path.join(output, "worldbend_wasm_bg.wasm")), [root]);
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: "inherit" });
+    const child = spawn(command, args, { cwd: root, stdio: "inherit", env: wasmBuildEnvironment(root) });
     child.once("error", reject);
     child.once("exit", (code) => {
       if (code === 0) resolve();
