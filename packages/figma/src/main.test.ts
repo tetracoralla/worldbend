@@ -231,7 +231,9 @@ describe("Figma selection generations", () => {
     await vi.advanceTimersByTimeAsync(120);
     expect(second.exportAsync).toHaveBeenCalledTimes(1);
     secondBytes.resolve(new Uint8Array([2]));
-    await flushMicrotasks();
+    // Observe the completed event-loop turn, not a fixed number of Promise
+    // hops inside the export/renderer pipeline.
+    await vi.advanceTimersByTimeAsync(0);
     expect(posts).toContainEqual(
       expect.objectContaining({
         type: "source",
@@ -239,6 +241,7 @@ describe("Figma selection generations", () => {
         payload: expect.objectContaining({ sourceNodeId: "second" }),
       }),
     );
+    expect(posts).not.toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
   });
 
   it("turns a stalled native source export into a recoverable selection error", async () => {

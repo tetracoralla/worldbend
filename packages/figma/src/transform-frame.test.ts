@@ -10,6 +10,7 @@ import {
   frameFromComposition,
   frameFromSource,
   rebaseTransformFrame,
+  sameTransformFrame,
   TransformFrameError,
 } from "./transform-frame";
 
@@ -146,5 +147,36 @@ describe("Figma transform frame", () => {
       renderHeight: 200,
       placement: { x: 175, y: -20, width: 150, height: 400 },
     });
+  });
+
+  it("adopts an externally changed shared operation instead of reviving a stale draft", () => {
+    const previous = { spec: identitySpec(), renderWidth: 200, renderHeight: 160,
+      placement: { x: 500, y: 200, width: 200, height: 160 } };
+    const next = structuredClone(previous);
+    next.spec.destination.quad.tr = { x: .8, y: .1 };
+    const active = structuredClone(previous);
+    active.spec.destination.quad.bl = { x: .2, y: .9 };
+    expect(rebaseTransformFrame(previous, next, previous)).toEqual(next);
+    const adopted = rebaseTransformFrame(previous, next, active);
+    expect(adopted).toEqual(next);
+    adopted.spec.destination.quad.tr.x = .5;
+    expect(next.spec.destination.quad.tr.x).toBe(.8);
+    expect(active.spec.destination.quad.bl).toEqual({ x: .2, y: .9 });
+  });
+
+  it("recognizes a content-only refresh independently of optional defaults and JSON key order", () => {
+    const previous = { spec: identitySpec(), renderWidth: 200, renderHeight: 160,
+      placement: { x: 500, y: 200, width: 200, height: 160 } };
+    previous.spec.content.warp = { preset: "arc", amount: .25 };
+    const next = structuredClone(previous);
+    next.spec.content.orientation = "native";
+    next.spec.content.warp = { amount: .25, preset: "arc" };
+    next.placement = { height: 160, width: 200, y: 200, x: 500 };
+    expect(sameTransformFrame(previous, next)).toBe(true);
+    next.spec.content.warp.amount = .3;
+    expect(sameTransformFrame(previous, next)).toBe(false);
+    next.spec.content.warp.amount = .25;
+    next.placement.width = 200.25;
+    expect(sameTransformFrame(previous, next)).toBe(false);
   });
 });

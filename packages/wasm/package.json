@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./perspective": {
+      "types": "./pkg-perspective/worldbend_wasm.d.ts",
+      "import": "./pkg-perspective/worldbend_wasm.js"
+    },
     ".": {
       "types": "./pkg/worldbend_wasm.d.ts",
       "import": "./pkg/worldbend_wasm.js"
@@ -13,5 +17,5 @@
       "import": "./pkg-figma/worldbend_wasm.js"
     }
   },
-  "files": ["pkg", "pkg-figma"]
+  "files": ["pkg", "pkg-figma", "pkg-perspective"]
 }

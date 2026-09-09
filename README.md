@@ -15,8 +15,11 @@ contracts. PSD interoperability is bounded, read-only Smart Object inspection
 and Spatial Template projection rather than a Photoshop document editor.
 
 > Project status: the shared core and Agent toolchain remain an experimental
-> `0.1.0` commercial pre-release; the Figma carrier is preparing a `0.2.0`
-> Community update. Source is maintained in a private repository. The transform
+> `0.1.0` commercial pre-release. The Figma `0.3.0` package adds the HD image
+> and editable-result workflows in [FIGMA_HANDOFF.md](docs/FIGMA_HANDOFF.md).
+> Editable output requires the companion Worldbend Perspective effect; its
+> Community submission is under review. HD output works independently.
+> Source is maintained in a private repository. The transform
 > and error contracts are versioned, but compatibility guarantees may tighten
 > before `1.0.0`.
 
@@ -172,6 +175,17 @@ the adapter rejects larger results instead of silently reducing quality. The
 native CLI remains the explicit high-resolution route. See Figma's official
 [`createImage` reference](https://developers.figma.com/docs/plugins/api/properties/figma-createimage/).
 
+For live frontend cards, use `@worldbend/web/perspective`: `attachPlanePose`
+accepts tilt angles, `attachPerspective` accepts four corners, and
+`attachPerspectiveStrip` partitions a shared plane into adjacent cards with
+collinear edges. Bindings support resize, updates, last-valid recovery and
+disposal. `attachPointerTilt` adds bounded pointer interaction. See
+[`docs/PLANE_POSE_CONTRACT.md`](docs/PLANE_POSE_CONTRACT.md).
+`pnpm package:web` produces an independently installable local archive and a
+static shared-plane example under `artifacts/web/`; the Agent plugin includes
+an SDK-only archive at `skills/worldbend/assets/web/worldbend-web.tgz`. Fixed mappings can instead use
+one-shot MCP/CLI CSS output with no webpage runtime dependency.
+
 ## ComfyUI
 
 Build a self-contained package for the current platform:
@@ -209,8 +223,10 @@ widening the portable contract. See
 ## Limits and support boundary
 
 - raster render limits are enforced before allocation and publication;
-- Figma output is a raster Rectangle with an Image fill; the original editable
-  source stays intact;
+- Figma's default output is a raster Rectangle with an Image fill; the original
+  source stays intact. The editable-Frame carrier preserves native
+  children with a companion perspective effect; availability, rendering and Undo
+  limits are described in [the Figma handoff contract](docs/FIGMA_HANDOFF.md);
 - arbitrary semantic plane detection or automatic candidate application,
   unconstrained Liquify or inferred brush paths, camera estimation, 3D,
   content-aware crop or expansion, PSD writing/asset extraction/effect
@@ -240,3 +256,7 @@ Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing a private change.
 Report security problems only through the private route described in
 [`SECURITY.md`](SECURITY.md). Binary distributions retain the notices required
 by their bundled third-party dependencies.
+
+The product license status is recorded in [LICENSE-STATUS.md](LICENSE-STATUS.md).
+Keep task plans, review notes and local evidence in the ignored `.task-notes/`
+directory; they are not part of source or binary distribution.

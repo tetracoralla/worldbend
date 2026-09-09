@@ -1,5 +1,7 @@
-import { emitCssTransform } from "./bridge";
-import type { TransformSpec } from "./types";
+import { latestFrame } from "./latest-frame";
+import { emitCssTransform, projectPlanePose } from "./perspective-bridge";
+import { perspectiveOwners as owners } from "./binding-ownership";
+import type { CssTransform, PlanePose, TransformSpecInput } from "./types";
 
 export interface Disposable {
   dispose(): void;
@@ -9,12 +11,19 @@ export interface AttachPerspectiveOptions {
   onError?: (error: unknown) => void;
 }
 
+export interface PerspectiveBinding<T> extends Disposable {
+  /** Replace the complete input. False means invalid, hidden, disposed or superseded. */
+  update(input: T): Promise<boolean>;
+  /** Last successfully applied mapping; safe to save or reuse for raster export. */
+  getSpec(): TransformSpecInput | undefined;
+}
+
 interface LayoutSize {
   width: number;
   height: number;
 }
 
-function observedBorderBox(entry: ResizeObserverEntry): LayoutSize {
+export function observedBorderBox(entry: ResizeObserverEntry): LayoutSize {
   const boxes = entry.borderBoxSize;
   const box = Array.isArray(boxes) ? boxes[0] : boxes;
   if (box) {
@@ -49,51 +58,59 @@ function observedBorderBox(entry: ResizeObserverEntry): LayoutSize {
 export function attachPerspective(
   element: HTMLElement,
   container: HTMLElement,
-  spec: TransformSpec,
+  spec: TransformSpecInput,
   options: AttachPerspectiveOptions = {},
-): Disposable {
-  const attachedSpec = structuredClone(spec);
-  const previous = {
-    transform: element.style.transform,
-    transformOrigin: element.style.transformOrigin,
-    width: element.style.width,
-    height: element.style.height,
-  };
-  let generation = 0;
+): PerspectiveBinding<TransformSpecInput> {
+  return bindPerspective(element, container, spec, async (value, source, destination) => ({
+    spec: value,
+    css: await emitCssTransform(value, source, destination),
+  }), options);
+}
+
+/** Live tilt without hand-written matrix math. Ordinary CSS layout owns placement. */
+export function attachPlanePose(
+  element: HTMLElement,
+  pose: PlanePose,
+  options: AttachPerspectiveOptions = {},
+): PerspectiveBinding<PlanePose> {
+  return bindPerspective(element, element, pose, (value, size) =>
+    projectPlanePose({ elementSize: size, pose: value }), options);
+}
+
+function bindPerspective<T>(
+  element: HTMLElement,
+  container: HTMLElement,
+  initial: T,
+  compute: (input: T, source: LayoutSize, destination: LayoutSize) => Promise<{
+    spec: TransformSpecInput; css: CssTransform;
+  }>,
+  options: AttachPerspectiveOptions,
+): PerspectiveBinding<T> {
+  let input = structuredClone(initial);
+  owners.get(element)?.dispose();
+  const previous = ["transform", "transform-origin"].map((name) => ({
+    name, value: element.style.getPropertyValue(name), priority: element.style.getPropertyPriority(name),
+  }));
   let disposed = false;
+  let lastSpec: TransformSpecInput | undefined;
   let elementSize: LayoutSize | undefined;
   let destinationSize: LayoutSize | undefined;
-  const update = async (
-    currentElementSize: LayoutSize,
-    currentDestinationSize: LayoutSize,
-  ): Promise<void> => {
-    const current = ++generation;
-    // Hidden or collapsed boxes have nothing to compose yet; stay quiet and
-    // let the observer re-run once layout becomes real, instead of reporting
-    // a size error for a not-yet-visible mount.
-    if (
-      currentElementSize.width <= 0 ||
-      currentElementSize.height <= 0 ||
-      currentDestinationSize.width <= 0 ||
-      currentDestinationSize.height <= 0
-    ) {
-      return;
-    }
-    try {
-      const css = await emitCssTransform(
-        attachedSpec,
-        currentElementSize,
-        currentDestinationSize,
-      );
-      if (disposed || current !== generation) return;
-      element.style.transform = css.transform;
-      element.style.transformOrigin = css.transformOrigin;
-    } catch (error) {
-      if (disposed || current !== generation) return;
-      if (options.onError) options.onError(error);
-      else element.dispatchEvent(new CustomEvent("worldbenderror", { detail: error }));
-    }
+
+  const report = (error: unknown): void => {
+    if (options.onError) options.onError(error);
+    else element.dispatchEvent(new CustomEvent("worldbenderror", { detail: error }));
   };
+  const queue = latestFrame(async () => {
+    const source = elementSize;
+    const destination = destinationSize;
+    if (!source || !destination || source.width <= 0 || source.height <= 0 ||
+        destination.width <= 0 || destination.height <= 0) return undefined;
+    return compute(input, source, destination);
+  }, (result) => {
+    element.style.setProperty("transform", result.css.transform);
+    element.style.setProperty("transform-origin", result.css.transformOrigin);
+    lastSpec = structuredClone(result.spec);
+  }, report);
   const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
       // ResizeObserver box sizes are fractional layout boxes and deliberately
@@ -104,17 +121,30 @@ export function attachPerspective(
       if (entry.target === element) elementSize = size;
       if (entry.target === container) destinationSize = size;
     }
-    if (elementSize && destinationSize) void update(elementSize, destinationSize);
+    if (elementSize && destinationSize) void queue.request();
   });
   observer.observe(container, { box: "border-box" });
   if (element !== container) observer.observe(element, { box: "border-box" });
-  return {
+  const binding: PerspectiveBinding<T> = {
+    update(value) {
+      if (disposed) return Promise.resolve(false);
+      try { input = structuredClone(value); }
+      catch (error) { return queue.reject(error); }
+      return queue.request();
+    },
+    getSpec() { return lastSpec ? structuredClone(lastSpec) : undefined; },
     dispose() {
       if (disposed) return;
       disposed = true;
-      generation += 1;
+      queue.dispose();
       observer.disconnect();
-      Object.assign(element.style, previous);
+      for (const { name, value, priority } of previous) {
+        if (value) element.style.setProperty(name, value, priority);
+        else element.style.removeProperty(name);
+      }
+      if (owners.get(element) === binding) owners.delete(element);
     },
   };
+  owners.set(element, binding);
+  return binding;
 }

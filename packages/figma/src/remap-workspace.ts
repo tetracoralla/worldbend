@@ -10,6 +10,7 @@ import {
   createDesignerWorkspaceShell,
   fitPreviewCanvas,
   postDesignerResult,
+  sameDesignerSelection,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -33,7 +34,7 @@ export function createRemapWorkspace(input: {
   formatError(error: unknown): string;
 }): DesignerTaskWorkspace {
   const shell = createDesignerWorkspaceShell(input.root);
-  shell.inspector.innerHTML = `<label class="designer-field"><span data-role="mode-label"></span><select data-role="mode"><option value="lens"></option><option value="displacement"></option></select></label>
+  shell.inspector.innerHTML = `<div class="designer-field"><span id="remap-mode-label" data-role="mode-label"></span><select data-role="mode" class="sr-only" tabindex="-1" aria-hidden="true"><option value="lens"></option><option value="displacement"></option></select><div class="designer-segment" role="group" aria-labelledby="remap-mode-label" data-mode-choices><button type="button" data-remap-mode="lens"></button><button type="button" data-remap-mode="displacement"></button></div></div>
     <div class="designer-row"><label class="designer-field"><span data-role="width-label"></span><input data-role="width" type="number" min="1" max="4096"></label><label class="designer-field"><span data-role="height-label"></span><input data-role="height" type="number" min="1" max="4096"></label></div>
     <div data-role="lens">${remapRangeField("k1", -4, 4, -1, 1, .01)}${remapRangeField("k2", -4, 4, -1, 1, .01)}<div class="inspector-divider" aria-hidden="true"></div><button data-role="more" class="advanced-toggle" type="button" aria-expanded="false"><span data-role="more-label"></span><span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button><div data-role="advanced" hidden></div></div>
     <div data-role="displacement" hidden><div class="designer-row"><label class="designer-field"><span data-role="x-channel-label"></span><select data-role="x-channel"></select></label><label class="designer-field"><span data-role="y-channel-label"></span><select data-role="y-channel"></select></label></div>${remapRangeField("scale-x", -4096, 4096, -512, 512, 1)}${remapRangeField("scale-y", -4096, 4096, -512, 512, 1)}${remapRangeField("neutral", 0, 255, 0, 255, 1)}<label class="designer-field"><span data-role="boundary-label"></span><select data-role="boundary"></select></label></div>`;
@@ -42,9 +43,21 @@ export function createRemapWorkspace(input: {
   const renderer = new RemapWebGLRenderer(document.createElement("canvas"));
   shell.preview.append(renderer.canvas);
   const controls = controlMap(shell.inspector);
+  const modeChoices = Array.from(
+    shell.inspector.querySelectorAll<HTMLButtonElement>("button[data-remap-mode]"),
+  );
   fillSelect(controls["x-channel"] as HTMLSelectElement, ["red", "green", "blue", "alpha", "luminance"]);
   fillSelect(controls["y-channel"] as HTMLSelectElement, ["red", "green", "blue", "alpha", "luminance"]);
   fillSelect(controls["boundary"] as HTMLSelectElement, ["transparent", "clamp", "wrap"]);
+  for (const button of modeChoices) {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.remapMode;
+      const select = controls["mode"] as HTMLSelectElement;
+      if (!mode || select.value === mode) return;
+      select.value = mode;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
   let source: DesignerWorkspaceSource | undefined;
   let spec: RemapSpecInput | undefined;
   let baseline: RemapSpecInput | undefined;
@@ -54,6 +67,7 @@ export function createRemapWorkspace(input: {
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
+  let appliedResultPending = false;
   // Numeric edits preview live at paint cadence; the change event remains the
   // commit boundary that echoes values back into the fields.
   const liveFrames = createFrameCoalescer(() => void render(false));
@@ -65,6 +79,7 @@ export function createRemapWorkspace(input: {
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
     renderControls();
     void render(false);
   });
@@ -97,6 +112,7 @@ export function createRemapWorkspace(input: {
     if (!spec) return;
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
     const mode = (controls["mode"] as HTMLSelectElement).value;
     const output = { width: number("width"), height: number("height") };
     const operation: RemapOperation = mode === "lens"
@@ -116,6 +132,9 @@ export function createRemapWorkspace(input: {
     const operation = spec.operation;
     const lens = operation.kind === "lens";
     (controls["mode"] as HTMLSelectElement).value = operation.kind;
+    for (const button of modeChoices) {
+      button.setAttribute("aria-pressed", String(button.dataset.remapMode === operation.kind));
+    }
     role<HTMLElement>(shell.inspector, "lens").hidden = !lens;
     role<HTMLElement>(shell.inspector, "displacement").hidden = lens;
     if (operation.kind === "lens") {
@@ -125,7 +144,9 @@ export function createRemapWorkspace(input: {
       selectSet("x-channel", operation.xChannel); selectSet("y-channel", operation.yChannel);
       set("scale-x", operation.scaleXPixels); set("scale-y", operation.scaleYPixels); set("neutral", operation.neutral ?? 128); selectSet("boundary", operation.boundary ?? "transparent");
     }
-    (controls["mode"] as HTMLSelectElement).querySelector<HTMLOptionElement>('option[value="displacement"]')!.disabled = (source?.sources.length ?? 0) < 2;
+    const displacementUnavailable = (source?.sources.length ?? 0) < 2;
+    (controls["mode"] as HTMLSelectElement).querySelector<HTMLOptionElement>('option[value="displacement"]')!.disabled = displacementUnavailable;
+    modeChoices.find((button) => button.dataset.remapMode === "displacement")!.disabled = displacementUnavailable;
     shell.applyNew.hidden = !source?.targetNodeId;
   }
 
@@ -213,6 +234,7 @@ export function createRemapWorkspace(input: {
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
   }
 
   function restoreHistory(restored: RemapSpecInput): void {
@@ -225,6 +247,7 @@ export function createRemapWorkspace(input: {
     enter() { active = true; shell.root.hidden = false; void render(false); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
     setSource(next) {
       busy = false; shell.setBusy(false);
+      if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
       const first = next.sources[0]; if (!first) return;
       spec = next.task?.kind === "remap" ? structuredClone(next.task.spec) : defaultRemap(first.renderWidth, first.renderHeight, next.sources.length > 1);
@@ -234,11 +257,13 @@ export function createRemapWorkspace(input: {
       undoRouted = false;
       renderControls(); if (active) void render();
     },
-    clearSource(error) { busy = false; phase = "idle"; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
       const copy = input.copy(); shell.setCopy(copy);
       for (const [name, text] of [["mode-label", copy.mode], ["width-label", copy.width], ["height-label", copy.height], ["k1-label", copy.k1], ["k2-label", copy.k2], ["k3-label", copy.k3], ["p1-label", copy.p1], ["p2-label", copy.p2], ["center-x-label", copy.centerX], ["center-y-label", copy.centerY], ["lens-scale-x-label", copy.scaleX], ["lens-scale-y-label", copy.scaleY], ["x-channel-label", copy.xChannel], ["y-channel-label", copy.yChannel], ["scale-x-label", copy.scaleX], ["scale-y-label", copy.scaleY], ["neutral-label", copy.neutral], ["boundary-label", copy.boundary]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
       (controls["mode"] as HTMLSelectElement).options[0]!.textContent = copy.lens; (controls["mode"] as HTMLSelectElement).options[1]!.textContent = copy.displacement;
+      modeChoices[0]!.textContent = copy.lens;
+      modeChoices[1]!.textContent = copy.displacement;
       role<HTMLElement>(shell.inspector, "more-label").textContent = copy.more;
       localizeOptions(controls["x-channel"] as HTMLSelectElement, copy); localizeOptions(controls["y-channel"] as HTMLSelectElement, copy); localizeOptions(controls["boundary"] as HTMLSelectElement, copy);
     },
@@ -248,13 +273,13 @@ export function createRemapWorkspace(input: {
       busy = false;
       shell.setBusy(false);
       renderControls();
-      if (message.type === "apply-designer-error") { phase = "ready"; shell.showError(input.formatError(message.message)); }
-      else { phase = "applied"; shell.status.textContent = input.copy().applied; }
+      if (message.type === "apply-designer-error") { phase = "ready"; appliedResultPending = false; shell.showError(input.formatError(message.message)); }
+      else { phase = "ready"; appliedResultPending = true; undoRouted = false; shell.status.textContent = input.copy().applied; }
       return true;
     },
     handleKeydown(event) {
       if (event.key === "Escape") { event.preventDefault(); input.onBack(); return true; }
-      const result = handleWorkspaceHistoryShortcut({ event, phase, undoRouted, history, post: input.post, restore: restoreHistory });
+      const result = handleWorkspaceHistoryShortcut({ event, phase, appliedResultPending, undoRouted, history, post: input.post, restore: restoreHistory });
       undoRouted = result.undoRouted;
       return result.handled;
     }, dispose() { liveFrames.cancel(); renderer.dispose(); },

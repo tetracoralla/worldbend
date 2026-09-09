@@ -16,14 +16,15 @@ use std::{
 #[cfg(feature = "full")]
 use worldbend_core::{
     AffineComposition, CanvasPlan, CanvasSpec, CssTransform, Flip2D, MeshWarpPlan, MeshWarpSpec,
-    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, MotionPlan, MotionSpec, Point,
-    Quad, RasterProgramInspection, RasterProgramSpec, RectifyPlan, RemapPlan, Scale2D, Skew2D,
+    MockupExtractPlan, MockupExtractSpec, MockupPlan, MockupSpec, MotionPlan, MotionSpec,
+    PlanePoseInput, PlanePoseOutput, PlaneStripInput, PlaneStripOutput, Point, Quad,
+    RasterProgramInspection, RasterProgramSpec, RectifyPlan, RemapPlan, Scale2D, Skew2D,
     SolveOutput, SpatialTemplateInspection, SpatialTemplateSpec, SurfaceDeformationPlan,
     SurfaceDeformationSpec, TimelinePlan, TimelineSpec, TransformRecipe, VariationJobPlan,
     VariationJobSpec, WarpMesh, WarpPreset, WarpSpec, compose_affine, emit_css_transform,
     inspect_raster_program, inspect_spatial_template, plan_mesh_warp, plan_mockup,
     plan_mockup_extract, plan_motion, plan_surface_deformation, plan_timeline, plan_variation_job,
-    solve_spec,
+    project_plane_pose, project_plane_strip, solve_spec,
 };
 use worldbend_core::{
     CanvasBackground, CanvasSetPlan, CanvasSetSpec, ErrorCode, MAX_CANVAS_PIXELS,
@@ -781,6 +782,23 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Pose a live card, video or plane using explicit angles and perspective.
+    #[cfg(feature = "full")]
+    Pose {
+        /// JSON request containing elementSize and pose (same as MCP pose arguments).
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Divide a shared perspective plane into panels with collinear top/bottom edges.
+    #[cfg(feature = "full")]
+    PlaneStrip {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
     /// Emit a live-element CSS matrix3d transform.
     #[cfg(feature = "full")]
     Css {
@@ -910,6 +928,10 @@ struct Success<T: Serialize> {
 #[derive(JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct WebContract {
+    plane_strip_input: PlaneStripInput,
+    plane_strip_output: PlaneStripOutput,
+    plane_pose_input: PlanePoseInput,
+    plane_pose_output: PlanePoseOutput,
     transform_spec_input: TransformSpec,
     transform_recipe_input: TransformRecipe,
     affine_composition_output: AffineComposition,
@@ -1897,6 +1919,24 @@ fn run(command: Command) -> Result<Value, TransformError> {
             })
         }
         #[cfg(feature = "full")]
+        Command::PlaneStrip { input, json: _ } => {
+            let input: PlaneStripInput = read_json_file(&input, "plane strip")?;
+            to_value(Success {
+                ok: true,
+                operation: "plane_strip",
+                result: project_plane_strip(&input)?,
+            })
+        }
+        #[cfg(feature = "full")]
+        Command::Pose { input, json: _ } => {
+            let input: PlanePoseInput = read_json_file(&input, "plane pose")?;
+            to_value(Success {
+                ok: true,
+                operation: "pose",
+                result: project_plane_pose(&input)?,
+            })
+        }
+        #[cfg(feature = "full")]
         Command::Css {
             spec,
             element_size,
@@ -1986,6 +2026,10 @@ fn run(command: Command) -> Result<Value, TransformError> {
                 "tiledMediaRenderOptions": schema_for!(TiledMediaRenderOptions),
                 "tiledMediaManifest": schema_for!(worldbend_render::TiledMediaManifest),
                 "tiledMediaRenderResult": schema_for!(worldbend_render::TiledMediaRenderResult),
+                "planeStripInput": schema_for!(PlaneStripInput),
+                "planeStripOutput": schema_for!(PlaneStripOutput),
+                "planePoseInput": schema_for!(PlanePoseInput),
+                "planePoseOutput": schema_for!(PlanePoseOutput),
                 "cssTransform": schema_for!(CssTransform),
                 "transformError": schema_for!(TransformError),
                 "webContract": schema_for!(WebContract)

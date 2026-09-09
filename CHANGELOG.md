@@ -3,6 +3,29 @@
 All notable changes to Worldbend are documented here. Versioning begins with
 the first Figma Community release.
 
+## 0.3.0 - 2026-09-09
+
+### Figma continued editing
+
+- Added independent editable Frame output for supported sources with the
+  Worldbend Perspective companion effect, alongside stable HD images.
+- Reopen a saved result alone to continue its transform. Update that result or
+  create another Frame or image without overwriting the original.
+- Edit Frame children directly in Figma while preserving the plugin's active
+  preview and transform draft. HD images update only on explicit publication.
+- Improved HD source sampling and fixed colored fringes at projective edges.
+  Repeated unchanged HD output reuses its exact-resolution source.
+- Keep image previews usable while the optional editable effect is loading.
+- Added visual selection guidance, distinct loading/recovery states, host
+  theme support and compact layouts down to 300 px.
+
+### Support limits
+
+- Editable output preserves native content with a sampled appearance; it can
+  look softer than HD output and requires access to the companion effect.
+- Warp and Correct remain HD image workflows. Figma output is bounded to
+  4096 pixels per axis. Arbitrary document Undo sequences are not guaranteed.
+
 ## 0.2.0 - 2026-09-04
 
 ### Figma product loop

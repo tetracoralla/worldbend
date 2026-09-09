@@ -1,11 +1,14 @@
+import type { TransformSpec } from "@worldbend/web/types";
 import type {
   MainToUiMessage,
   SourcePayload,
   TemplateMutationReceipt,
   UiToMainMessage,
+  NativeApplyPayload,
 } from "./messages";
 import { isUiToMainMessage } from "./messages";
 import { withTimeout } from "./async-timeout";
+import { createLatestAsyncQueue } from "./latest-async-queue";
 import { createLocalePreferenceSettings } from "./locale-preference";
 import {
   LOCALE_STORAGE_KEY,
@@ -22,7 +25,12 @@ import {
   MAX_FIGMA_IMAGE_AXIS,
   RENDER_HEIGHT_KEY,
   RENDER_WIDTH_KEY,
+  SHARED_NAMESPACE,
 } from "./stored-plane";
+import { readStoredBinding, SHARED_BINDING_KEY, writeStoredBinding } from "./stored-binding";
+import { canUseNativeSource, loadNativeRenderer, nativeDocumentParts, nodePage, NativeRollbackIncompleteError, publishNativeResult, restoreNativeProjection,
+  nativePublicationUndoFor, matchesNativePublicationUndo, restoreNativePublicationUndo, type NativePublicationUndo } from "./native-document";
+import { readNativeProjection, readCopiedNativeProjection, SHARED_NATIVE_KEY } from "./native-projective";
 import {
   ownedCanvasOperationOutput,
 } from "./stored-canvas";
@@ -77,15 +85,61 @@ let preparedSelection:
       generation: number;
       payload: SourcePayload;
       selectedNodeIds: ReadonlySet<string>;
+      observedNodeIds: ReadonlySet<string>;
       ancestorNodeIds: ReadonlySet<string>;
     }
   | undefined;
 let applying = false;
+// Async preflight is not a write: user/source edits must still invalidate it.
+// Suppress our own host changes only after the last checked write boundary.
+let publishing = false;
+function beginPublication(): void {
+  publishing = true;
+  figma.commitUndo();
+}
 let observedPage = figma.currentPage;
+let selectionPageId = observedPage.id;
+let selectionNodeIds = observedPage.selection.map((node) => node.id);
+let editingSelection: readonly SceneNode[] = [];
+
+// Drilling into a selected Frame edits that frame's content. Keep its operation
+// and preview until selection leaves it; pixel changes still invalidate through
+// nodechange. This is a session anchor, never an A -> B synchronization link.
+function currentEditingSelection(): readonly SceneNode[] {
+  const selection = figma.currentPage.selection;
+  const anchor = editingSelection.length === 1 ? editingSelection[0] : undefined;
+  if (anchor?.type === "FRAME" && selectionIsInside(anchor)) return editingSelection;
+  editingSelection = [...selection];
+  return editingSelection;
+}
+
+function selectionIsInside(anchor: FrameNode): boolean {
+  const selection = figma.currentPage.selection;
+  return !anchor.removed && nodePage(anchor)?.id === figma.currentPage.id &&
+    selection.length > 0 && selection.every((selected) => {
+      let node: BaseNode | null = selected;
+      while (node && node.type !== "PAGE" && node.type !== "DOCUMENT") {
+        if (node.id === anchor.id) return true;
+        node = node.parent;
+      }
+      return false;
+    });
+}
 let loadSelectionTimer: ReturnType<typeof setTimeout> | undefined;
 // True while a (re)load is scheduled but not started. Applies in this window
 // would race a reload whose pixels are about to become stale.
 let reloadScheduled = false;
+let observeNativeUndo: (() => void) | undefined;
+let loadingSelection: {
+  observedNodeIds: ReadonlySet<string>; ancestorNodeIds: ReadonlySet<string>;
+} | undefined;
+
+function observeLoadingSelection(nodes: readonly SceneNode[]): void {
+  loadingSelection = {
+    observedNodeIds: new Set([...(loadingSelection?.observedNodeIds ?? []), ...nodes.map((node) => node.id)]),
+    ancestorNodeIds: new Set([...(loadingSelection?.ancestorNodeIds ?? []), ...selectionAncestorIds(nodes)]),
+  };
+}
 
 // Marquee drags and panel edits fire selection/node changes far faster than
 // once per frame, and each load rasterizes the source. Coalesce the storms;
@@ -122,8 +176,15 @@ figma.ui.onmessage = (message: unknown) => {
     return;
   }
   if (message.type === "trigger-undo") {
-    figma.triggerUndo();
-    scheduleLoadSelection();
+    void undoInHost();
+    return;
+  }
+  if (message.type === "restore-native") {
+    void restoreNativeSelection(message);
+    return;
+  }
+  if (message.type === "apply-native") {
+    void applyNativeResult(message.payload);
     return;
   }
   if (message.type === "save-template") {
@@ -253,6 +314,7 @@ function setLocalePreference(preference: LocalePreference): void {
 }
 
 function scheduleLoadSelection(): void {
+  rememberSelectionIdentity();
   // Advancing the generation on the leading edge invalidates in-flight
   // exports and apply responses immediately. Waiting until the debounce fires
   // would let stale work from the previous selection land in the UI.
@@ -265,7 +327,7 @@ function scheduleLoadSelection(): void {
     post({
       type: "selection-loading",
       generation: selectionGeneration,
-      nodeIds: figma.currentPage.selection.map((node) => node.id),
+      nodeIds: currentEditingSelection().map((node) => node.id),
     });
   }
   const generation = selectionGeneration;
@@ -279,6 +341,7 @@ function scheduleLoadSelection(): void {
 }
 
 function loadSelectionNow(): void {
+  rememberSelectionIdentity();
   if (loadSelectionTimer !== undefined) {
     clearTimeout(loadSelectionTimer);
     loadSelectionTimer = undefined;
@@ -288,8 +351,20 @@ function loadSelectionNow(): void {
   void loadSelection(generation);
 }
 
-async function loadSelection(generation: number): Promise<void> {
-  const selection = [...figma.currentPage.selection];
+const selectionLoads = createLatestAsyncQueue(async (generation: number) => {
+  if (generation === selectionGeneration) await loadSelectionSnapshot(generation);
+});
+
+function loadSelection(generation: number): void {
+  // Figma exports cannot be cancelled. Keep one selection export active and
+  // replace pending work with the latest settled selection instead of piling
+  // up rasterizations while the designer types, resizes or switches layers.
+  selectionLoads.request(generation);
+}
+
+async function loadSelectionSnapshot(generation: number): Promise<void> {
+  const selection = [...currentEditingSelection()];
+  observeLoadingSelection(selection);
   // The previous snapshot stays installed until the new one is ready so that
   // node changes landing inside the export window still invalidate through
   // it; applies during the window are rejected by the generation mismatch in
@@ -300,27 +375,175 @@ async function loadSelection(generation: number): Promise<void> {
     nodeIds: selection.map((node) => node.id),
   });
   try {
-    const payload = await selectionPayload(selection);
+    const { payload, rendererRequest } = await selectionPayload(selection);
+    const sourceIds = payload.sources?.map((source) => source.sourceNodeId) ?? [payload.sourceNodeId];
+    const selectedSources = sourceIds.map((id) => selection.find((node) => node.id === id));
+    const sources = selectedSources.every((node) => node !== undefined)
+      ? selectedSources
+      : await Promise.all(sourceIds.map((id) => figma.getNodeByIdAsync(id)));
     if (generation !== selectionGeneration) return;
+    if (!sources.every((node): node is SceneNode => node !== null && isSceneNode(node))) {
+      throw userError("linkedSourceUnavailable");
+    }
     preparedSelection = {
       generation,
       payload,
       selectedNodeIds: new Set(selection.map((node) => node.id)),
-      ancestorNodeIds: selectionAncestorIds(selection),
+      observedNodeIds: new Set([...selection, ...sources].map((node) => node.id)),
+      ancestorNodeIds: selectionAncestorIds([...selection, ...sources]),
     };
     post({ type: "source", generation, payload });
+    if (payload.nativeRendererPending && rendererRequest) {
+      // Optional effect discovery must not occupy the source-export queue.
+      // Retain only identities, not each obsolete snapshot's PNG bytes while
+      // a shared import is pending across many content/selection refreshes.
+      const { sourceNodeId, targetNodeId } = payload;
+      void rendererRequest.then((renderer) => {
+        const installed = preparedSelection?.payload;
+        if (generation !== selectionGeneration || !installed || installed.sourceNodeId !== sourceNodeId ||
+          installed.targetNodeId !== targetNodeId) return;
+        if (renderer) installed.nativeRenderer = renderer;
+        else delete installed.nativeRenderer;
+        delete installed.nativeRendererPending;
+        post({ type: "source-renderer", generation, sourceNodeId,
+          ...(targetNodeId ? { targetNodeId } : {}),
+          ...(renderer ? { renderer } : {}),
+        });
+      });
+    }
   } catch (error) {
     if (generation !== selectionGeneration) return;
+    // A broken wrapper must not trap selection inside its failed context;
+    // selecting Content is also an explicit recovery route.
+    editingSelection = [];
+    const node = selection.length === 1 ? selection[0] : undefined;
+    const message = toUserMessage(error, "previewFailed");
+    const recovery = message.key === "nativeResultChanged" && node?.type === "FRAME" && readNativeProjection(node)
+      ? { nodeId: node.id, expected: node.getSharedPluginData(SHARED_NAMESPACE, SHARED_NATIVE_KEY) } : undefined;
     post({
       type: "selection-error",
       generation,
-      message: toUserMessage(error, "previewFailed"),
+      message,
+      ...(recovery ? { nativeRecovery: recovery } : {}),
     });
+  } finally {
+    loadingSelection = undefined;
   }
 }
 
-async function selectionPayload(selection: readonly SceneNode[]): Promise<SourcePayload> {
-  if (selection.length < 1 || selection.length > 9) throw userError("selectOneOrPair");
+async function undoInHost(): Promise<void> {
+  if (applying) return;
+  const selected = currentEditingSelection();
+  const result = selected.length === 1 && selected[0]?.type === "FRAME" ? selected[0] : undefined;
+  const before = result && readNativeProjection(result);
+  const revision = result && readStoredBinding(result)?.revision;
+  if (!result || !before || revision === undefined) {
+    figma.triggerUndo();
+    scheduleLoadSelection();
+    return;
+  }
+  applying = true;
+  try {
+    const publicationUndo = nativePublicationUndoFor(result);
+    publishing = true;
+    await triggerNativeUndoAndWait(result, before, revision, publicationUndo);
+    if (publicationUndo && matchesNativePublicationUndo(result, publicationUndo)) {
+      await restoreNativePublicationUndo(result, publicationUndo, () => {
+        if (!editingSelectionMatchesNode(result.id)) throw userError("selectionChanged");
+      });
+      return;
+    }
+    const after = result && !result.removed && readNativeProjection(result);
+    if (result && before && after && revision !== undefined &&
+      readStoredBinding(result)?.revision === revision - 1 &&
+      before.contentNodeId === after.contentNodeId && before.surfaceNodeId === after.surfaceNodeId) {
+      try { await nativeDocumentParts(result); }
+      catch {
+        const expected = JSON.stringify(after);
+        await restoreNativeProjection(result, () => {
+          if (JSON.stringify(readNativeProjection(result)) !== expected ||
+            !editingSelectionMatchesNode(result.id)) throw userError("selectionChanged");
+        });
+      }
+    }
+  } catch (error) {
+    post({ type: "apply-error", generation: selectionGeneration, message: toUserMessage(error, "nativeApplyFailed") });
+  } finally { applying = false; publishing = false; scheduleLoadSelection(); }
+}
+
+function triggerNativeUndoAndWait(
+  result: FrameNode,
+  before: NonNullable<ReturnType<typeof readNativeProjection>>,
+  revision: number,
+  publicationUndo?: NativePublicationUndo,
+): Promise<void> {
+  const page = figma.currentPage;
+  return new Promise((resolve, reject) => {
+    let checkTimer: ReturnType<typeof setTimeout> | undefined;
+    // Events drive completion; the deadline only bounds an absent/unsupported
+    // host notification. Later mismatches retain the explicit recovery route.
+    const deadline = setTimeout(() => finish(), 1000);
+    const finish = (error?: unknown) => {
+      clearTimeout(deadline);
+      if (checkTimer !== undefined) clearTimeout(checkTimer);
+      observeNativeUndo = undefined;
+      if (error !== undefined) reject(error); else resolve();
+    };
+    const check = () => {
+      checkTimer = undefined;
+      if (result.removed || figma.currentPage.id !== page.id ||
+        !editingSelectionMatchesNode(result.id)) {
+        finish(userError("selectionChanged"));
+        return;
+      }
+      const after = readNativeProjection(result);
+      if (publicationUndo && matchesNativePublicationUndo(result, publicationUndo)) finish();
+      else if (after && readStoredBinding(result)?.revision === revision - 1 &&
+        after.contentNodeId === before.contentNodeId && after.surfaceNodeId === before.surfaceNodeId) finish();
+    };
+    observeNativeUndo = () => {
+      // Coalesce host changes before inspecting the matching record/binding.
+      if (checkTimer === undefined) checkTimer = setTimeout(check, 0);
+    };
+    try { figma.triggerUndo(); observeNativeUndo(); }
+    catch (error) { finish(error); }
+  });
+}
+
+async function restoreNativeSelection(request: Extract<UiToMainMessage, { type: "restore-native" }>): Promise<void> {
+  if (applying) return;
+  // A failed preview releases the session anchor so Content can be selected
+  // independently. Its offered repair still belongs to the containing result.
+  let selected: BaseNode | null = figma.currentPage.selection[0] ?? null;
+  while (selected && selected.id !== request.nodeId && selected.type !== "PAGE" && selected.type !== "DOCUMENT") {
+    selected = selected.parent;
+  }
+  const node = selected?.type === "FRAME" ? selected : undefined;
+  applying = true;
+  try {
+    const check = () => {
+      if (request.generation !== selectionGeneration ||
+        !node || node.id !== request.nodeId || !selectionIsInside(node) ||
+        node.getSharedPluginData(SHARED_NAMESPACE, SHARED_NATIVE_KEY) !== request.expected) throw userError("selectionChanged");
+    };
+    check();
+    if (node?.type !== "FRAME") throw userError("nativeResultChanged");
+    await restoreNativeProjection(node, () => { check(); beginPublication(); });
+    figma.commitUndo();
+    editingSelection = [node];
+  } catch (error) {
+    post({ type: "apply-error", generation: request.generation, message: toUserMessage(error, "nativeApplyFailed") });
+  } finally { applying = false; publishing = false; loadSelectionNow(); }
+}
+
+type SelectionPreview = {
+  payload: SourcePayload;
+  rendererRequest: ReturnType<typeof loadNativeRenderer> | undefined;
+};
+
+async function selectionPayload(selection: readonly SceneNode[]): Promise<SelectionPreview> {
+  if (selection.length === 0) throw userError("selectOneSource");
+  if (selection.length > 9) throw userError("selectOneOrPair");
   const candidates = selection.map((node) => ({ node, stored: readStoredOperation(node) }));
   if (candidates.some((candidate) => candidate.stored.status === "invalid")) {
     throw userError("invalidReusablePlane");
@@ -328,14 +551,40 @@ async function selectionPayload(selection: readonly SceneNode[]): Promise<Source
   const targets = candidates.filter((candidate) => candidate.stored.status === "valid");
   if (targets.length > 1) throw userError("selectOneSourceAndResult");
   if (targets.length === 0) {
+    if (selection.some((node) => node.getSharedPluginData(SHARED_NAMESPACE, SHARED_BINDING_KEY) ||
+      node.getSharedPluginData(SHARED_NAMESPACE, SHARED_NATIVE_KEY))) throw userError("invalidReusablePlane");
     if (selection.length > 8) throw userError("selectOneOrPair");
     return exportSources(selection);
   }
   const target = targets[0]!;
+  if (target.stored.status === "valid" && target.stored.operation.kind === "transform" && target.node.type === "FRAME") {
+    let content: FrameNode;
+    let spec: TransformSpec;
+    try {
+      ({ content, spec } = await nativeDocumentParts(target.node));
+    } catch { throw userError("nativeResultChanged"); }
+    if (selection.some((node) => node.id !== target.node.id && node.id !== content.id)) throw userError("selectOneSourceAndResult");
+    const preview = await exportSources([content], target.node, { kind: "transform", spec });
+    preview.payload.nativeTarget = true;
+    return preview;
+  }
   if (target.stored.status !== "valid" || target.node.type !== "RECTANGLE") {
     throw userError("resultNotReplaceable");
   }
-  const sources = candidates.filter((candidate) => candidate.node.id !== target.node.id).map((candidate) => candidate.node);
+  let sources = candidates.filter((candidate) => candidate.node.id !== target.node.id).map((candidate) => candidate.node);
+  const binding = readStoredBinding(target.node);
+  if (sources.length === 0) {
+    if (!binding) throw userError("selectOneSourceAndResult");
+    const resolved = await Promise.all(binding.sourceNodeIds.map((id) => figma.getNodeByIdAsync(id)));
+    if (!resolved.every((node): node is SceneNode =>
+      node !== null && isSceneNode(node) && nodePage(node)?.id === figma.currentPage.id)) {
+      throw userError("linkedSourceUnavailable");
+    }
+    sources = resolved;
+  } else if (binding && sameIds(sources.map((source) => source.id), binding.sourceNodeIds)) {
+    // Selection order is not source-slot order (especially after a marquee).
+    sources = binding.sourceNodeIds.map((id) => sources.find((source) => source.id === id)!);
+  }
   if (sources.length < 1 || sources.length > 8) throw userError("selectOneSourceAndResult");
   if (target.stored.operation.kind !== "task" && sources.length !== 1) {
     throw userError("selectOneSourceAndResult");
@@ -348,37 +597,55 @@ async function selectionPayload(selection: readonly SceneNode[]): Promise<Source
 
 async function exportSources(
   sources: readonly SceneNode[],
-  target?: RectangleNode,
+  target?: RectangleNode | FrameNode,
   storedOperation?: StoredOperation,
-): Promise<SourcePayload> {
+): Promise<SelectionPreview> {
+  // Observe the source being read too, including a linked source outside the
+  // selected result. This also protects the very first export before a
+  // prepared snapshot exists.
+  observeLoadingSelection(sources);
   const rasterTarget = storedOperation?.kind === "transform" || storedOperation?.kind === "rectify"
     ? target
     : undefined;
-  const rasterTargetSize = rasterTarget ? storedRasterSize(rasterTarget) : undefined;
+  const nativeRecord = target?.type === "FRAME" ? (readNativeProjection(target) ?? readCopiedNativeProjection(target)) : undefined;
+  const rasterTargetSize = nativeRecord && target
+    ? { width: Math.ceil(target.width), height: Math.ceil(target.height) }
+    : rasterTarget ? storedRasterSize(rasterTarget) : undefined;
+  let nativeRenderer: SourcePayload["nativeRenderer"];
+  let rendererPending = false;
+  const rendererRequest = sources.length === 1 && canUseNativeSource(sources[0]!)
+    ? loadNativeRenderer(figma.currentPage, nativeRecord?.shaderId, "publish").catch(() => undefined).then((renderer) => {
+        rendererPending = false;
+        nativeRenderer = renderer;
+        return renderer;
+      }) : undefined;
+  rendererPending = Boolean(rendererRequest);
   const rasters = await Promise.all(sources.map((source, index) => exportSourceRaster(
-    source,
-    index === 0 ? rasterTarget : undefined,
-    index === 0 ? rasterTargetSize : undefined,
-  )));
+      source,
+      index === 0 ? rasterTarget : undefined,
+      index === 0 ? rasterTargetSize : undefined,
+    )));
   const first = rasters[0];
   if (!first) throw userError("selectOneSource");
   const targetBox = target?.absoluteBoundingBox;
   const primary = targetBox && targetBox.width > 0 && targetBox.height > 0
     ? { ...first, placement: { x: targetBox.x, y: targetBox.y, width: targetBox.width, height: targetBox.height } }
     : first;
-  return {
+  return { rendererRequest, payload: {
     ...primary,
+    ...(nativeRenderer ? { nativeRenderer } : {}),
+    ...(rendererPending ? { nativeRendererPending: true } : {}),
     ...(rasters.length > 1 || storedOperation?.kind === "task" ? { sources: rasters } : {}),
     ...(storedOperation?.kind === "transform" && target ? { spec: storedOperation.spec, targetNodeId: target.id } : {}),
     ...(storedOperation?.kind === "rectify" && target ? { rectification: storedOperation.spec, targetNodeId: target.id } : {}),
     ...(storedOperation?.kind === "canvas" && target ? { canvas: storedOperation.spec, targetNodeId: target.id } : {}),
     ...(storedOperation?.kind === "task" && target ? { task: storedOperation.task, targetNodeId: target.id } : {}),
-  };
+  } };
 }
 
 async function exportSourceRaster(
   source: SceneNode,
-  target?: RectangleNode,
+  target?: RectangleNode | FrameNode,
   targetRasterSize?: { width: number; height: number },
 ): Promise<SourcePayload> {
   const box = source.absoluteBoundingBox;
@@ -408,6 +675,9 @@ async function exportSourceRaster(
   const bytes = await withTimeout(
     source.exportAsync({
       format: "PNG",
+      // Native Content may extend beyond its result's output clip. Export
+      // its full view box so reopening cannot silently crop the source.
+      ...(canUseNativeSource(source) ? { useAbsoluteBounds: true } : {}),
       constraint: { type: "SCALE", value: exportScale },
     }),
     SOURCE_EXPORT_TIMEOUT_MS,
@@ -470,6 +740,7 @@ async function refreshSourceRaster(
     const bytes = await withTimeout(
       source.exportAsync({
         format: "PNG",
+        ...(canUseNativeSource(source) ? { useAbsoluteBounds: true } : {}),
         constraint: { type: "SCALE", value: exportScale },
       }),
       SOURCE_EXPORT_TIMEOUT_MS,
@@ -496,6 +767,46 @@ async function refreshSourceRaster(
       message: toUserMessage(error, "previewFailed"),
     });
   }
+}
+
+async function applyNativeResult(payload: NativeApplyPayload): Promise<void> {
+  const generation = payload.generation;
+  if (applying) {
+    post({ type: "apply-error", generation, message: userMessage("applyAlreadyInProgress") });
+    return;
+  }
+  applying = true;
+  try {
+    const prepared = requirePreparedSelection(payload);
+    const [source, renderer, target] = await Promise.all([
+      figma.getNodeByIdAsync(payload.sourceNodeId),
+      loadNativeRenderer(figma.currentPage, prepared.nativeRenderer?.id),
+      payload.targetNodeId ? figma.getNodeByIdAsync(payload.targetNodeId) : undefined,
+    ]);
+    if (generation !== selectionGeneration || reloadScheduled || !selectionMatches(payload.sourceNodeId, payload.targetNodeId)) {
+      throw userError("selectionChanged");
+    }
+    if (!source || !isSceneNode(source) || !canUseNativeSource(source) || !renderer) throw userError("nativeUnavailable");
+    const existing = prepared.nativeTarget && !payload.duplicate && target?.type === "FRAME" ? target : undefined;
+    if (existing && nodePage(existing)?.id !== figma.currentPage.id) throw userError("nativeResultChanged");
+    const placement = existing ? { ...payload.placement, ...parentPointFromAbsolute(existing, payload.placement) } : placementBeside(
+      inputPlacements(figma.currentPage, prepared), payload.placement, pagePlacements(figma.currentPage, prepared),
+    );
+    const result = await publishNativeResult({
+      source, ...(existing ? { existing } : {}), renderer,
+      spec: payload.spec, inverse: payload.inverse, placement,
+      renderWidth: payload.renderWidth, renderHeight: payload.renderHeight,
+      beforeWrite: () => {
+        if (generation !== selectionGeneration || reloadScheduled ||
+          !selectionMatches(payload.sourceNodeId, payload.targetNodeId)) throw userError("selectionChanged");
+        beginPublication();
+      },
+    });
+    finishAppliedResult(result, [source], existing ? "replace" : "apply", generation);
+  } catch (error) {
+    post({ type: "apply-error", generation, message: error instanceof NativeRollbackIncompleteError
+      ? userMessage("rollbackIncomplete") : toUserMessage(error, "nativeApplyFailed") });
+  } finally { applying = false; publishing = false; }
 }
 
 async function applyResult(
@@ -556,7 +867,7 @@ async function applyResult(
     // Establish an explicit pre-mutation snapshot. A post-mutation commit alone
     // can leave a long-running UI plugin without the boundary needed for the
     // host's next Undo to restore an in-place replacement.
-    figma.commitUndo();
+    beginPublication();
     const image = figma.createImage(payload.bytes);
     const operation = existing ? "replace" : "apply";
     const placement = existing
@@ -571,6 +882,7 @@ async function applyResult(
       imageHash: image.hash,
       storedOperation,
       sourceName: source.name,
+      sourceNodeIds: [source.id],
       placement,
       renderWidth: payload.renderWidth,
       renderHeight: payload.renderHeight,
@@ -589,6 +901,7 @@ async function applyResult(
     });
   } finally {
     applying = false;
+    publishing = false;
   }
 }
 
@@ -671,8 +984,8 @@ async function applyCanvasSet(
       sourceName: source.name,
       ...(existing ? { existing } : {}),
       createImage: (bytes) => figma.createImage(bytes),
-      commitUndo: () => figma.commitUndo(),
-      publish: publishResult,
+      commitUndo: beginPublication,
+      publish: (request) => publishResult({ ...request, sourceNodeIds: [source.id] }),
     });
     finishAppliedCanvasResults(results, source, existing ? "replace" : "apply", requestGeneration);
   } catch (error) {
@@ -685,6 +998,7 @@ async function applyCanvasSet(
     });
   } finally {
     applying = false;
+    publishing = false;
   }
 }
 
@@ -699,8 +1013,8 @@ async function applyDesignerResult(
   applying = true;
   try {
     const prepared = requirePreparedDesignerSelection(payload);
-    const actualIds = figma.currentPage.selection.map((node) => node.id);
-    const expectedIds = [...payload.sourceNodeIds, ...(payload.targetNodeId ? [payload.targetNodeId] : [])];
+    const actualIds = currentEditingSelection().map((node) => node.id);
+    const expectedIds = [...preparedSelection!.selectedNodeIds];
     if (requestGeneration !== selectionGeneration || reloadScheduled || !sameIds(actualIds, expectedIds)) {
       throw userError("selectionChanged");
     }
@@ -710,7 +1024,7 @@ async function applyDesignerResult(
     if (
       requestGeneration !== selectionGeneration ||
       reloadScheduled ||
-      !sameIds(figma.currentPage.selection.map((node) => node.id), expectedIds) ||
+      !sameIds(currentEditingSelection().map((node) => node.id), expectedIds) ||
       !sourceNodes.every((node): node is SceneNode => node !== null && isSceneNode(node))
     ) {
       throw userError("selectionChanged");
@@ -737,17 +1051,18 @@ async function applyDesignerResult(
     if (
       requestGeneration !== selectionGeneration ||
       reloadScheduled ||
-      !sameIds(figma.currentPage.selection.map((node) => node.id), expectedIds)
+      !sameIds(currentEditingSelection().map((node) => node.id), expectedIds)
     ) {
       throw userError("selectionChanged");
     }
     if (prepared.task?.kind && prepared.task.kind !== payload.task.kind) throw userError("resultChanged");
-    figma.commitUndo();
+    beginPublication();
     const result = await publishResult({
       ...(existing ? { existing } : {}),
       imageHash: figma.createImage(payload.bytes).hash,
       storedOperation: { kind: "task", task: payload.task },
       sourceName: source.name,
+      sourceNodeIds: [...payload.sourceNodeIds],
       placement: existing
         ? payload.placement
         : placementBeside(
@@ -758,7 +1073,6 @@ async function applyDesignerResult(
       renderWidth: payload.renderWidth,
       renderHeight: payload.renderHeight,
     });
-    preparedSelection = undefined;
     const zoomContext: SceneNode[] = [...sourceNodes];
     if (payload.duplicate && payload.targetNodeId) {
       const pairTarget = await figma.getNodeByIdAsync(payload.targetNodeId);
@@ -772,6 +1086,7 @@ async function applyDesignerResult(
     post({ type: "apply-designer-error", generation: requestGeneration, message: toUserMessage(error, "unexpectedError") });
   } finally {
     applying = false;
+    publishing = false;
   }
 }
 
@@ -781,7 +1096,6 @@ function finishAppliedCanvasResults(
   operation: "apply" | "replace",
   generation: number,
 ): void {
-  preparedSelection = undefined;
   try {
     // Keep the producing input in view beside the results: side-by-side
     // comparison is the outcome a human checks after publication.
@@ -830,7 +1144,7 @@ function inputPlacements(
   page: PageNode,
   prepared: SourcePayload,
 ): SourcePayload["placement"][] {
-  const placements = selectionPlacements(page.selection);
+  const placements = selectionPlacements(page === figma.currentPage ? currentEditingSelection() : page.selection);
   return placements.length > 0 ? placements : preparedPlacements(prepared);
 }
 
@@ -845,7 +1159,7 @@ function pagePlacements(
 }
 
 function finishAppliedResult(
-  result: RectangleNode,
+  result: RectangleNode | FrameNode,
   zoomContext: readonly SceneNode[],
   operation: "apply" | "replace",
   generation: number,
@@ -853,7 +1167,11 @@ function finishAppliedResult(
   // The pre-mutation commit in applyResult is the one host Undo boundary.
   // Keep the user's source/pair selection stable: selecting the result creates
   // a separate host history step before the visible write can be undone.
-  preparedSelection = undefined;
+  // Publication leaves the producing selection and its pixels intact. Keep
+  // its snapshot available for another Apply and for observing later edits;
+  // clearing it here strands the ready UI until the user selects elsewhere.
+  try { result.setRelaunchData({ edit: "" }); }
+  catch { /* Relaunch support does not determine publication success. */ }
   try {
     // Keep the producing inputs in view beside the result: side-by-side
     // comparison is the outcome a human checks after publication.
@@ -885,10 +1203,25 @@ function finishAppliedResult(
 }
 
 function handleSelectionChange(): void {
-  scheduleLoadSelection();
+  observeNativeUndo?.();
+  // Figma also emits this event for text caret/range changes. Those do not
+  // change source pixels and must neither discard a draft nor postpone a
+  // pending content refresh. Actual edits still arrive through nodechange.
+  if (rememberSelectionIdentity()) scheduleLoadSelection();
+}
+
+function rememberSelectionIdentity(): boolean {
+  const page = figma.currentPage;
+  const ids = currentEditingSelection().map((node) => node.id);
+  const changed = page.id !== selectionPageId || ids.length !== selectionNodeIds.length ||
+    ids.some((id, index) => id !== selectionNodeIds[index]);
+  selectionPageId = page.id;
+  selectionNodeIds = ids;
+  return changed;
 }
 
 function handleCurrentPageChange(): void {
+  observeNativeUndo?.();
   observedPage.off("nodechange", handleNodeChange);
   observedPage = figma.currentPage;
   observedPage.on("nodechange", handleNodeChange);
@@ -896,7 +1229,8 @@ function handleCurrentPageChange(): void {
 }
 
 function handleNodeChange(event: NodeChangeEvent): void {
-  if (applying || !preparedSelection) return;
+  observeNativeUndo?.();
+  if (publishing || (!preparedSelection && !loadingSelection)) return;
   if (event.nodeChanges.some((change) => nodeChangeTouchesPreparedSelection(change))) {
     scheduleLoadSelection();
   }
@@ -904,8 +1238,8 @@ function handleNodeChange(event: NodeChangeEvent): void {
 
 function nodeChangeTouchesPreparedSelection(change: NodeChange): boolean {
   const prepared = preparedSelection;
-  if (!prepared) return false;
-  if (prepared.selectedNodeIds.has(change.id) || prepared.ancestorNodeIds.has(change.id)) {
+  if (prepared?.observedNodeIds.has(change.id) || prepared?.ancestorNodeIds.has(change.id) ||
+    loadingSelection?.observedNodeIds.has(change.id) || loadingSelection?.ancestorNodeIds.has(change.id)) {
     return true;
   }
   // Removed nodes no longer expose ancestry. Deletion is uncommon, and a
@@ -913,7 +1247,7 @@ function nodeChangeTouchesPreparedSelection(change: NodeChange): boolean {
   if (change.type === "DELETE") return true;
   let node: BaseNode | null = "parent" in change.node ? change.node : null;
   while (node) {
-    if (prepared.selectedNodeIds.has(node.id)) return true;
+    if (prepared?.observedNodeIds.has(node.id) || loadingSelection?.observedNodeIds.has(node.id)) return true;
     node = node.parent;
   }
   return false;
@@ -936,6 +1270,7 @@ async function publishResult(input: {
   imageHash: string;
   storedOperation: StoredOperation;
   sourceName: string;
+  sourceNodeIds: string[];
   placement: SourcePayload["placement"];
   renderWidth: number;
   renderHeight: number;
@@ -950,6 +1285,7 @@ async function publishResult(input: {
     : undefined;
   const priorWidth = input.existing?.getPluginData(RENDER_WIDTH_KEY);
   const priorHeight = input.existing?.getPluginData(RENDER_HEIGHT_KEY);
+  const priorBinding = input.existing?.getSharedPluginData(SHARED_NAMESPACE, SHARED_BINDING_KEY);
   const priorFrame = input.existing
     ? {
         x: input.existing.x,
@@ -986,6 +1322,17 @@ async function publishResult(input: {
     writeStoredOperation(result, input.storedOperation);
     result.setPluginData(RENDER_WIDTH_KEY, String(input.renderWidth));
     result.setPluginData(RENDER_HEIGHT_KEY, String(input.renderHeight));
+    writeStoredBinding(result, input);
+    if (input.existing && preparedSelection?.payload.targetNodeId === result.id &&
+      (input.storedOperation.kind === "transform" || input.storedOperation.kind === "rectify")) {
+      // The next replacement must compare against the output we just wrote,
+      // not the dimensions from when this result was originally opened.
+      preparedSelection.payload = {
+        ...preparedSelection.payload,
+        renderWidth: input.renderWidth,
+        renderHeight: input.renderHeight,
+      };
+    }
     return result;
   } catch (error) {
     try {
@@ -999,6 +1346,7 @@ async function publishResult(input: {
         restoreStoredOperationSlots(result, priorOperationSlots);
         result.setPluginData(RENDER_WIDTH_KEY, priorWidth ?? "");
         result.setPluginData(RENDER_HEIGHT_KEY, priorHeight ?? "");
+        result.setSharedPluginData(SHARED_NAMESPACE, SHARED_BINDING_KEY, priorBinding ?? "");
       }
     } catch {
       throw userError("rollbackIncomplete");
@@ -1008,7 +1356,7 @@ async function publishResult(input: {
 }
 
 function parentPointFromAbsolute(
-  result: RectangleNode,
+  result: RectangleNode | FrameNode,
   point: { x: number; y: number },
 ): { x: number; y: number } {
   const parent = result.parent;
@@ -1032,6 +1380,7 @@ function parentPointFromAbsolute(
 
 function requirePreparedSelection(
   payload:
+    | NativeApplyPayload
     | Extract<UiToMainMessage, { type: "apply" }>["payload"]
     | Extract<UiToMainMessage, { type: "apply-canvas" }>["payload"],
 ): SourcePayload {
@@ -1062,7 +1411,8 @@ function requirePreparedDesignerSelection(
     prepared.generation !== payload.generation ||
     prepared.generation !== selectionGeneration ||
     reloadScheduled ||
-    !sameIds(preparedSourceIds, payload.sourceNodeIds) ||
+    preparedSourceIds.length !== payload.sourceNodeIds.length ||
+    !preparedSourceIds.every((id, index) => id === payload.sourceNodeIds[index]) ||
     prepared.payload.targetNodeId !== payload.targetNodeId
   ) throw userError("selectionChanged");
   return prepared.payload;
@@ -1078,13 +1428,14 @@ function checkedOutputAxis(value: number): number {
 }
 
 function storedRasterSize(
-  target: Pick<RectangleNode, "getPluginData">,
+  target: Pick<RectangleNode, "id" | "getPluginData" | "getSharedPluginData">,
 ): { width: number; height: number } | undefined {
   const width = Number(target.getPluginData(RENDER_WIDTH_KEY));
   const height = Number(target.getPluginData(RENDER_HEIGHT_KEY));
+  const binding = readStoredBinding(target);
   return isFigmaImageAxis(width) && isFigmaImageAxis(height)
     ? { width, height }
-    : undefined;
+    : binding ? { width: binding.renderWidth, height: binding.renderHeight } : undefined;
 }
 
 class UserFacingError extends Error {
@@ -1105,9 +1456,17 @@ function toUserMessage(error: unknown, fallback: MessageKey): UserMessage {
 }
 
 function selectionMatches(sourceNodeId: string, targetNodeId?: string): boolean {
-  const actual = figma.currentPage.selection.map((node) => node.id).sort();
-  const expected = [sourceNodeId, ...(targetNodeId ? [targetNodeId] : [])].sort();
+  const prepared = preparedSelection;
+  if (!prepared || prepared.payload.sourceNodeId !== sourceNodeId ||
+    prepared.payload.targetNodeId !== targetNodeId) return false;
+  const actual = currentEditingSelection().map((node) => node.id).sort();
+  const expected = [...prepared.selectedNodeIds].sort();
   return actual.length === expected.length && actual.every((id, index) => id === expected[index]);
+}
+
+function editingSelectionMatchesNode(nodeId: string): boolean {
+  const selection = currentEditingSelection();
+  return selection.length === 1 && selection[0]?.id === nodeId;
 }
 
 function sameIds(actual: readonly string[], expected: readonly string[]): boolean {

@@ -36,6 +36,12 @@ export type {
 
 export type {
   Bounds,
+  PlanePose,
+  PlanePoseInput,
+  PlanePoseOutput,
+  PlaneStripInput,
+  PlaneStripOutput,
+  PlaneStripPanel,
   CssTransform,
   Destination,
   ErrorCode,

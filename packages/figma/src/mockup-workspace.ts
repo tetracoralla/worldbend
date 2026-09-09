@@ -17,6 +17,7 @@ import {
   fitPreviewCanvas,
   numericInput,
   postDesignerResult,
+  sameDesignerSelection,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -94,6 +95,7 @@ export function createMockupWorkspace(input: {
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
+  let appliedResultPending = false;
   let savingTemplate = false;
   let pendingTemplateRequestId: number | undefined;
   let nextTemplateRequestId = 1;
@@ -111,6 +113,7 @@ export function createMockupWorkspace(input: {
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
     activePlaneId = spec.planes[0]?.id ?? "plane-1";
     renderControls();
     void render();
@@ -147,6 +150,7 @@ export function createMockupWorkspace(input: {
     spec = { ...spec, planes: spec.planes.map((plane) => plane.id === activePlaneId ? { ...plane, ...patch } : plane) };
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
     if (commit) history?.push(spec);
     previewFrames.request();
   }
@@ -156,6 +160,7 @@ export function createMockupWorkspace(input: {
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
+    appliedResultPending = false;
   }
 
   async function render(quality: "preview" | "high" = "preview", refreshOverlay = true): Promise<boolean> {
@@ -250,6 +255,7 @@ export function createMockupWorkspace(input: {
           : candidate) };
         phase = "ready";
         undoRouted = false;
+        appliedResultPending = false;
         previewFrames.request();
         if (final) { previewFrames.flush(); history?.push(spec); }
       },
@@ -338,6 +344,7 @@ export function createMockupWorkspace(input: {
     setSource(next) {
       busy = false;
       shell.setBusy(false);
+      if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
       spec = next.task?.kind === "mockup" ? structuredClone(next.task.spec) : defaultMockup(next.sources);
       baseline = structuredClone(spec);
@@ -353,7 +360,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
+    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -366,13 +373,13 @@ export function createMockupWorkspace(input: {
       if (!busy || (message.type !== "apply-designer-complete" && message.type !== "apply-designer-error")) return false;
       if (!source || message.generation !== source.selectionGeneration) return true;
       busy = false; shell.setBusy(false); renderTemplateSave();
-      if (message.type === "apply-designer-error") { phase = "ready"; shell.showError(input.formatError(message.message)); }
-      else { phase = "applied"; shell.status.textContent = input.copy().applied; }
+      if (message.type === "apply-designer-error") { phase = "ready"; appliedResultPending = false; shell.showError(input.formatError(message.message)); }
+      else { phase = "ready"; appliedResultPending = true; undoRouted = false; shell.status.textContent = input.copy().applied; }
       return true;
     },
     handleKeydown(event) {
       if (event.key === "Escape") { event.preventDefault(); input.onBack(); return true; }
-      const result = handleWorkspaceHistoryShortcut({ event, phase, undoRouted, history, post: input.post, restore: restoreHistory });
+      const result = handleWorkspaceHistoryShortcut({ event, phase, appliedResultPending, undoRouted, history, post: input.post, restore: restoreHistory });
       undoRouted = result.undoRouted;
       return result.handled;
     },
@@ -383,6 +390,7 @@ export function createMockupWorkspace(input: {
       history = createWorkspaceHistory(spec);
       phase = "ready";
       undoRouted = false;
+      appliedResultPending = false;
       activePlaneId = spec.planes[0]?.id ?? "plane-1";
       clearTemplateFeedback();
       if (!savingTemplate) shell.status.textContent = "";

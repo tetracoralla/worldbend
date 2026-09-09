@@ -89,6 +89,7 @@ export function createDirectPointOverlay(input: {
   let points: DirectPoint[] = [];
   let observer: ResizeObserver | undefined;
   let capturedButton: HTMLButtonElement | undefined;
+  let grabOffset = { x: 0, y: 0 };
 
   const trackPoint = (id: string, point: { x: number; y: number }): void => {
     const index = points.findIndex((candidate) => candidate.id === id);
@@ -134,8 +135,8 @@ export function createDirectPointOverlay(input: {
   const pointFromClient = (clientX: number, clientY: number): DirectPointPosition => {
     const box = input.canvas.getBoundingClientRect();
     return {
-      x: clamp((clientX - box.left) / Math.max(1, box.width)),
-      y: clamp((clientY - box.top) / Math.max(1, box.height)),
+      x: clamp((clientX - grabOffset.x - box.left) / Math.max(1, box.width)),
+      y: clamp((clientY - grabOffset.y - box.top) / Math.max(1, box.height)),
     };
   };
 
@@ -154,6 +155,7 @@ export function createDirectPointOverlay(input: {
     const finished = gesture.finish(pointerId, point);
     if (!finished) return false;
     capturedButton = undefined;
+    grabOffset = { x: 0, y: 0 };
     if (button) delete button.dataset.activePointerId;
     releaseCapture(button, pointerId);
     return true;
@@ -167,6 +169,7 @@ export function createDirectPointOverlay(input: {
     const interrupted = gesture.interrupt(pointerId);
     if (!interrupted) return false;
     capturedButton = undefined;
+    grabOffset = { x: 0, y: 0 };
     if (capturedPointer !== undefined && Number.isFinite(capturedPointer)) {
       releaseCapture(button, capturedPointer);
     }
@@ -203,10 +206,18 @@ export function createDirectPointOverlay(input: {
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         interruptPointer();
+        const tracked = points.find((candidate) => candidate.id === point.id) ?? point;
+        const box = input.canvas.getBoundingClientRect();
+        // The whole hit target is draggable. Keep the grabbed offset so an
+        // off-center press does not move the point before the pointer moves.
+        grabOffset = {
+          x: event.clientX - (box.left + tracked.x * box.width),
+          y: event.clientY - (box.top + tracked.y * box.height),
+        };
         capturedButton = button;
         button.dataset.activePointerId = String(event.pointerId);
         button.setPointerCapture(event.pointerId);
-        gesture.begin(event.pointerId, point.id, pointFromClient(event.clientX, event.clientY));
+        gesture.begin(event.pointerId, point.id, { x: tracked.x, y: tracked.y });
       });
       button.addEventListener("pointermove", (event) => {
         if (!gesture.owns(event.pointerId)) return;

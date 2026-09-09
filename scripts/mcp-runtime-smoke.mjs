@@ -178,6 +178,8 @@ async function main() {
     ]);
     await catalogClient.initialize();
     await checkProgressiveCatalog(catalogClient);
+    await checkLivePerspectiveCatalog(catalogClient);
+    await checkFigmaPreparationCatalog(catalogClient);
     await checkProductionMediaCatalog(catalogClient);
     await checkAdvancedSpatialCatalog(catalogClient);
     await checkExtendedFamilyCancellation(catalogClient);
@@ -206,6 +208,43 @@ async function main() {
     if (fixtureValidated) await rm(fixtureRoot, { recursive: true, force: true });
     await rm(stagingRoot, { recursive: true, force: true });
   }
+}
+
+async function checkFigmaPreparationCatalog(client) {
+  const search = await client.callTool("worldbend.search", { query: "figma" });
+  assert.deepEqual(search.result.structuredContent.result.operations.map((x) => x.operation).sort(), ["figma_apply", "figma_inspect"]);
+  for (const operation of ["figma_inspect", "figma_apply"]) {
+    const description = await client.callTool("worldbend.describe", { operation });
+    const value = description.result.structuredContent.result;
+    assert.equal(value.requiresWorkspace, false);
+    assert.equal(value.mutatesFiles, false);
+    assert.equal(value.inputSchema.additionalProperties, false);
+    assert.equal(value.outputSchema.$defs.FigmaRequest.additionalProperties, false);
+  }
+  const response = await client.callTool("worldbend.run", {
+    operation: "figma_inspect", arguments: { fileKey: "granted-file", pageId: "37:7", nodeId: "48:3" },
+  });
+  const packet = response.result.structuredContent.result;
+  assert.equal(packet.fileKey, "granted-file");
+  assert.equal(packet.skillNames, "figma-use");
+  assert(packet.code.includes("WorldbendFigmaHandoff.inspect"));
+  assert(packet.code.includes("1024/Math.max"));
+  assert(Buffer.byteLength(JSON.stringify(packet)) <= 48 * 1024);
+  const apply = await client.callTool("worldbend.run", {
+    operation: "figma_apply", arguments: {
+      snapshot: { schema: "worldbend.figma.handoff", version: "0.1", fileKey: "granted-file",
+        pageId: "37:7", nodeId: "48:3", revision: 0, spec: normalizedSpec,
+        source: { nodeId: "48:5", width: 520, height: 606 },
+        placement: { x: 900, y: 3240, width: 560, height: 640 }, expected: "current-state" },
+      spec: normalizedSpec,
+    },
+  });
+  assert.equal(apply.result.structuredContent.ok, true);
+  assert(apply.result.structuredContent.result.code.includes("WorldbendFigmaHandoff.apply"));
+  assert(Buffer.byteLength(JSON.stringify(apply.result.structuredContent.result)) <= 48 * 1024);
+  expectToolError(await client.callTool("worldbend.run", {
+    operation: "figma_inspect", arguments: { fileKey: "granted-file", pageId: "37:7", nodeId: "48:3", allowWrite: true },
+  }), "E_SCHEMA");
 }
 
 async function checkProductionMediaCatalog(activeClient) {
@@ -640,6 +679,54 @@ async function checkAdvancedSpatialCatalog(activeClient) {
     assert.equal(item.sha256, sha256(bytes));
   }
   metrics.motionResponseBytes = motionWritten.wireBytes;
+}
+
+async function checkLivePerspectiveCatalog(activeClient) {
+  const elementSize = { width: 640, height: 360 };
+  const poseInput = { elementSize, pose: { perspective: 1400, rotateX: 3, rotateY: -8 } };
+  for (const [query, operation] of [["live card tilt", "pose"], ["collinear cards", "plane_strip"], ["卡片 共线", "plane_strip"]]) {
+    const found = await activeClient.callTool("worldbend.search", { query });
+    assert(found.result.structuredContent.result.operations.some(item => item.operation === operation), query);
+  }
+  for (const operation of ["pose", "plane_strip"]) {
+    const descriptor = await activeClient.callTool("worldbend.describe", { operation });
+    const contract = descriptor.result.structuredContent.result;
+    assert.equal(contract.inputSchema.additionalProperties, false);
+    // Operation output is the common success/error envelope. The geometry
+    // result definition itself must stay closed within that envelope.
+    const resultName = operation === "pose" ? "PlanePoseOutput" : "PlaneStripOutput";
+    assert.equal(contract.outputSchema.$defs[resultName].additionalProperties, false);
+  }
+  const response = await activeClient.callTool("worldbend.run", { operation: "pose", arguments: poseInput });
+  assert.equal(response.result.structuredContent.ok, true);
+  const posed = response.result.structuredContent.result;
+  const poseFile = path.join(fixtureRoot, "pose-input.json");
+  await writeFile(poseFile, JSON.stringify(poseInput));
+  const native = spawnSync(cli, ["pose", "--input", poseFile, "--json"], { encoding: "utf8" });
+  assert.equal(native.status, 0, native.stderr);
+  assert.deepEqual(JSON.parse(native.stdout).result, posed);
+  for (const [arguments_, code] of [
+    [{...poseInput, extra:true}, "E_SCHEMA"],
+    [{...poseInput, pose:{...poseInput.pose, cameraEstimate:true}}, "E_SCHEMA"],
+    [{...poseInput, pose:{perspective:1400,depth:1400}}, "E_HOMOGRAPHY_HORIZON_CROSSING"],
+    [{...poseInput, pose:{perspective:1400,rotateY:180}}, "E_QUAD_ORIENTATION"],
+  ]) expectToolError(await activeClient.callTool("worldbend.run", {operation:"pose",arguments:arguments_}), code);
+  const panels = Array.from({length:32}, (_,i)=>({id:`card-${i}`,start:i/32,end:(i+.9)/32,elementSize}));
+  const stripInput = {spec:posed.spec,panels};
+  const strip = await activeClient.callTool("worldbend.run", {operation:"plane_strip",arguments:stripInput});
+  assert.equal(strip.result.structuredContent.ok, true);
+  assert.deepEqual(strip.result.structuredContent.result.items.map(item=>item.id),panels.map(item=>item.id));
+  const stripFile=path.join(fixtureRoot,"strip-input.json");await writeFile(stripFile,JSON.stringify(stripInput));
+  const nativeStrip=spawnSync(cli,["plane-strip","--input",stripFile,"--json"],{encoding:"utf8"});
+  assert.equal(nativeStrip.status,0,nativeStrip.stderr);
+  assert.deepEqual(JSON.parse(nativeStrip.stdout).result,strip.result.structuredContent.result);
+  for(const malformed of [[],[...panels,panels[0]],panels.map((panel,i)=>i===31?{...panel,start:0}:panel)]) {
+    expectToolError(await activeClient.callTool("worldbend.run",{operation:"plane_strip",arguments:{...stripInput,panels:malformed}}),"E_SCHEMA");
+  }
+  const recovered=await activeClient.callTool("worldbend.run",{operation:"pose",arguments:poseInput});
+  assert.equal(recovered.result.structuredContent.ok,true);
+  metrics.poseResponseBytes=response.wireBytes;metrics.strip32ResponseBytes=strip.wireBytes;
+  console.log(`Live perspective CLI/MCP passed (pose=${response.wireBytes}B, strip32=${strip.wireBytes}B; shared geometry, closed errors and recovery)`);
 }
 
 async function checkProgressiveCatalog(activeClient) {

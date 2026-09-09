@@ -1,9 +1,12 @@
+import { TransformError, throwBridgeError } from "./transform-error";
+export { TransformError } from "./transform-error";
 import initWasm, {
   canvas_plan_json as canvasPlanJson,
   canvas_set_plan_json as canvasSetPlanJson,
   canvas_set_plan_rgba_json as canvasSetPlanRgbaJson,
   compose_json as composeJson,
   css_json as cssJson,
+  pose_json as poseJson,
   rectify_json as rectifyJson,
   solve_json as solveJson,
   solve_preview_f64 as solvePreviewF64,
@@ -21,6 +24,8 @@ import type {
 } from "./canvas-types";
 import type {
   AffineComposition,
+  PlanePoseInput,
+  PlanePoseOutput,
   CssTransform,
   ErrorCode,
   RectifyPlan,
@@ -44,17 +49,6 @@ let initialization: Promise<unknown> | undefined;
 /** Version marker the WASM side prepends to every compact payload. */
 const COMPACT_ABI_VERSION = 1;
 
-export class TransformError extends Error {
-  readonly code: ErrorCode;
-  readonly details?: unknown;
-
-  constructor(data: TransformErrorData) {
-    super(data.message);
-    this.name = "TransformError";
-    this.code = data.code;
-    this.details = data.details;
-  }
-}
 
 export async function composeAffineTransform(
   spec: TransformSpecInput,
@@ -259,6 +253,12 @@ export async function emitCssTransform(
   );
 }
 
+/** Resolve an explicit local plane pose through the same core as CLI/MCP. */
+export async function projectPlanePose(input: PlanePoseInput): Promise<PlanePoseOutput> {
+  await initializeWorldbend();
+  return invoke<PlanePoseOutput>(() => poseJson(JSON.stringify(input)));
+}
+
 function invoke<T>(operation: () => string): T {
   try {
     return JSON.parse(operation()) as T;
@@ -281,23 +281,4 @@ function assertSourcePixelSize(size: CanvasPixelSize): void {
       message: "Canvas source dimensions must be positive unsigned 32-bit integers",
     });
   }
-}
-
-function throwBridgeError(error: unknown): never {
-    // A Rust panic crosses the bridge as a bare RuntimeError; unexpected
-    // internal failures still belong inside the stable error contract.
-    if (error instanceof WebAssembly.RuntimeError) {
-      throw new TransformError({
-        code: "E_INTERNAL",
-        message: `Unexpected internal failure: ${error.message}`,
-      });
-    }
-    if (typeof error === "string") {
-      try {
-        throw new TransformError(JSON.parse(error) as TransformErrorData);
-      } catch (parsed) {
-        if (parsed instanceof TransformError) throw parsed;
-      }
-    }
-  throw error;
 }

@@ -77,14 +77,17 @@ describe("applied-state undo shortcut routing", () => {
     shiftKey: false,
     metaKey: true,
     ctrlKey: false,
+    appliedResultPending: true,
     alreadyRouted: false,
   };
 
-  it("routes an unmodified Cmd/Ctrl+Z only in the applied phase", () => {
+  it("routes an unmodified Cmd/Ctrl+Z while a fresh result is still pending host undo", () => {
     expect(shouldRouteAppliedUndo({ ...shortcut, phase: "applied" })).toBe(true);
+    expect(shouldRouteAppliedUndo({ ...shortcut, phase: "ready" })).toBe(true);
     expect(shouldRouteAppliedUndo({ ...shortcut, phase: "applied", ctrlKey: true, metaKey: false }))
       .toBe(true);
-    expect(shouldRouteAppliedUndo({ ...shortcut, phase: "ready" })).toBe(false);
+    expect(shouldRouteAppliedUndo({ ...shortcut, phase: "ready", appliedResultPending: false }))
+      .toBe(false);
   });
 
   it("keeps shift variants and repeats inside the plugin", () => {

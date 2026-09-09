@@ -2,8 +2,6 @@
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-#[cfg(feature = "css")]
-use worldbend_core::emit_css_transform;
 use worldbend_core::{
     CanvasOperation, CanvasSetSpec, CanvasSpec, PixelSize, RectifySpec, Size, TransformError,
     TransformRecipe, TransformSpec, WarpSpec, build_warp_mesh, compose_affine, plan_canvas,
@@ -13,6 +11,8 @@ use worldbend_core::{
 use worldbend_core::{
     MeshWarpSpec, MockupSpec, RemapSpec, plan_mesh_warp, plan_mockup, plan_remap,
 };
+#[cfg(feature = "css")]
+use worldbend_core::{PlanePoseInput, emit_css_transform, project_plane_pose};
 #[cfg(feature = "template")]
 use worldbend_core::{
     SpatialTemplateSpec, VariationJobSpec, inspect_spatial_template, plan_variation_job,
@@ -184,6 +184,28 @@ pub fn mesh_warp_plan_json(spec_json: &str) -> Result<String, JsValue> {
 pub fn remap_plan_json(spec_json: &str) -> Result<String, JsValue> {
     let spec = parse_remap_spec(spec_json)?;
     serialize_result(plan_remap(&spec))
+}
+
+#[wasm_bindgen]
+#[cfg(feature = "css")]
+pub fn pose_json(input_json: &str) -> Result<String, JsValue> {
+    let input = serde_json::from_str::<PlanePoseInput>(input_json).map_err(|error| {
+        error_js(TransformError::new(
+            worldbend_core::ErrorCode::Schema,
+            format!("invalid plane pose JSON: {error}"),
+        ))
+    })?;
+    serialize_result(project_plane_pose(&input))
+}
+
+// Preserve bridge imports in the no-CSS Figma carrier without linking projection.
+#[wasm_bindgen]
+#[cfg(not(feature = "css"))]
+pub fn pose_json(_input_json: &str) -> Result<String, JsValue> {
+    Err(error_js(TransformError::new(
+        worldbend_core::ErrorCode::Schema,
+        "Plane pose is not included in this carrier build",
+    )))
 }
 
 #[wasm_bindgen]

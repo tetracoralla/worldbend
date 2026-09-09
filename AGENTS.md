@@ -1,10 +1,20 @@
 # Worldbend transform repository contract
 
-Read `docs/PRODUCT_MODEL.md`, `docs/CONTRACT.md`,
-`docs/REVIEW_CONTRACT.md`, and `docs/CAMPAIGN_ANCHOR.md` before changing the
-core, schemas, adapters, plugin, or packaging. Use the review contract for
-current cross-carrier seams, adversarial sequences, performance/load evidence,
-and conditional Capability review; it is not a completion certificate.
+Use `docs/PRODUCT_MODEL.md` for intended behavior and the affected sections of
+`docs/CONTRACT.md` for executable semantics. Read relevant risks in
+`docs/REVIEW_CONTRACT.md` when changing a carrier or shared boundary. Keep task
+decisions, evidence and recovery notes in the ignored
+`.task-notes/` directory; dated checkpoints do not establish current runtime
+support. These references guide the affected work, not a mandatory whole-product
+audit for every plugin or adapter edit.
+
+The source superset below describes established contracts. Within the user's
+authorized goal, investigate better representations and platform capabilities
+before treating an existing implementation as a limit. Preserve deterministic
+geometry while allowing visual selection, direct manipulation, images, and
+multimodal authoring. Changing a public semantic contract requires the relevant
+compatibility work; proposing or testing a new implementation does not by itself
+change that contract.
 
 - This product is growing into a deterministic Photoshop-familiar transform
   utility for humans and Agents, not a general image editor. The productized

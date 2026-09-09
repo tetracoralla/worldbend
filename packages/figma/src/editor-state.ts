@@ -1,7 +1,7 @@
 // Pure editor-state predicates shared by the Figma UI wiring and its tests.
 // They encode the two promotion-gate behaviors that must not regress: mode
-// switching bakes geometry without rasterizing, and the applied-state undo
-// shortcut routes to the host exactly once per applied result.
+// switching bakes geometry without rasterizing, and an untouched published
+// result can still be undone in the host without ending the editing session.
 
 import type { DistortInteractionMode } from "@worldbend/web";
 
@@ -63,6 +63,7 @@ export function canStartTransformGesture(state: {
 
 export interface AppliedUndoShortcutState {
   phase: Phase;
+  appliedResultPending: boolean;
   key: string;
   shiftKey: boolean;
   metaKey: boolean;
@@ -72,12 +73,14 @@ export interface AppliedUndoShortcutState {
 
 /**
  * After Apply completes, an unmodified Cmd/Ctrl+Z routes to the Figma host so
- * one host Undo step removes the result. Shift variants and repeats while the
- * reload is pending stay with the plugin.
+ * one host Undo step removes the result. Apply is non-terminal: the editor
+ * stays ready, and the caller disarms this route as soon as a local edit is
+ * made. Shift variants and repeats stay with the plugin.
  */
 export function shouldRouteAppliedUndo(state: AppliedUndoShortcutState): boolean {
   return (
-    state.phase === "applied" &&
+    (state.phase === "ready" || state.phase === "applied") &&
+    state.appliedResultPending &&
     !state.alreadyRouted &&
     !state.shiftKey &&
     (state.metaKey || state.ctrlKey) &&

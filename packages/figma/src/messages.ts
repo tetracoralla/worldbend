@@ -1,4 +1,5 @@
-import type { RectifySpecInput, TransformSpec } from "@worldbend/web/types";
+import type { NineNumbers, RectifySpecInput, TransformSpec } from "@worldbend/web/types";
+import type { NativeRenderer } from "./native-projective";
 import {
   isFigmaImageAxis,
   isOwnedRectifySpec,
@@ -49,6 +50,21 @@ export interface SourcePayload extends SourceRasterPayload {
   canvas?: OwnedCanvasSpec;
   task?: StoredDesignerTask;
   targetNodeId?: string;
+  nativeRenderer?: NativeRenderer;
+  nativeRendererPending?: true;
+  nativeTarget?: true;
+}
+
+export interface NativeApplyPayload {
+  generation: number;
+  spec: TransformSpec;
+  inverse: NineNumbers;
+  sourceNodeId: string;
+  targetNodeId?: string;
+  renderWidth: number;
+  renderHeight: number;
+  placement: Placement;
+  duplicate?: boolean;
 }
 
 export type Placement = SourcePayload["placement"];
@@ -76,7 +92,8 @@ export type MainToUiMessage =
     }
   | { type: "selection-loading"; generation: number; nodeIds: string[] }
   | { type: "source"; generation: number; payload: SourcePayload }
-  | { type: "selection-error"; generation: number; message: UserMessage }
+  | { type: "source-renderer"; generation: number; sourceNodeId: string; targetNodeId?: string; renderer?: NativeRenderer }
+  | { type: "selection-error"; generation: number; message: UserMessage; nativeRecovery?: { nodeId: string; expected: string } }
   | {
       type: "source-raster";
       generation: number;
@@ -112,6 +129,8 @@ export type MainToUiMessage =
   | { type: "apply-designer-error"; generation: number; message: UserMessage };
 
 export type UiToMainMessage =
+  | { type: "restore-native"; generation: number; nodeId: string; expected: string }
+  | { type: "apply-native"; payload: NativeApplyPayload }
   | { type: "ready"; systemLocales: string[] }
   | { type: "set-locale"; preference: LocalePreference }
   | {
@@ -183,6 +202,9 @@ export type UiToMainMessage =
 
 export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
   if (!isRecord(value) || typeof value["type"] !== "string") return false;
+  if (value["type"] === "restore-native") return hasExactKeys(value, ["type", "generation", "nodeId", "expected"]) &&
+    isRequestId(value["generation"]) && typeof value["nodeId"] === "string" && value["nodeId"].length > 0 && value["nodeId"].length <= 256 &&
+    typeof value["expected"] === "string" && value["expected"].length > 0 && value["expected"].length <= 4096;
   if (value["type"] === "ready") {
     return (
       Object.keys(value).length === 2 &&
@@ -242,6 +264,20 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
   }
   if (value["type"] === "apply-canvas") return isApplyCanvasMessage(value);
   if (value["type"] === "apply-designer") return isApplyDesignerMessage(value);
+  if (value["type"] === "apply-native") {
+    if (!hasExactKeys(value, ["type", "payload"]) || !isRecord(value["payload"])) return false;
+    const p = value["payload"];
+    return hasExactKeys(p, ["generation", "spec", "inverse", "sourceNodeId", "renderWidth", "renderHeight", "placement",
+      ...(p["targetNodeId"] === undefined ? [] : ["targetNodeId"]),
+      ...(p["duplicate"] === undefined ? [] : ["duplicate"])]) &&
+      isRequestId(p["generation"]) && isOwnedTransformSpec(p["spec"]) && !p["spec"].content.warp &&
+      Array.isArray(p["inverse"]) && p["inverse"].length === 9 &&
+      p["inverse"].every((n) => typeof n === "number" && Number.isFinite(n)) &&
+      typeof p["sourceNodeId"] === "string" && p["sourceNodeId"].length > 0 && p["sourceNodeId"].length <= 256 &&
+      isFigmaImageAxis(p["renderWidth"]) && isFigmaImageAxis(p["renderHeight"]) && isPlacement(p["placement"]) &&
+      (p["targetNodeId"] === undefined || (typeof p["targetNodeId"] === "string" && p["targetNodeId"].length > 0 && p["targetNodeId"].length <= 256)) &&
+      (p["duplicate"] === undefined || typeof p["duplicate"] === "boolean");
+  }
   if (value["type"] !== "apply" || !isRecord(value["payload"])) return false;
   const payload = value["payload"];
   const allowed = new Set([

@@ -145,7 +145,6 @@ for (const iconId of [
   "icon-park:flip-horizontally",
   "icon-park:flip-vertically",
   "icon-park:rotate",
-  "icon-park:redo",
   "icon-park:perspective",
 ]) {
   if (!ui.includes(`data-icon-id="${iconId}"`)) {

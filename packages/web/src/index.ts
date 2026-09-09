@@ -1,4 +1,6 @@
 export * from "./attach";
+export * from "./attach-strip";
+export * from "./pointer-tilt";
 export * from "./bridge";
 export * from "./canvas-types";
 export * from "./canvas-renderer";

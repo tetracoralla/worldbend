@@ -13,27 +13,22 @@ const bindgen = path.join(
   "bin",
   platformExecutableName("wasm-bindgen"),
 );
-const input = path.join(
-  root,
-  "target",
-  "wasm32-unknown-unknown",
-  "release",
-  "worldbend_wasm.wasm",
-);
 const profileArgument = process.argv.find((argument) => argument.startsWith("--profile="));
 const unknownArguments = process.argv.slice(2).filter((argument) => argument !== profileArgument);
 if (unknownArguments.length > 0) {
   throw new Error(`Unknown build-wasm arguments: ${unknownArguments.join(", ")}`);
 }
 const profile = profileArgument?.slice("--profile=".length) ?? "full";
-if (!new Set(["full", "figma"]).has(profile)) {
+if (!new Set(["full", "figma", "perspective"]).has(profile)) {
   throw new Error(`Unknown WASM carrier profile: ${profile}`);
 }
+const crate = profile === "perspective" ? "worldbend-perspective-wasm" : "worldbend-wasm";
+const input = path.join(root, "target", "wasm32-unknown-unknown", "release", `${crate.replaceAll("-", "_")}.wasm`);
 const output = path.join(
   root,
   "packages",
   "wasm",
-  profile === "figma" ? "pkg-figma" : "pkg",
+  profile === "full" ? "pkg" : `pkg-${profile}`,
 );
 
 try {
@@ -45,7 +40,7 @@ try {
 const cargoArguments = [
   "build",
   "-p",
-  "worldbend-wasm",
+  crate,
   "--release",
   "--locked",
   "--target",

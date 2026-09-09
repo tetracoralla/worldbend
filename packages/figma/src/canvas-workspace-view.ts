@@ -54,6 +54,7 @@ export interface CanvasWorkspaceView {
   saveTemplate: HTMLButtonElement;
   variantId: HTMLInputElement;
   operation: HTMLSelectElement;
+  operationChoices: HTMLDivElement;
   outputGroup: HTMLDivElement;
   width: HTMLInputElement;
   height: HTMLInputElement;
@@ -95,10 +96,13 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
       <div id="canvas-preview" class="canvas-preview" role="tabpanel"><output id="canvas-source-name" class="canvas-source-hud" aria-live="off"></output></div>
       <aside class="canvas-inspector">
         <label class="canvas-field"><span id="canvas-output-name-label"></span><input id="canvas-variant-id" type="text" maxlength="64" autocomplete="off" spellcheck="false"></label>
-        <label class="canvas-field"><span id="canvas-operation-label"></span><select id="canvas-operation">
+        <div class="canvas-field"><span id="canvas-operation-label"></span><select id="canvas-operation" class="sr-only" tabindex="-1" aria-hidden="true">
           <option value="crop"></option><option value="trim"></option><option value="pad"></option>
           <option value="contain"></option><option value="cover"></option><option value="stretch"></option>
-        </select></label>
+        </select><div id="canvas-operation-choices" class="canvas-operation-grid" role="group" aria-labelledby="canvas-operation-label">
+          <button type="button" data-operation="crop"></button><button type="button" data-operation="trim"></button><button type="button" data-operation="pad"></button>
+          <button type="button" data-operation="contain"></button><button type="button" data-operation="cover"></button><button type="button" data-operation="stretch"></button>
+        </div></div>
         <div id="canvas-output-group" class="canvas-size-row">
           <label><span id="canvas-width-label"></span><input id="canvas-width" type="number" min="1" max="4096" step="1" inputmode="numeric"></label>
           <label><span id="canvas-height-label"></span><input id="canvas-height" type="number" min="1" max="4096" step="1" inputmode="numeric"></label>
@@ -144,6 +148,7 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
     saveTemplate: required(root, "canvas-save-template"),
     variantId: required(root, "canvas-variant-id"),
     operation: required(root, "canvas-operation"),
+    operationChoices: required(root, "canvas-operation-choices"),
     outputGroup: required(root, "canvas-output-group"),
     width: required(root, "canvas-width"),
     height: required(root, "canvas-height"),
@@ -188,6 +193,8 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
       for (const [value, label] of [["crop", copy.crop], ["trim", copy.trim], ["pad", copy.pad], ["contain", copy.contain], ["cover", copy.cover], ["stretch", copy.stretch]] as const) {
         const option = view.operation.querySelector<HTMLOptionElement>(`option[value="${value}"]`);
         if (option) option.textContent = label;
+        const button = view.operationChoices.querySelector<HTMLButtonElement>(`button[data-operation="${value}"]`);
+        if (button) button.textContent = label;
       }
       for (const [id, label] of [["canvas-width-label", copy.width], ["canvas-height-label", copy.height], ["canvas-crop-x-label", copy.x], ["canvas-crop-y-label", copy.y], ["canvas-crop-width-label", copy.width], ["canvas-crop-height-label", copy.height], ["canvas-trim-threshold-label", copy.threshold], ["canvas-pad-top-label", copy.top], ["canvas-pad-right-label", copy.right], ["canvas-pad-bottom-label", copy.bottom], ["canvas-pad-left-label", copy.left]] as const) {
         required<HTMLElement>(root, id).textContent = label;
@@ -201,6 +208,14 @@ export function createCanvasWorkspaceView(root: HTMLElement): CanvasWorkspaceVie
       view.applyNew.textContent = copy.applyNew;
     },
   };
+  for (const button of view.operationChoices.querySelectorAll<HTMLButtonElement>("button[data-operation]")) {
+    button.addEventListener("click", () => {
+      const operation = button.dataset.operation;
+      if (!operation || view.operation.value === operation) return;
+      view.operation.value = operation;
+      view.operation.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
   return view;
 }
 

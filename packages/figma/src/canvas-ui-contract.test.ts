@@ -143,6 +143,38 @@ describe("Figma product workspace markup", () => {
     expect(i18nSource).toContain("Ctrl Y redo");
   });
 
+  it("keeps both output types beside contextual replacement in the Perspective footer", () => {
+    const dockStart = html.indexOf('<footer id="action-dock"');
+    const dockEnd = html.indexOf("</footer>", dockStart);
+    const dock = html.slice(dockStart, dockEnd);
+    expect(dock).toContain('id="reset"');
+    expect(dock).toContain('id="apply"');
+    expect(dock).toContain('id="action-apply-editable"');
+    expect(dock).toContain('id="action-apply-copy"');
+    expect(dock).not.toContain('role="menuitem"');
+    expect(dock).toContain('id="status" class="sr-only"');
+  });
+
+  it("names Repeat Last Transform in More instead of showing an ambiguous toolbar glyph", () => {
+    const popoverStart = html.indexOf('<div id="settings-popover"');
+    const popoverEnd = html.indexOf("</div>", popoverStart);
+    const popover = html.slice(popoverStart, popoverEnd);
+    const actionsStart = html.indexOf('<div id="transform-actions"');
+    const actionsEnd = html.indexOf("</div>", actionsStart);
+    const actions = html.slice(actionsStart, actionsEnd);
+    expect(popover).toContain('id="action-transform-again"');
+    expect(popover).toContain("Repeat Last Transform");
+    expect(actions).not.toContain('id="action-transform-again"');
+  });
+
+  it("offers Sizes operations as direct choices instead of a visible select", () => {
+    expect(canvasViewSource).toContain('id="canvas-operation" class="sr-only"');
+    expect(canvasViewSource).toContain('id="canvas-operation-choices"');
+    for (const operation of ["crop", "trim", "pad", "contain", "cover", "stretch"]) {
+      expect(canvasViewSource).toContain(`data-operation="${operation}"`);
+    }
+  });
+
   it("keeps output density visible but unobtrusive in the preview corner", () => {
     const editorStart = html.indexOf('<div id="editor"');
     const editorEnd = html.indexOf("</div>", editorStart);
@@ -158,6 +190,28 @@ describe("Figma product workspace markup", () => {
     const popoverMarkup = html.slice(popoverStart, popoverEnd);
     expect(popoverMarkup).toContain('id="output-policy-fit"');
     expect(popoverMarkup).toContain('id="output-policy-original"');
+  });
+
+  it("follows Figma light and dark themes while keeping canvas labels legible", () => {
+    expect(html).toContain(":root.figma-light {");
+    expect(html).toContain(":root.figma-dark {");
+    expect(html).toContain("@media (prefers-color-scheme: dark)");
+    expect(html).toContain("--wb-canvas-reference:");
+    expect(html).toContain("text-shadow: none;");
+    expect(html).toContain("stroke: var(--wb-canvas-reference);");
+  });
+
+  it("keeps direct-manipulation controls square and outside generic button motion", () => {
+    expect(html).toContain(
+      ".worldbend-editor__handle { position: absolute; z-index: 3; left: 0; top: 0; width: 32px; min-width: 0; height: 32px; min-height: 0;",
+    );
+    expect(html).toContain(
+      ".direct-point { position: absolute; width: 32px; min-width: 0; height: 32px; min-height: 0;",
+    );
+    expect(html).toContain(
+      "button:not(:disabled):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active",
+    );
+    expect(html).not.toContain("button:not(:disabled):active { transform:");
   });
 
   it("keeps Sizes template saving compact and icon-led", () => {
@@ -185,7 +239,8 @@ describe("Figma product workspace markup", () => {
     expect(errorStart).toBeGreaterThan(-1);
     expect(errorSource.indexOf("productWorkspace.returnToPerspective()"))
       .toBeLessThan(errorSource.indexOf("canvasWorkspace.clearSource"));
-    expect(errorSource).toContain('selectionState.setAttribute("role", "alert")');
+    // Alert/status semantics are exercised by the built selection-entry flow;
+    // empty selections now share this recovery path without being an error.
   });
 
   it("wires shared direct points to every interruption boundary", () => {

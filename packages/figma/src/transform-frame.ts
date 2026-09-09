@@ -71,6 +71,12 @@ export function rebaseTransformFrame(
   nextInitial: TransformFrame,
   current: TransformFrame,
 ): TransformFrame {
+  // An Agent, host Undo, or native wrapper resize can replace the saved
+  // mapping itself. Rebasing only dimensions would silently revive the old
+  // transform and overwrite that external update on the next Apply.
+  if (!sameTransformSpec(previousInitial.spec, nextInitial.spec)) {
+    return structuredClone(nextInitial);
+  }
   const placementScaleX = nextInitial.placement.width / previousInitial.placement.width;
   const placementScaleY = nextInitial.placement.height / previousInitial.placement.height;
   const renderScaleX = nextInitial.renderWidth / previousInitial.renderWidth;
@@ -99,6 +105,22 @@ export function rebaseTransformFrame(
     renderHeight,
     placement,
   };
+}
+
+export function sameTransformSpec(left: TransformSpec, right: TransformSpec): boolean {
+  return left.destination.space === right.destination.space &&
+    (["tl", "tr", "br", "bl"] as const).every((corner) =>
+      left.destination.quad[corner].x === right.destination.quad[corner].x &&
+      left.destination.quad[corner].y === right.destination.quad[corner].y) &&
+    (left.content.orientation ?? "native") === (right.content.orientation ?? "native") &&
+    left.content.warp?.preset === right.content.warp?.preset &&
+    left.content.warp?.amount === right.content.warp?.amount;
+}
+
+export function sameTransformFrame(left: TransformFrame, right: TransformFrame): boolean {
+  return sameTransformSpec(left.spec, right.spec) &&
+    left.renderWidth === right.renderWidth && left.renderHeight === right.renderHeight &&
+    (["x", "y", "width", "height"] as const).every((key) => left.placement[key] === right.placement[key]);
 }
 
 function isLogicalRenderAxis(value: number): boolean {

@@ -34,6 +34,8 @@ import {
   frameFromComposition,
   frameFromSource,
   rebaseTransformFrame,
+  sameTransformSpec,
+  sameTransformFrame,
   type TransformFrame,
 } from "./transform-frame";
 import {
@@ -132,13 +134,19 @@ const mockupWorkspaceRoot = required<HTMLElement>("mockup-workspace");
 const meshWorkspaceRoot = required<HTMLElement>("mesh-workspace");
 const remapWorkspaceRoot = required<HTMLElement>("remap-workspace");
 const templatesWorkspaceRoot = required<HTMLElement>("templates-workspace");
-const selectionState = required<HTMLParagraphElement>("selection-state");
+const selectionState = required<HTMLElement>("selection-state");
+const selectionTitle = required<HTMLElement>("selection-title");
+const selectionDetail = required<HTMLElement>("selection-detail");
+const selectionContinue = required<HTMLElement>("selection-continue");
+const nativeRecoverButton = required<HTMLButtonElement>("native-recover");
+let nativeRecovery: { nodeId: string; expected: string } | undefined;
 const sourceName = required<HTMLOutputElement>("source-name");
 const errorMessage = required<HTMLElement>("error");
 const errorText = required<HTMLSpanElement>("error-text");
 const errorDismiss = required<HTMLButtonElement>("error-dismiss");
 const statusMessage = required<HTMLParagraphElement>("status");
 const controls = required<HTMLElement>("controls");
+const historyInputValues = new Map<HTMLInputElement, string>();
 const applyButton = required<HTMLButtonElement>("apply");
 const resetButton = required<HTMLButtonElement>("reset");
 const modeSwitch = required<HTMLDivElement>("mode-switch");
@@ -177,6 +185,7 @@ const actionFlipY = required<HTMLButtonElement>("action-flip-y");
 const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
+const actionApplyEditable = required<HTMLButtonElement>("action-apply-editable");
 const workspaceNavigationRoot = required<HTMLElement>("workspace-navigation");
 const workspaceStripViewport = required<HTMLElement>("workspace-strip-viewport");
 const workspaceBackward = required<HTMLButtonElement>("workspace-backward");
@@ -217,7 +226,7 @@ const localeSystemDetail = required<HTMLElement>("locale-system-detail");
 const localeEnglish = required<HTMLSpanElement>("locale-en-label");
 const localeChinese = required<HTMLSpanElement>("locale-zh-CN-label");
 
-type ShownNodes = { nodeIds: string[] };
+type ShownNodes = { nodeIds: string[]; sourceNodeIds: readonly string[] };
 type ActiveSource = Omit<SourcePayload, "bytes" | "sources"> & {
   sources?: Array<Omit<NonNullable<SourcePayload["sources"]>[number], "bytes">>;
 };
@@ -226,7 +235,15 @@ let current: ActiveSource | undefined;
 // Which layers the editor currently shows. Unlike `current`, this survives a
 // selection reload, so chained refreshes of the same layers keep the quad.
 let lastShownNodes: ShownNodes | undefined;
+let loadingNodeIds: readonly string[] = [];
 let refreshInFlight = false;
+let nativeRendererUpdate: Extract<MainToUiMessage, { type: "source-renderer" }> | undefined;
+// One decoded full-resolution source, never rendered result pixels. Exact
+// requested dimensions keep warm and cold sampling identical. A source edit
+// or selection refresh releases it on the leading edge, before async work.
+let finalSourceRaster: {
+  source: ActiveSource; generation: number; width: number; height: number; image: HTMLImageElement;
+} | undefined;
 let activeGeneration = 0;
 let valid = false;
 let phase: Phase = "idle";
@@ -262,6 +279,11 @@ let distortFrameDirty = false;
 // Set once an applied-state Cmd/Ctrl+Z has been routed to the host; further
 // presses stay with the plugin until the reload or next apply clears it.
 let undoRouted = false;
+// Apply publishes beside the selected source but does not end the session.
+// Until the next local edit, one ordinary Undo may still remove that fresh
+// Figma result; afterwards Undo belongs to the plugin-local draft history.
+let appliedResultPending = false;
+let pendingReplacementBaseline: { generation: number; frame: TransformFrame } | undefined;
 let nextSourceRasterRequestId = 1;
 const pendingSourceRasterRequests = new Map<
   number,
@@ -335,10 +357,8 @@ const viewport: PreviewViewportHandle | undefined = editor
   : undefined;
 const distortEndFrames = createFrameCoalescer(() => {
   if (phase !== "ready" || editorMode !== "distort" || !current || refreshInFlight) return;
-  // The editor's own frame callback was queued first by the final pointer or
-  // keyboard sample. Commit only after onChange has copied that exact quad
-  // into activeFrame, then repair visibility without touching its geometry.
-  commitHistoryNow();
+  // Only viewport presentation waits for paint. The completed edit is already
+  // recorded synchronously, so a refresh cannot cancel its Undo boundary.
   viewport?.revealAllCorners({ animate: true });
 });
 
@@ -510,6 +530,17 @@ function control(id: string): {
 window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) => {
   const message = event.data.pluginMessage;
   if (!message) return;
+  if (message.type === "source-renderer") {
+    if (message.generation !== activeGeneration) return;
+    nativeRendererUpdate = message;
+    if (current?.sourceNodeId === message.sourceNodeId && current.targetNodeId === message.targetNodeId) {
+      if (message.renderer) current.nativeRenderer = message.renderer;
+      else delete current.nativeRenderer;
+      delete current.nativeRendererPending;
+      renderState();
+    }
+    return;
+  }
   if (message.type === "template-library" || message.type === "template-library-error") {
     templateWorkspace.handleMainMessage(message);
     if (message.mutation?.kind === "save") {
@@ -552,19 +583,35 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
   if (message.type === "source") void loadSource(message.generation, message.payload);
   if (message.type === "selection-error") {
     showSelectionError(message.generation, message.message);
+    if (message.generation === activeGeneration) {
+      nativeRecovery = message.nativeRecovery;
+      nativeRecoverButton.hidden = !nativeRecovery;
+      nativeRecoverButton.disabled = false;
+    }
   }
   if (message.type === "apply-error" && message.generation === activeGeneration) {
+    pendingReplacementBaseline = undefined;
     appliedTransformMemory.fail(message.generation);
     refreshInFlight = false;
     undoRouted = false;
+    appliedResultPending = false;
     phase = current ? "ready" : "idle";
     showError(message.message);
     renderState();
   }
   if (message.type === "apply-complete" && message.generation === activeGeneration) {
     appliedTransformMemory.complete(message.generation);
+    if (message.operation === "replace" && pendingReplacementBaseline?.generation === message.generation) {
+      // The host will report our replacement as a node change. Rebase later
+      // edits from the frame just published, so that refresh cannot apply the
+      // saved size/translation a second time.
+      initialFrame = cloneFrame(pendingReplacementBaseline.frame);
+    }
+    pendingReplacementBaseline = undefined;
     refreshInFlight = false;
-    phase = "applied";
+    phase = "ready";
+    appliedResultPending = true;
+    undoRouted = false;
     setStatus(
       userMessage(message.operation === "replace" ? "perspectiveReplaced" : "perspectiveApplied"),
     );
@@ -603,6 +650,7 @@ warpAmountInput.addEventListener("input", () => {
 warpAmountInput.addEventListener("change", () => requestWarpPreview(true));
 for (const input of [rectifyWidthInput, rectifyHeightInput]) {
   input.addEventListener("input", () => {
+    disarmAppliedResultUndo();
     rectifyInputsValid = readRectifyOutput() !== undefined;
     input.setAttribute("aria-invalid", String(!input.validity.valid));
     if (rectifyInputsValid) clearError();
@@ -619,8 +667,14 @@ actionFlipX.addEventListener("click", () => void toggleRecipeFlip("x"));
 actionFlipY.addEventListener("click", () => void toggleRecipeFlip("y"));
 actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
-actionApplyCopy.addEventListener("click", () => void applyPerspective(true));
+actionApplyCopy.addEventListener("click", () => void applyPerspective(true, false));
+actionApplyEditable.addEventListener("click", () => void applyPerspective(true, true));
 errorDismiss.addEventListener("click", clearError);
+nativeRecoverButton.addEventListener("click", () => {
+  if (!nativeRecovery) return;
+  nativeRecoverButton.disabled = true;
+  post({ type: "restore-native", generation: activeGeneration, ...nativeRecovery });
+});
 placementToggle.addEventListener("click", togglePlacementPanel);
 placementClose.addEventListener("click", () => closePlacementPanel({ restoreFocus: true }));
 document.addEventListener("pointerdown", closePlacementPanelOutside);
@@ -635,6 +689,27 @@ positionYInput.addEventListener("focus", () => {
 positionXInput.addEventListener("blur", () => restorePlacementInput("x"));
 positionYInput.addEventListener("blur", () => restorePlacementInput("y"));
 document.addEventListener("keydown", handleKeydown);
+// Figma Desktop can replay a browser text-history command before forwarding
+// Cmd/Ctrl Z to the plugin. A field blurred by publication must not consume
+// that command and turn the published state into a new local edit first.
+document.addEventListener("beforeinput", (event) => {
+  if ((event.inputType === "historyUndo" || event.inputType === "historyRedo") &&
+    event.target instanceof HTMLInputElement && historyInputValues.has(event.target) &&
+    event.target !== document.activeElement) {
+    event.preventDefault();
+  }
+});
+// Some Desktop replays emit input alone. Restore the last presented value
+// before any field handler can change the recipe or disarm publication Undo.
+document.addEventListener("input", (event) => {
+  const field = event.target;
+  const inputType = (event as InputEvent).inputType;
+  if ((inputType === "historyUndo" || inputType === "historyRedo") &&
+    field instanceof HTMLInputElement && field !== document.activeElement && historyInputValues.has(field)) {
+    field.value = historyInputValues.get(field)!;
+    event.stopImmediatePropagation();
+  }
+}, true);
 document.addEventListener("keyup", handleKeyUp);
 window.addEventListener("blur", releasePreviewPan);
 
@@ -696,13 +771,17 @@ function createEditor(): PerspectiveEditor | undefined {
     document.body.dataset.i18nReady = "true";
     selectionMessage = messageFromError(error, "previewFailed");
     renderSelectionMessage();
-    selectionState.setAttribute("role", "alert");
     return undefined;
   }
 }
 
 function beginSelectionLoad(generation: number, nodeIds: readonly string[]): void {
   if (!Number.isSafeInteger(generation) || generation < activeGeneration) return;
+  nativeRendererUpdate = undefined;
+  finalSourceRaster = undefined;
+  loadingNodeIds = [...nodeIds];
+  nativeRecovery = undefined;
+  nativeRecoverButton.hidden = true;
   canvasWorkspace.selectionLoading();
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
@@ -721,6 +800,8 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
     renderState();
     return;
   }
+  appliedResultPending = false;
+  pendingReplacementBaseline = undefined;
   // A different selection is loading. When a previous preview is on screen,
   // keep it dimmed in place instead of hiding the whole workspace — tearing
   // the preview down and re-showing it flashes the panel on every selection.
@@ -739,7 +820,6 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
   sourceName.removeAttribute("title");
   clearError();
   setStatus(userMessage("loadingSelection"));
-  selectionState.removeAttribute("role");
   selectionMessage = userMessage("loadingSelection");
   renderSelectionMessage();
   selectionState.hidden = false;
@@ -760,7 +840,8 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     ...(payload.targetNodeId ? [payload.targetNodeId] : []),
   ];
   const refreshing = lastShownNodes !== undefined &&
-    [...lastShownNodes.nodeIds].sort().join("\u0000") === [...nextNodeIds].sort().join("\u0000");
+    isSameShownSelection(loadingNodeIds) &&
+    [...lastShownNodes.sourceNodeIds].sort().join("\u0000") === [...nextNodeIds].sort().join("\u0000");
   try {
     const image = await imageFromBytes(payload.bytes);
     const rasterSources = payload.sources?.length ? payload.sources : [payload];
@@ -784,6 +865,15 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
           renderHeight: image.naturalHeight,
         }
       : payloadFrame;
+    const externalTransformChanged = refreshing && initialFrame &&
+      !sameTransformSpec(initialFrame.spec, nextInitial.spec);
+    const displacedDraft = externalTransformChanged && activeFrame && baseFrame && initialFrame &&
+      !sameTransformFrame(activeFrame, initialFrame)
+      ? currentHistoryEntry() : undefined;
+    const retainedSession = refreshing && initialFrame && activeFrame && baseFrame &&
+      sameTransformFrame(initialFrame, nextInitial)
+      ? { entry: currentHistoryEntry(), history } : undefined;
+    if (externalTransformChanged) appliedResultPending = false;
     const nextActive =
       refreshing && initialFrame && activeFrame
         ? editorMode === "rectify"
@@ -796,6 +886,7 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
           : rebaseTransformFrame(initialFrame, nextInitial, activeFrame)
         : nextInitial;
     if (!refreshing) {
+      appliedResultPending = false;
       editorMode = payload.rectification ? "rectify" : "distort";
       distortMode = "free";
       rectifyParent = undefined;
@@ -831,6 +922,15 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
       } : {}),
     };
     current = activeSource;
+    // Discovery can finish while image decoding or the first GPU preview is
+    // pending. Preserve that completion when installing the decoded source.
+    if (nativeRendererUpdate?.generation === generation &&
+      nativeRendererUpdate.sourceNodeId === current.sourceNodeId &&
+      nativeRendererUpdate.targetNodeId === current.targetNodeId) {
+      if (nativeRendererUpdate.renderer) current.nativeRenderer = nativeRendererUpdate.renderer;
+      else delete current.nativeRenderer;
+      delete current.nativeRendererPending;
+    }
     canvasWorkspace.setSource({ ...primaryMetadata, selectionGeneration: generation }, image);
     const designerSource: DesignerWorkspaceSource = {
       sources: loadedSources,
@@ -843,9 +943,9 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     const sourceCount = loadedSources.length;
     workspaceNavigation.setAvailability(taskWorkspaceAvailability(sourceCount));
     initialFrame = cloneFrame(nextInitial);
-    baseFrame = cloneFrame(nextActive);
+    baseFrame = cloneFrame(retainedSession?.entry.baseFrame ?? nextActive);
     activeFrame = cloneFrame(nextActive);
-    if (payload.rectification) {
+    if (payload.rectification && !retainedSession) {
       rectifyWidthInput.value = String(payload.rectification.output.width);
       rectifyHeightInput.value = String(payload.rectification.output.height);
     } else if (!refreshing) {
@@ -853,17 +953,23 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
       rectifyHeightInput.value = String(nextInitial.renderHeight);
     }
     rectifyInputsValid = readRectifyOutput() !== undefined;
-    rectifyInitialOutput = {
-      width: rectifyWidthInput.value,
-      height: rectifyHeightInput.value,
-    };
+    if (!retainedSession) {
+      rectifyInitialOutput = {
+        width: rectifyWidthInput.value,
+        height: rectifyHeightInput.value,
+      };
+    }
     syncWarpControls(nextActive.spec.content.warp);
-    resetTransformInputs();
-    gestureTranslation = { x: 0, y: 0 };
+    if (!retainedSession) {
+      resetTransformInputs();
+      gestureTranslation = { x: 0, y: 0 };
+    }
     lastCompose = undefined;
     transformGestureSession.cancel();
-    distortFrameDirty = false;
-    lastShownNodes = { nodeIds: nextNodeIds };
+    distortFrameDirty = retainedSession?.entry.distortFrameDirty ?? false;
+    // The selected result can resolve to content that is not itself selected.
+    // Keep host selection separate from the sources used to render it.
+    lastShownNodes = { nodeIds: [...loadingNodeIds], sourceNodeIds: nextNodeIds };
     refreshInFlight = false;
     phase = "ready";
     sourceName.textContent = payload.sourceName;
@@ -876,20 +982,29 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
     renderMode();
     setStatus();
     renderState();
-    // A same-node refresh rebases geometry; the pre-refresh history entries no
-    // longer match the resolved frames, so the session restarts from here.
-    history = createEditHistory(currentHistoryEntry());
+    // New pixels alone do not invalidate local geometry, controls or history.
+    // Only a changed geometric frame needs a new history basis.
+    history = retainedSession?.history ?? createEditHistory(currentHistoryEntry());
     if (editorMode === "transform") {
       const initialized = await updateTransformPreview();
-      if (initialized && generation === activeGeneration && history) {
+      if (initialized && generation === activeGeneration && history && !retainedSession) {
         history.resetToBaseline(currentHistoryEntry());
       }
+    }
+    if (generation !== activeGeneration) return;
+    if (displacedDraft) {
+      // Keep an unapplied draft recoverable without silently publishing it
+      // over the newly loaded shared operation. Standard Undo restores it.
+      const latest = currentHistoryEntry();
+      history = createEditHistory(displacedDraft);
+      history.push(latest);
+      setStatus(userMessage("sharedTransformRefreshed"));
     }
     // Fit only after the final mode-specific layout and preview have settled.
     // Figma can restore the plugin across displays before the iframe reports
     // its new dimensions; fit-lock then keeps following later mount resizes.
     syncViewportScene();
-    viewport?.fit();
+    if (!refreshing) viewport?.fit();
   } catch (error) {
     if (generation !== activeGeneration) return;
     showSelectionError(
@@ -912,6 +1027,7 @@ function showSelectionError(generation: number, message: UserMessage): void {
   composeInFlight = false;
   transformInputsValid = true;
   undoRouted = false;
+  appliedResultPending = false;
   refreshInFlight = false;
   current = undefined;
   canvasWorkspace.clearSource(translate(activeLocale, message));
@@ -936,7 +1052,6 @@ function showSelectionError(generation: number, message: UserMessage): void {
   controls.hidden = true;
   selectionMessage = message;
   renderSelectionMessage();
-  selectionState.setAttribute("role", "alert");
   selectionState.hidden = false;
   clearError();
   setStatus();
@@ -1211,6 +1326,7 @@ async function updateWarpPreview(
     if (commit) commitHistoryNow();
     return true;
   }
+  disarmAppliedResultUndo();
   const nextFrame = cloneFrame(baseFrame);
   if (warp) nextFrame.spec.content.warp = warp;
   else delete nextFrame.spec.content.warp;
@@ -1408,6 +1524,7 @@ async function updateTransformPreview(
 }
 
 function requestTransformControlPreview(final: boolean): void {
+  disarmAppliedResultUndo();
   try {
     const inputs = transformControls.recipeFromInputs();
     transformInputsValid = true;
@@ -1523,6 +1640,7 @@ function preciseInputValue(value: number): string {
 
 function handleEditEnd(source: "distort" | "transform"): void {
   if (phase !== "ready" || !current || refreshInFlight) return;
+  disarmAppliedResultUndo();
   if (editorMode === "rectify") return;
   if (source === "distort" && editorMode === "distort") {
     // Keep every corner in the stable source frame for the whole Distort
@@ -1530,6 +1648,11 @@ function handleEditEnd(source: "distort" | "transform"): void {
     // pointer-up, making adjacent corners appear to move even though the live
     // gesture held them fixed. Apply and cross-mode transitions own framing.
     distortFrameDirty = true;
+    // Pointer/key release can precede onChange, or follow its paint while the
+    // next history frame is still pending. Read the exact current geometry at
+    // the semantic boundary; host refresh/Undo may arrive before another rAF.
+    if (activeFrame && editor) activeFrame = { ...activeFrame, spec: editor.captureSpec() };
+    commitHistoryNow();
     distortEndFrames.request();
     return;
   }
@@ -1633,7 +1756,13 @@ function currentHistoryEntry(): EditHistoryEntry {
 
 function commitHistoryNow(): void {
   if (!history || !baseFrame || !activeFrame || phase !== "ready" || refreshInFlight) return;
+  disarmAppliedResultUndo();
   history.push(currentHistoryEntry());
+}
+
+function disarmAppliedResultUndo(): void {
+  appliedResultPending = false;
+  undoRouted = false;
 }
 
 function requestTransformHistoryCommit(): void {
@@ -1922,7 +2051,7 @@ function renderOptionsContext(workspace: ProductWorkspace): void {
   settingsPopover.dataset.workspace = perspective ? "perspective" : "global";
   for (const element of [
     perspectiveOptionsTitle,
-    actionApplyCopy,
+    actionTransformAgain,
     shortcutHelp,
     outputSettingsTitle,
     outputPolicyFit,
@@ -2022,7 +2151,11 @@ function syncViewportScene(): void {
   });
 }
 
-async function applyPerspective(duplicate = false): Promise<void> {
+async function applyPerspective(duplicate = false, editable = Boolean(current?.nativeTarget && !duplicate)): Promise<void> {
+  if (editable && editorMode === "rectify") {
+    showError(userMessage("nativeApplyFailed"));
+    return;
+  }
   if (editorMode === "rectify") {
     await applyRectification(duplicate);
     return;
@@ -2048,30 +2181,58 @@ async function applyPerspective(duplicate = false): Promise<void> {
   const source = current;
   const generation = activeGeneration;
   const spec = editor.captureSpec();
+  if (editable && (!source.nativeRenderer || spec.content.warp)) {
+    showError(userMessage("nativeApplyFailed"));
+    return;
+  }
   const output = { ...cloneFrame(activeFrame), spec };
-  const outputPlan = planOutputForSize({
-    width: output.renderWidth,
-    height: output.renderHeight,
-  });
-  if (!outputPlan || !canApplyOutput(outputPlan, outputDensityPolicy)) {
+  const outputPlan = currentOutputPlan(editable);
+  // Raster fitting changes pixel density only. A native Frame must fit the
+  // host's logical bounds and is independent of the image density preference.
+  const policy = editable ? "original" : outputDensityPolicy;
+  if (!outputPlan || !canApplyOutput(outputPlan, policy)) {
     showError(userMessage("transformOutputLimit", { limit: MAX_FIGMA_IMAGE_AXIS }));
     renderState();
     return;
   }
-  const rasterSize = rasterSizeForPolicy(outputPlan, outputDensityPolicy);
+  const rasterSize = rasterSizeForPolicy(outputPlan, policy);
   activeFrame = cloneFrame(output);
+  const replacing = !duplicate && source.targetNodeId && editable === Boolean(source.nativeTarget);
+  pendingReplacementBaseline = replacing ? {
+    generation,
+    frame: {
+      ...cloneFrame(output),
+      renderWidth: editable ? Math.ceil(output.placement.width) : rasterSize.width,
+      renderHeight: editable ? Math.ceil(output.placement.height) : rasterSize.height,
+    },
+  } : undefined;
   transformGestureSession.cancel();
   // This remains pending until the main thread confirms the visible write.
   appliedTransformMemory.begin(generation, {
     initialFrame: cloneFrame(initialFrame),
     finalFrame: cloneFrame(output),
   });
+  appliedResultPending = false;
   phase = "applying";
   clearError();
-  setStatus(userMessage(!duplicate && source.targetNodeId ? "replacing" : "applying"));
+  setStatus(userMessage(replacing ? "replacing" : "applying"));
   renderState();
   try {
+    if (editable) {
+      const solved = await solveTransform(spec, rasterSize);
+      if (generation !== activeGeneration || phase !== "applying" || current !== source) return;
+      post({ type: "apply-native", payload: {
+        generation, spec, inverse: solved.homography.inverse,
+        sourceNodeId: source.sourceNodeId,
+        renderWidth: rasterSize.width, renderHeight: rasterSize.height,
+        placement: output.placement,
+        ...(source.targetNodeId ? { targetNodeId: source.targetNodeId } : {}),
+        ...(duplicate ? { duplicate: true } : {}),
+      } });
+      return;
+    }
     const prepared = await prepareFinalSourceRaster(source, rasterSize, spec);
+    if (generation !== activeGeneration || phase !== "applying" || current !== source) return;
     const bytes = await editor.exportPng(
       rasterSize.width,
       rasterSize.height,
@@ -2113,6 +2274,7 @@ async function applyPerspective(duplicate = false): Promise<void> {
 }
 
 async function applyRectification(duplicate = false): Promise<void> {
+  pendingReplacementBaseline = undefined;
   const output = readRectifyOutput();
   if (
     !editor ||
@@ -2138,6 +2300,7 @@ async function applyRectification(duplicate = false): Promise<void> {
     },
     output,
   };
+  appliedResultPending = false;
   phase = "applying";
   clearError();
   setStatus(userMessage(!duplicate && source.targetNodeId ? "replacing" : "applying"));
@@ -2145,6 +2308,7 @@ async function applyRectification(duplicate = false): Promise<void> {
   try {
     const plan = await rectifyPlane(rectification);
     const prepared = await prepareRectificationSourceRaster(source, plan);
+    if (generation !== activeGeneration || phase !== "applying" || current !== source) return;
     const bytes = await editor.exportPng(
       output.width,
       output.height,
@@ -2199,8 +2363,7 @@ async function prepareRectificationSourceRaster(
   if (available && available.width >= desired.width && available.height >= desired.height) {
     return { solved };
   }
-  const bytes = await requestSourceRaster(source, desired);
-  return { sourceOverride: await imageFromBytes(bytes), solved };
+  return { sourceOverride: await finalSourceImage(source, desired), solved };
 }
 
 function fittedRectificationPlacement(
@@ -2245,12 +2408,26 @@ async function prepareFinalSourceRaster(
   if (available && available.width >= desired.width && available.height >= desired.height) {
     return { solved, ...(warpMesh ? { warpMesh } : {}) };
   }
-  const bytes = await requestSourceRaster(source, desired);
   return {
-    sourceOverride: await imageFromBytes(bytes),
+    sourceOverride: await finalSourceImage(source, desired),
     solved,
     ...(warpMesh ? { warpMesh } : {}),
   };
+}
+
+async function finalSourceImage(source: ActiveSource, desired: Size): Promise<HTMLImageElement> {
+  if (current !== source || refreshInFlight) throw userMessage("selectionChanged");
+  const generation = activeGeneration;
+  if (finalSourceRaster?.source === source && finalSourceRaster.generation === generation &&
+    finalSourceRaster.width === desired.width && finalSourceRaster.height === desired.height) {
+    return finalSourceRaster.image;
+  }
+  finalSourceRaster = undefined;
+  const bytes = await requestSourceRaster(source, desired);
+  const image = await imageFromBytes(bytes);
+  if (generation !== activeGeneration || current !== source || refreshInFlight) throw userMessage("selectionChanged");
+  finalSourceRaster = { source, generation, width: desired.width, height: desired.height, image };
+  return image;
 }
 
 function selectOutputDensityPolicy(policy: OutputDensityPolicy): void {
@@ -2260,7 +2437,13 @@ function selectOutputDensityPolicy(policy: OutputDensityPolicy): void {
   renderState();
 }
 
-function currentOutputPlan(): FigmaOutputPlan | undefined {
+function highResolutionDensity(): number {
+  if (!activeFrame) return 1;
+  return Math.max(1, 2 * activeFrame.placement.width / activeFrame.renderWidth,
+    2 * activeFrame.placement.height / activeFrame.renderHeight);
+}
+
+function currentOutputPlan(editable = false): FigmaOutputPlan | undefined {
   if (!initialFrame || !activeFrame) return undefined;
   try {
     let requested: PixelSize;
@@ -2279,7 +2462,14 @@ function currentOutputPlan(): FigmaOutputPlan | undefined {
         height: activeFrame.renderHeight,
       };
     }
-    return planOutputForSize(requested);
+    if (editable) {
+      return planOutputForSize({
+        width: Math.ceil(requested.width * activeFrame.placement.width / activeFrame.renderWidth),
+        height: Math.ceil(requested.height * activeFrame.placement.height / activeFrame.renderHeight),
+      });
+    }
+    const density = editorMode === "rectify" ? 1 : highResolutionDensity();
+    return planOutputForSize({ width: requested.width * density, height: requested.height * density });
   } catch {
     return undefined;
   }
@@ -2318,9 +2508,10 @@ function renderOutputSize(plan: FigmaOutputPlan | undefined): void {
   const fitted = plan.fitted && outputDensityPolicy === "fit";
   const blocked = plan.fitted && outputDensityPolicy === "original";
   outputSize.hidden = false;
-  outputSizeFlow.textContent = fitted
+  const pixelFlow = fitted
     ? `${source} → ${requested} → ${applied} px`
     : `${source} → ${requested} px`;
+  outputSizeFlow.textContent = `${translate(activeLocale, "highResolutionOutput")} · ${pixelFlow}`;
   outputSizeNote.textContent = fitted
     ? translate(activeLocale, "outputFitNote")
     : blocked
@@ -2330,7 +2521,7 @@ function renderOutputSize(plan: FigmaOutputPlan | undefined): void {
   else delete outputSize.dataset.blocked;
   outputSize.setAttribute(
     "aria-label",
-    translate(
+    `${translate(activeLocale, "highResolutionOutput")}. ` + translate(
       activeLocale,
       userMessage(
         fitted
@@ -2395,16 +2586,27 @@ function renderState(): void {
   const outputPlan = currentOutputPlan();
   const outputApplicable = canApplyOutput(outputPlan, outputDensityPolicy);
   const positionReady = menuReady && !transformInitializing && editorMode === "transform" && transformInputsValid;
+  const editableApplicable = canApplyOutput(currentOutputPlan(true), "original");
+  const editableModeSupported = editorMode !== "rectify" && !editor?.captureSpec().content.warp;
+  const editableSupported = Boolean(current?.nativeRenderer) && editableModeSupported;
+  const editableReady = menuReady && transformInputsValid && !transformInitializing &&
+    editableApplicable && editableSupported;
+  actionApplyEditable.disabled = !editableReady;
+  const editableHelp = translate(activeLocale, !editableModeSupported ? "nativeOutputUnsupported" :
+    current?.nativeRendererPending ? "nativePreparing" :
+    !current?.nativeRenderer ? current?.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable" :
+    !editableApplicable ? "nativeOutputLimit" : "editableOutputHelp");
+  actionApplyEditable.title = editableHelp;
   for (const button of [actionFlipX, actionFlipY, actionRotateCw]) {
     button.disabled = !positionReady;
   }
-  actionApplyCopy.disabled =
-    !menuReady ||
-    // Without an existing result there is nothing to copy beside: the primary
-    // Apply already publishes a new image, so the copy variant is redundant.
-    !current?.targetNodeId ||
-    !outputApplicable ||
-    (editorMode === "rectify" && !rectifyInputsValid);
+  actionApplyCopy.hidden = !current?.targetNodeId;
+  actionApplyCopy.disabled = !menuReady || !transformInputsValid || transformInitializing ||
+    !outputApplicable || (editorMode === "rectify" && !rectifyInputsValid);
+  actionApplyCopy.textContent = translate(activeLocale, "createHighResolutionImage");
+  const imageSize = outputPlan && rasterSizeForPolicy(outputPlan, outputDensityPolicy);
+  const imageHelp = `${translate(activeLocale, "imageOutputHelp")}${imageSize ? ` · ${imageSize.width} × ${imageSize.height} px` : ""}`;
+  actionApplyCopy.title = imageHelp;
   workspaceNavigation.setDisabled(!taskReady);
   actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
   pivotPicker.setDisabled(!positionReady);
@@ -2423,6 +2625,8 @@ function renderState(): void {
     (editorMode === "rectify" && !rectifyInputsValid) ||
     blockingCompose ||
     refreshInFlight;
+  if (current?.nativeTarget) applyButton.disabled = !editableReady;
+  applyButton.title = current?.nativeTarget ? editableHelp : imageHelp;
   const rectificationOnly = editorMode === "rectify" && !rectifyParent;
   modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeDistortButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
@@ -2443,22 +2647,20 @@ function renderState(): void {
   renderOutputPolicy();
   renderOutputSize(outputPlan);
   resetButton.textContent = translate(activeLocale, phase === "resetting" ? "resetting" : "reset");
-  applyButton.textContent =
-    phase === "applied"
-      ? translate(activeLocale, "selectSourceAndResult")
-      : phase === "applying"
-      ? current?.targetNodeId
-        ? translate(activeLocale, "replacing")
-        : translate(activeLocale, "applying")
-      : current?.targetNodeId
-        ? translate(activeLocale, "replace")
-        : translate(activeLocale, "apply");
+  // Keep each action's meaning visible while publishing. A new copy must not
+  // make the disabled Update button announce that the old result is replaced.
+  applyButton.textContent = translate(activeLocale, current?.targetNodeId
+    ? current.nativeTarget ? "updateEditable" : "updateHighResolutionImage"
+    : "createHighResolutionImage");
   controls.setAttribute(
     "aria-busy",
     String(
       phase === "loading" || phase === "applying" || refreshInFlight || blockingCompose,
     ),
   );
+  for (const field of controls.querySelectorAll<HTMLInputElement>('input[type="number"]')) {
+    historyInputValues.set(field, field.value);
+  }
 }
 
 function clearError(): void {
@@ -2488,6 +2690,7 @@ function setStatus(message?: UserMessage): void {
 }
 
 function applyLocale(preference: LocalePreference, locale: SupportedLocale): void {
+  nativeRecoverButton.textContent = translate(locale, "restoreEditable");
   localePreference = preference;
   activeLocale = locale;
   document.documentElement.lang = locale;
@@ -2537,7 +2740,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionFlipX, translate(locale, "flipHorizontal"));
   localizeIconAction(actionFlipY, translate(locale, "flipVertical"));
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
-  localizeIconAction(actionTransformAgain, translate(locale, "transformAgain"));
+  actionTransformAgain.textContent = translate(locale, "transformAgain");
   workspaceNavigation.setLabels(translate(locale, "workspaceGroupLabel"), {
     perspective: translate(locale, "workspacePerspective"),
     templates: translate(locale, "workspaceTemplates"),
@@ -2548,7 +2751,8 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   }, translate(locale, "previousTools"), translate(locale, "nextTools"));
   modeBackward.setAttribute("aria-label", translate(locale, "previousModes"));
   modeForward.setAttribute("aria-label", translate(locale, "nextModes"));
-  actionApplyCopy.textContent = translate(locale, "applyAsCopy");
+  actionApplyCopy.textContent = translate(locale, "createHighResolutionImage");
+  actionApplyEditable.textContent = translate(locale, "applyEditable");
   shortcutHelp.textContent = translate(locale, "shortcutHelp");
   errorDismiss.setAttribute("aria-label", translate(locale, "dismissError"));
   placementLabel.textContent = translate(locale, "placement");
@@ -2763,7 +2967,17 @@ function pivotLabelKey(button: HTMLButtonElement): MessageKey {
 }
 
 function renderSelectionMessage(): void {
-  selectionState.textContent = translate(activeLocale, selectionMessage);
+  const empty = selectionMessage.key === "selectOneSource";
+  const loading = selectionMessage.key === "loadingSelection";
+  const title: MessageKey = empty ? "selectionStart" : loading ? "loadingSelection" :
+    selectionMessage.key === "webglRequired" ? "selectionUnavailable" : "selectionCheck";
+  selectionState.dataset.state = empty ? "empty" : loading ? "loading" : "error";
+  selectionState.setAttribute("role", empty || loading ? "status" : "alert");
+  selectionTitle.textContent = translate(activeLocale, title);
+  selectionDetail.textContent = translate(activeLocale, empty ? "selectionStartDetail" : selectionMessage);
+  selectionDetail.hidden = loading;
+  selectionContinue.textContent = translate(activeLocale, "selectionContinue");
+  selectionContinue.hidden = !empty;
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -2792,6 +3006,29 @@ function handleKeydown(event: KeyboardEvent): void {
     ctrlKey: event.ctrlKey,
   };
   const targetEditsText = targetOwnsTextEditingKey(event.target);
+  if (
+    shouldRouteAppliedUndo({
+      phase,
+      appliedResultPending,
+      key: event.key,
+      shiftKey: event.shiftKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      alreadyRouted: undoRouted,
+    })
+  ) {
+    // Applying does not lock the editor. Before the next local edit, preserve
+    // the familiar one-step document Undo for removing the freshly generated
+    // result without making that result the active source.
+    event.preventDefault();
+    undoRouted = true;
+    appliedResultPending = false;
+    // A selected native result now represents the restored document state.
+    // Reload it instead of preserving the just-undone local deformation.
+    if (current?.nativeTarget) lastShownNodes = undefined;
+    post({ type: "trigger-undo" });
+    return;
+  }
   if (!targetEditsText && shouldUndoInPlugin({ ...shortcut, phase })) {
     event.preventDefault();
     void stepHistory("undo");
@@ -2800,23 +3037,6 @@ function handleKeydown(event: KeyboardEvent): void {
   if (!targetEditsText && shouldRedoInPlugin({ ...shortcut, phase })) {
     event.preventDefault();
     void stepHistory("redo");
-    return;
-  }
-  if (
-    shouldRouteAppliedUndo({
-      phase,
-      key: event.key,
-      shiftKey: event.shiftKey,
-      metaKey: event.metaKey,
-      ctrlKey: event.ctrlKey,
-      alreadyRouted: undoRouted,
-    })
-  ) {
-    // Once Apply has completed, route the standard shortcut to the Figma
-    // document instead of letting the focused plugin input consume it.
-    event.preventDefault();
-    undoRouted = true;
-    post({ type: "trigger-undo" });
     return;
   }
   const targetOwnsKey = targetOwnsSessionKey(event.target);

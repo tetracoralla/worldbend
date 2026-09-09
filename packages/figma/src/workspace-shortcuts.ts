@@ -28,6 +28,7 @@ export function eventTargetEditsText(target: EventTarget | null): boolean {
 export function handleWorkspaceHistoryShortcut<T>(input: {
   event: KeyboardEvent;
   phase: Phase;
+  appliedResultPending: boolean;
   undoRouted: boolean;
   history: WorkspaceHistoryLike<T> | undefined;
   post(message: UiToMainMessage): void;
@@ -42,6 +43,7 @@ export function handleWorkspaceHistoryShortcut<T>(input: {
   if (shouldRouteAppliedUndo({
     ...shortcut,
     phase: input.phase,
+    appliedResultPending: input.appliedResultPending,
     alreadyRouted: input.undoRouted,
   })) {
     input.event.preventDefault();

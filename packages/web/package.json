@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./perspective": {
+      "types": "./dist/perspective.d.ts",
+      "import": "./dist/perspective.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
