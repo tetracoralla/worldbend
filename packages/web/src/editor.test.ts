@@ -252,6 +252,36 @@ describe("PerspectiveEditor interaction pipeline", () => {
     expect(editor.captureSpec()).toEqual(fallback);
   });
 
+  it("settles stranded render waiters when disposal lands between requeue and pump", async () => {
+    const editor = await createEditorWithSource({});
+    let releaseFirst: ((value: typeof solvedOutput) => void) | undefined;
+    solveTransform.mockImplementationOnce(
+      () => new Promise<typeof solvedOutput>((resolve) => { releaseFirst = resolve; }),
+    );
+    solveTransform.mockResolvedValueOnce(solvedOutput);
+    const firstSpec = normalizedSpec({
+      tl: { x: 0.05, y: 0.05 },
+      tr: { x: 1, y: 0 },
+      br: { x: 1, y: 1 },
+      bl: { x: 0, y: 1 },
+    });
+    const latestSpec = normalizedSpec({
+      tl: { x: 0.1, y: 0.1 },
+      tr: { x: 0.95, y: 0.05 },
+      br: { x: 1, y: 1 },
+      bl: { x: 0, y: 1 },
+    });
+    const first = editor.setSpec(firstSpec, { width: 200, height: 100 });
+    const latest = editor.setSpec(latestSpec, { width: 200, height: 100 });
+    // The in-flight solve is superseded; disposing now leaves the requeued
+    // batch stranded between the requeue and its next pump.
+    editor.dispose();
+    releaseFirst?.(solvedOutput);
+    // Both waiters must settle (as invalidation false) instead of hanging.
+    await expect(first).resolves.toBe(false);
+    await expect(latest).resolves.toBe(false);
+  });
+
   it("keeps one preview solve in flight and renders the latest queued spec", async () => {
     const editor = await createEditorWithSource({});
     solveTransform.mockClear();

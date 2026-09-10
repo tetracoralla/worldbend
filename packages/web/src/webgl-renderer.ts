@@ -263,7 +263,7 @@ export class TransformWebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, stageImageForUpload(source));
     gl.generateMipmap(gl.TEXTURE_2D);
     const anisotropy = this.textureAnisotropy;
     if (anisotropy) {
@@ -560,4 +560,27 @@ function rowMajorToColumnMajor(values: readonly number[], target: Float32Array):
 
 function fail(message: string): never {
   throw new Error(message);
+}
+
+/**
+ * Some embedded and headless host builds reject texImage2D from blob-backed
+ * image elements with INVALID_VALUE (observed as WebGL 1281 across context
+ * attributes, timings, and warmed contexts, while canvas and ImageBitmap
+ * sources upload cleanly). Staging a decoded image element through a canvas
+ * costs one draw per source and sidesteps the whole class; other source
+ * kinds pass through untouched.
+ */
+function stageImageForUpload(source: TexImageSource): TexImageSource {
+  if (typeof HTMLImageElement === "undefined" || !(source instanceof HTMLImageElement)) return source;
+  // Staging draws the element's current pixels; an image that has not
+  // finished loading would stage a blank texture, so hand it to the GL
+  // upload path unchanged and let its own decode semantics apply.
+  if (!source.complete || source.naturalWidth <= 0 || source.naturalHeight <= 0) return source;
+  const canvas = document.createElement("canvas");
+  canvas.width = source.naturalWidth;
+  canvas.height = source.naturalHeight;
+  const context = canvas.getContext("2d", { alpha: true });
+  if (!context) return source;
+  context.drawImage(source, 0, 0);
+  return canvas;
 }

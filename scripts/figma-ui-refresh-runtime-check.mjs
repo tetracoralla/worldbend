@@ -515,11 +515,9 @@ async function runFixture() {
       const published = await apply();
       check(published.placement.width > 250 && published.placement.height > 200, "Apply lost the retained composition");
     } else if (scenario === "dogfood-tasks") {
-      // Roadmap designer dogfood as one continuous working session: screen
-      // placement, rotated poster, skewed label, repeated package face, and
-      // source replacement. The arced-logo Warp apply remains a follow-up:
-      // its primary-button routing is fixed, but the fresh-selection export
-      // path still fails a WebGL upload (see task notes).
+      // The roadmap's six designer dogfood tasks as one continuous working
+      // session: screen placement, rotated poster, skewed label, repeated
+      // package face, arced logo, and source replacement.
       const setNumber = async (id, value) => {
         get(id).value = value; get(id).dispatchEvent(new Event("input", { bubbles: true }));
         get(id).dispatchEvent(new Event("change", { bubbles: true })); await ready();
@@ -627,6 +625,36 @@ async function runFixture() {
       const lean = (skewed.tl.x - skewed.bl.x) * labelPayload.placement.width;
       check(Math.abs(Math.abs(lean) - Math.tan(12 * Math.PI / 180) * 160) < 1.5,
         `Skewed label leans ${lean.toFixed(1)} px instead of ${(Math.tan(12 * Math.PI / 180) * 160).toFixed(1)} px`);
+
+      // Task 5 - arced logo: Warp preset through the primary image route; a
+      // Warp operation cannot publish editable output, so on native-capable
+      // files the primary Apply must stay the HD route instead of disabling.
+      await selectSource({ ...payload, sourceNodeId: "logo", targetNodeId: undefined, sourceName: "Logo" }, "Logo");
+      // HD density reacquisition asks the host for a denser source export;
+      // answer it like the edge-quality scenario does.
+      const rasterEncode = canvas => Uint8Array.from(atob(canvas.toDataURL().split(",")[1]), character => character.charCodeAt(character));
+      const rasterAnswer = event => {
+        const request = event.data?.pluginMessage;
+        if (request?.type !== "request-source-raster") return;
+        const fresh = document.createElement("canvas");
+        fresh.width = request.desiredWidth; fresh.height = request.desiredHeight;
+        const freshContext = fresh.getContext("2d");
+        freshContext.fillStyle = "#10466f"; freshContext.fillRect(0, 0, fresh.width, fresh.height);
+        freshContext.fillStyle = "#ffd166"; freshContext.fillRect(fresh.width / 4, fresh.height / 4, fresh.width / 2, fresh.height / 2);
+        send({ type: "source-raster", generation, requestId: request.requestId, bytes: rasterEncode(fresh) });
+      };
+      addEventListener("message", rasterAnswer);
+      get("#mode-warp").click(); await ready();
+      get("#warp-preset").value = "arc";
+      get("#warp-preset").dispatchEvent(new Event("change", { bubbles: true }));
+      get("#warp-amount").value = "25";
+      get("#warp-amount").dispatchEvent(new Event("input", { bubbles: true }));
+      get("#warp-amount").dispatchEvent(new Event("change", { bubbles: true })); await ready();
+      const arced = await publishWithRetry("#apply", "apply", "arced"); complete(); await ready();
+      check(arced.spec.content.warp && arced.spec.content.warp.preset === "arc" &&
+        Math.abs(arced.spec.content.warp.amount - 0.25) < 1e-6, "Arced logo lost its Warp preset or amount");
+      check(arced.bytes.length > 0, "Arced logo published no output");
+      removeEventListener("message", rasterAnswer);
 
       // Task 6 - source replacement: select the saved result with new source
       // pixels; the reopened operation must republish the same placement.
