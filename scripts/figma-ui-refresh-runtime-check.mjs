@@ -38,7 +38,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   browser = await launchChrome(await findChrome(), ["--window-size=820,760"]);
-  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry"];
+  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks"];
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
@@ -514,6 +514,112 @@ async function runFixture() {
       await wait(() => get("#scale-x").value === "125", "redo scale"); await ready();
       const published = await apply();
       check(published.placement.width > 250 && published.placement.height > 200, "Apply lost the retained composition");
+    } else if (scenario === "dogfood-tasks") {
+      // Roadmap designer dogfood as one continuous working session. Covered
+      // here: screen placement, rotated poster, skewed label, and source
+      // replacement. Transform Again and the Warp preset route remain
+      // follow-ups (Warp output is separately covered by edge-quality).
+      const setNumber = async (id, value) => {
+        get(id).value = value; get(id).dispatchEvent(new Event("input", { bubbles: true }));
+        get(id).dispatchEvent(new Event("change", { bubbles: true })); await ready();
+      };
+      const selectSource = async (next, name) => {
+        try { await refresh(next); } catch (error) {
+          const errorBox = get("#error");
+          throw new Error(`${name} selection: ${error.message}; apply=${get("#apply").disabled} error=${errorBox.hidden ? "none" : errorBox.textContent.slice(0, 90)} lastMessages=${window.fixtureMessages.slice(-4).map(m => m.type).join(",")}`);
+        }
+        // ready() only waits for Apply; the selection itself must land first.
+        await wait(() => get("#source-name").textContent.includes(name), `${name} selection loaded`);
+      };
+      // This page applies many times; every wait must count only new messages,
+      // and a click that lands during an in-flight compose is silently
+      // swallowed and retried. A click is only repeated when the button never
+      // disabled for it: an accepted publication disables its input soon, and
+      // re-clicking then could start a second publication that the single
+      // completion reply can never unblock.
+      const publishWithRetry = async (selector, type, task) => {
+        const seen = window.fixtureMessages.length;
+        const arrived = () => window.fixtureMessages.slice(seen).some(m => m.type === type);
+        const publish = () => {
+          const button = get(selector);
+          const describe = `${selector} disabled=${button.disabled} error=${get("#error").hidden ? "none" : get("#error").textContent.slice(0, 90)}`;
+          check(performance.now() < deadline, `${task} ${type} never published (${describe})`);
+          if (!button.disabled && button.getAttribute("aria-disabled") !== "true") button.click();
+        };
+        const deadline = performance.now() + 5000;
+        while (!arrived()) {
+          publish();
+          const swallowWindow = performance.now() + 1000;
+          while (!arrived() && !get(selector).disabled && performance.now() < swallowWindow) await delay(50);
+          while (!arrived() && get(selector).disabled) await delay(50);
+        }
+        return window.fixtureMessages.findLast(m => m.type === type).payload;
+      };
+      const applyNative = task => publishWithRetry("#action-apply-editable", "apply-native", task);
+      const complete = () => send({ type: "apply-complete", generation, operation: "apply", targetNodeId: "result" });
+
+      // Task 1 - screen placement: Distort corners pulled into a receding plane.
+      get("#mode-distort").click(); await ready();
+      const cornerLabels = {};
+      const nudgeCorner = async (id, direction) => {
+        const labelOf = () => get(`[data-corner="${id}"]`).getAttribute("aria-label");
+        for (let step = 0; step < 12; step++) {
+          const before = labelOf();
+          key(get(`[data-corner="${id}"]`), direction);
+          await wait(() => labelOf() !== before, `${id} nudge ${step} reflected`);
+        }
+        cornerLabels[id] = labelOf();
+      };
+      // Pull the top corners inward and the bottom corners outward: a screen
+      // receding behind its frame. The applied spec re-normalizes to the
+      // result's tight bounds, so the trapezoid is asserted in that space.
+      await nudgeCorner("tl", "ArrowRight");
+      await nudgeCorner("tr", "ArrowLeft");
+      await nudgeCorner("br", "ArrowRight");
+      await nudgeCorner("bl", "ArrowLeft");
+      const screen = await applyNative("screen"); complete(); await ready();
+      const screenQuad = screen.spec.destination.quad;
+      check(screenQuad.tl.x > screenQuad.bl.x + 0.02 && screenQuad.tr.x < screenQuad.br.x - 0.02,
+        `Screen placement did not produce a receding trapezoid: applied ${JSON.stringify(screenQuad)} labels ${JSON.stringify(cornerLabels)}`);
+      check(screen.placement.width > 200,
+        `Tight bounds did not grow for the outward bottom corners: ${screen.placement.width}`);
+
+      // Task 2 - rotated poster: numeric 17 degree rotation, center pivot.
+      await selectSource({ ...payload, sourceNodeId: "poster", targetNodeId: undefined, sourceName: "Poster" }, "Poster");
+      get("#mode-transform").click(); await ready();
+      await setNumber("#rotation", "17");
+      const poster = await applyNative("poster"); complete(); await ready();
+      const posterQuad = poster.spec.destination.quad;
+      // The applied quad is tight-bounds normalized; measure in that space.
+      const px = corner => ({ x: corner.x * poster.placement.width, y: corner.y * poster.placement.height });
+      const P = { tl: px(posterQuad.tl), tr: px(posterQuad.tr), br: px(posterQuad.br), bl: px(posterQuad.bl) };
+      const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const topAngle = Math.abs(Math.atan2(P.tr.y - P.tl.y, P.tr.x - P.tl.x));
+      check(Math.abs(topAngle - 17 * Math.PI / 180) < 0.02,
+        `Rotated poster top edge is ${(topAngle * 180 / Math.PI).toFixed(1)} degrees instead of 17; quad ${JSON.stringify(posterQuad)} placement ${JSON.stringify(poster.placement)} rotationInput ${get("#rotation").value}`);
+      check(Math.abs(dist(P.tl, P.tr) - 200) < 0.5 && Math.abs(dist(P.tl, P.bl) - 160) < 0.5 &&
+        Math.abs(dist(P.tl, P.br) - dist(P.tr, P.bl)) < 0.5, "Rotation changed the poster's side lengths");
+
+      // Task 3 - skewed label: skew X only, horizontal edges stay horizontal.
+      await selectSource({ ...payload, sourceNodeId: "label", targetNodeId: undefined, sourceName: "Label" }, "Label");
+      get("#mode-transform").click(); await ready();
+      await setNumber("#skew-x", "12");
+      const labelPayload = await applyNative("label");
+      const labelSpec = labelPayload.spec; complete(); await ready();
+      const skewed = labelSpec.destination.quad;
+      check(Math.abs(skewed.tl.y - skewed.tr.y) < 1e-6 && Math.abs(skewed.bl.y - skewed.br.y) < 1e-6,
+        "Skewed label did not keep horizontal edges");
+      const lean = (skewed.tl.x - skewed.bl.x) * labelPayload.placement.width;
+      check(Math.abs(Math.abs(lean) - Math.tan(12 * Math.PI / 180) * 160) < 1.5,
+        `Skewed label leans ${lean.toFixed(1)} px instead of ${(Math.tan(12 * Math.PI / 180) * 160).toFixed(1)} px`);
+
+      // Task 6 - source replacement: select the saved result with new source
+      // pixels; the reopened operation must republish the same placement.
+      await selectSource({ ...payload, sourceNodeId: "replacement", sourceName: "Replacement artwork",
+        spec: screen.spec, placement: screen.placement }, "Replacement artwork");
+      const replaced = await applyNative("replaced"); complete();
+      check(JSON.stringify(replaced.spec) === JSON.stringify(screen.spec),
+        "Replacement republished a different placement");
     } else {
       await moveCorner(); const draft = label();
       key(document.activeElement, "1", { metaKey: true });
