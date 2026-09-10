@@ -261,6 +261,18 @@ describe("Figma product workspace markup", () => {
     // empty selections now share this recovery path without being an error.
   });
 
+  it("keeps the primary Apply usable for Warp and Transform Again reachable from Distort", () => {
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    // A Warp operation cannot publish editable output, so the native-file
+    // primary button must fall back to the HD route, not disable itself.
+    expect(uiSource).toContain("const primaryEditable = Boolean(current?.nativeTarget) && editableModeSupported;");
+    expect(uiSource).toContain("!editor?.captureSpec().content.warp");
+    // Fresh selections open in Distort; Transform Again must stay reachable
+    // there instead of demanding a manual mode switch first.
+    expect(uiSource).toContain('const repeatReady = menuReady && !transformInitializing && transformInputsValid &&');
+    expect(uiSource).toContain('(editorMode === "transform" || editorMode === "distort")');
+  });
+
   it("keeps a human placement-parameters export on both authoring surfaces", () => {
     const actionsStart = html.indexOf('<div id="transform-actions"');
     const actionsEnd = html.indexOf("</div>", actionsStart);

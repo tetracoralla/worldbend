@@ -132,9 +132,11 @@ export class PerspectiveEditor {
   private sourceGeneration = 0;
   private animationFrame: number | undefined;
   private renderInFlight = false;
-  private queuedRender:
-    | { generation: number; resolve: (rendered: boolean) => void }
-    | undefined;
+  private renderInFlightPromise: Promise<void> | undefined;
+  private queuedRenders: Array<{
+    generation: number;
+    resolve: (rendered: boolean) => void;
+  }> = [];
   private disabled = false;
   private disposed = false;
   private dragCleanup: (() => void) | undefined;
@@ -354,6 +356,9 @@ export class PerspectiveEditor {
       height: source.naturalHeight,
     };
     const targetPreviewSize = this.fitPreviewSize(targetSize);
+    // A render scheduled before this swap may still be uploading the
+    // previous preview source; it must finish before that source closes.
+    const pendingRender = this.renderInFlightPromise;
     const previewSource = await createPreviewSource(
       source,
       sourcePreviewSize.width,
@@ -382,9 +387,15 @@ export class PerspectiveEditor {
     this.displayScale = targetPreviewSize.width / targetSize.width;
     this.recomputeWorkspace();
     this.renderer.invalidateSource();
-    closePreviewSource(previousPreview);
     this.updateOverlay();
-    return this.renderImmediately();
+    const rendered = await this.renderImmediately();
+    // This render resolves through one serialized queue, but an invalidated
+    // result can settle while a render that still references the previous
+    // preview source is mid-upload; draining it before the close keeps that
+    // upload off a closed ImageBitmap (WebGL 1281).
+    await pendingRender;
+    closePreviewSource(previousPreview);
+    return rendered;
   }
 
   async setSpec(spec: TransformSpec, targetSize: Size): Promise<boolean> {
@@ -1412,24 +1423,46 @@ export class PerspectiveEditor {
    */
   private requestRender(generation: number): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      this.queuedRender?.resolve(false);
-      this.queuedRender = { generation, resolve };
+      this.queuedRenders.push({ generation, resolve });
       this.pumpRenderQueue();
     });
   }
 
   private pumpRenderQueue(): void {
-    if (this.renderInFlight || this.disposed) return;
-    const request = this.queuedRender;
-    if (!request) return;
-    this.queuedRender = undefined;
+    if (this.renderInFlight) return;
+    if (this.disposed) {
+      // Dispose can land between a superseded batch's requeue and its next
+      // pump; those waiters must still settle instead of hanging a load.
+      const stranded = this.queuedRenders;
+      this.queuedRenders = [];
+      for (const request of stranded) request.resolve(false);
+      return;
+    }
+    if (this.queuedRenders.length === 0) return;
+    // Keep exactly one solve in flight and collapse the queue to its newest
+    // request. Every superseded waiter settles with that render's real
+    // outcome: a replaced sample is coalescing, not a failed load, and
+    // resolving it as false made valid sources report as unpreviewable.
+    const waiters = this.queuedRenders;
+    this.queuedRenders = [];
+    const request = waiters[waiters.length - 1]!;
     this.renderInFlight = true;
-    void this.render(request.generation)
-      .then(request.resolve)
+    this.renderInFlightPromise = this.render(request.generation)
+      .then((rendered) => {
+        if (!rendered && request.generation !== this.renderGeneration && this.queuedRenders.length > 0) {
+          // Superseded mid-render by a newer request: the queued newer render
+          // settles this batch instead of reporting a false failure.
+          this.queuedRenders = [...waiters, ...this.queuedRenders];
+          return;
+        }
+        for (const waiter of waiters) waiter.resolve(rendered);
+      })
       .finally(() => {
         this.renderInFlight = false;
+        this.renderInFlightPromise = undefined;
         this.pumpRenderQueue();
       });
+    void this.renderInFlightPromise;
   }
 
   private async render(generation: number): Promise<boolean> {
@@ -1524,9 +1557,9 @@ export class PerspectiveEditor {
   }
 
   private cancelQueuedRender(): void {
-    const queued = this.queuedRender;
-    this.queuedRender = undefined;
-    queued?.resolve(false);
+    const queued = this.queuedRenders;
+    this.queuedRenders = [];
+    for (const request of queued) request.resolve(false);
   }
 
   private assertAvailable(): void {

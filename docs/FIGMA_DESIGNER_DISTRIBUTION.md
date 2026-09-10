@@ -80,6 +80,11 @@ before reporting its path, byte size, and SHA-256.
   quad is not a destination placement.
 - Free Distort moves one corner. Perspective Distort locks to the first
   dominant axis and moves only the documented same-row or same-column pair.
+- Repeat Last Transform stages the previous result onto the current source
+  and stays reachable from the Distort mode a fresh selection opens in; the
+  primary Apply then publishes it. A Warp operation cannot publish editable
+  output, so on native-capable files the primary Apply falls back to the HD
+  image route instead of disabling itself.
 - Fast outward drags use bounded camera assistance. Perspective assistance
   advances only on fresh pointer movement and settles while the pointer is
   held still.

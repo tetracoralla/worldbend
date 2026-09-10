@@ -515,10 +515,11 @@ async function runFixture() {
       const published = await apply();
       check(published.placement.width > 250 && published.placement.height > 200, "Apply lost the retained composition");
     } else if (scenario === "dogfood-tasks") {
-      // Roadmap designer dogfood as one continuous working session. Covered
-      // here: screen placement, rotated poster, skewed label, and source
-      // replacement. Transform Again and the Warp preset route remain
-      // follow-ups (Warp output is separately covered by edge-quality).
+      // Roadmap designer dogfood as one continuous working session: screen
+      // placement, rotated poster, skewed label, repeated package face, and
+      // source replacement. The arced-logo Warp apply remains a follow-up:
+      // its primary-button routing is fixed, but the fresh-selection export
+      // path still fails a WebGL upload (see task notes).
       const setNumber = async (id, value) => {
         get(id).value = value; get(id).dispatchEvent(new Event("input", { bubbles: true }));
         get(id).dispatchEvent(new Event("change", { bubbles: true })); await ready();
@@ -583,6 +584,20 @@ async function runFixture() {
         `Screen placement did not produce a receding trapezoid: applied ${JSON.stringify(screenQuad)} labels ${JSON.stringify(cornerLabels)}`);
       check(screen.placement.width > 200,
         `Tight bounds did not grow for the outward bottom corners: ${screen.placement.width}`);
+
+      // Task 4 - repeated package face: the last transform applied to the next
+      // source. Transform Again stays reachable from the Distort mode a fresh
+      // selection opens in.
+      await selectSource({ ...payload, sourceNodeId: "package-face-b", targetNodeId: undefined, sourceName: "Package face B" }, "Package face B");
+      get("#more-options").click();
+      check(!get("#settings-popover").hidden, "More popover did not open for Transform Again");
+      // Transform Again stages the repeat into the editor; publish follows
+      // through the primary editable action like any other draft.
+      get("#action-transform-again").click();
+      await ready();
+      const repeat = await applyNative("repeat"); complete(); await ready();
+      check(JSON.stringify(repeat.spec) === JSON.stringify(screen.spec),
+        "Transform Again rebased incorrectly for the same-size source");
 
       // Task 2 - rotated poster: numeric 17 degree rotation, center pivot.
       await selectSource({ ...payload, sourceNodeId: "poster", targetNodeId: undefined, sourceName: "Poster" }, "Poster");

@@ -2167,7 +2167,12 @@ function syncViewportScene(): void {
   });
 }
 
-async function applyPerspective(duplicate = false, editable = Boolean(current?.nativeTarget && !duplicate)): Promise<void> {
+async function applyPerspective(duplicate = false, editableIntent?: boolean): Promise<void> {
+  // A Warp operation cannot publish an editable result, so even on a
+  // native-capable file its primary Apply stays the HD image route instead
+  // of routing editable and failing on click.
+  const editable = editableIntent ??
+    Boolean(current?.nativeTarget && !duplicate && !editor?.captureSpec().content.warp);
   if (editable && editorMode === "rectify") {
     showError(userMessage("nativeApplyFailed"));
     return;
@@ -2645,7 +2650,12 @@ function renderState(): void {
   const imageHelp = `${translate(activeLocale, "imageOutputHelp")}${imageSize ? ` · ${imageSize.width} × ${imageSize.height} px` : ""}`;
   actionApplyCopy.title = imageHelp;
   workspaceNavigation.setDisabled(!taskReady);
-  actionTransformAgain.disabled = !positionReady || !appliedTransformMemory.hasLatest();
+  // Transform Again repeats onto the current source and lands in Transform
+  // mode itself, so it must stay reachable from the Distort mode a fresh
+  // selection opens in; Warp and Correct are different operation families.
+  const repeatReady = menuReady && !transformInitializing && transformInputsValid &&
+    (editorMode === "transform" || editorMode === "distort");
+  actionTransformAgain.disabled = !repeatReady || !appliedTransformMemory.hasLatest();
   pivotPicker.setDisabled(!positionReady);
   placementToggle.disabled = !positionReady;
   positionXInput.disabled = !positionReady;
@@ -2662,8 +2672,13 @@ function renderState(): void {
     (editorMode === "rectify" && !rectifyInputsValid) ||
     blockingCompose ||
     refreshInFlight;
-  if (current?.nativeTarget) applyButton.disabled = !editableReady;
-  applyButton.title = current?.nativeTarget ? editableHelp : imageHelp;
+  // A Warp operation cannot publish an editable result, so on native-capable
+  // files the primary button must stay the HD route instead of taking the
+  // editable gate and disabling itself: the alternate HD button only exists
+  // once a result is selected, which would leave a fresh Warp unapplicable.
+  const primaryEditable = Boolean(current?.nativeTarget) && editableModeSupported;
+  if (primaryEditable) applyButton.disabled = !editableReady;
+  applyButton.title = primaryEditable ? editableHelp : imageHelp;
   const rectificationOnly = editorMode === "rectify" && !rectifyParent;
   modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeDistortButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;

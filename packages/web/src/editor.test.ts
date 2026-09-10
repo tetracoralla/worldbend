@@ -246,7 +246,9 @@ describe("PerspectiveEditor interaction pipeline", () => {
     releaseCandidate?.(solvedOutput);
     await restored;
 
-    await expect(late).resolves.toBe(false);
+    // Superseded waiters settle with the outcome of the render that replaced
+    // them: resolving them false made valid loads report as unpreviewable.
+    await expect(late).resolves.toBe(true);
     expect(editor.captureSpec()).toEqual(fallback);
   });
 
@@ -276,7 +278,9 @@ describe("PerspectiveEditor interaction pipeline", () => {
     expect(solveTransform).toHaveBeenCalledTimes(1);
     releaseFirst?.(solvedOutput);
 
-    await expect(first).resolves.toBe(false);
+    // The replaced intermediate settles with the latest render's outcome
+    // instead of reporting a false preview failure.
+    await expect(first).resolves.toBe(true);
     await expect(latest).resolves.toBe(true);
     expect(solveTransform).toHaveBeenCalledTimes(2);
     expect(solveTransform.mock.calls[1]?.[0]).toEqual(latestSpec);
