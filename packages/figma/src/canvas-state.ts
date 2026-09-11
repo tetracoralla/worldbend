@@ -255,6 +255,13 @@ function isAxis(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 1 && value <= MAX_FIGMA_CANVAS_AXIS;
 }
 
+/** Finite number ready for a live Sizes preview; empty or mid-edit text stays quiet. */
+export function parseCanvasNumericPreview(text: string): number | undefined {
+  if (text.trim().length === 0) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function clampAxis(value: number): number {
   return Math.min(MAX_FIGMA_CANVAS_AXIS, Math.max(1, Math.round(Number.isFinite(value) ? value : 1)));
 }

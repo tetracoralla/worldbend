@@ -2,6 +2,7 @@ import {
   TransformWebGLRenderer,
   normalizedSpec,
   type MockupPlane,
+  type MockupPlanOutput,
   type MockupSpecInput,
 } from "@worldbend/web";
 import { planMockup } from "./designer-plan";
@@ -106,6 +107,9 @@ export function createMockupWorkspace(input: {
   let nextTemplateRequestId = 1;
   let templateFeedback: "none" | "saved" | "error" = "none";
   let copyFeedback: "none" | "copied" | "error" = "none";
+  let previewPlan: MockupPlanOutput | undefined;
+  let previewGeometryKey = "";
+  const planeLayers: HTMLCanvasElement[] = [];
   // Continuous plan changes (opacity drags, corner moves) collapse to one
   // preview request per paint. Overlay moves never rebuild the point layer:
   // the moved point is already positioned by the overlay itself, and a
@@ -174,7 +178,12 @@ export function createMockupWorkspace(input: {
     if (!source || !spec) return false;
     const currentGeneration = ++generation;
     try {
-      const plan = await planMockup(spec);
+      const geometryKey = mockupGeometryFingerprint(spec);
+      const reusePreview = quality === "preview"
+        && previewPlan !== undefined
+        && previewGeometryKey === geometryKey
+        && planeLayers.length === spec.planes.length;
+      const plan = reusePreview && previewPlan ? previewPlan : await planMockup(spec);
       if (currentGeneration !== generation) return false;
       // Preview composites at one shared presentation factor so every plane
       // keeps its relative placement; Apply re-renders the full plan below.
@@ -186,6 +195,30 @@ export function createMockupWorkspace(input: {
       if (canvas.width !== previewWidth) canvas.width = previewWidth;
       if (canvas.height !== previewHeight) canvas.height = previewHeight;
       fitPreviewCanvas(canvas, shell.preview);
+      if (!reusePreview) {
+        planeLayers.length = 0;
+        for (let index = 0; index < plan.planes.length; index += 1) {
+          const plane = plan.planes[index]!;
+          const image = sourceForPlane(source.sources, plane.sourceId);
+          if (!image) throw new Error(`Missing ${plane.sourceId}`);
+          renderer.render(image.image, scaleSolveByFactor(plane.solve, factor), undefined, quality);
+          const layer = document.createElement("canvas");
+          layer.width = renderer.canvas.width;
+          layer.height = renderer.canvas.height;
+          const layerContext = layer.getContext("2d");
+          if (!layerContext) throw new Error("Canvas 2D is required for Mockup preview");
+          layerContext.drawImage(renderer.canvas, 0, 0);
+          planeLayers.push(layer);
+        }
+        if (quality === "preview") {
+          previewPlan = plan;
+          previewGeometryKey = geometryKey;
+        } else {
+          previewPlan = undefined;
+          previewGeometryKey = "";
+        }
+      }
+      if (currentGeneration !== generation) return false;
       context.setTransform(factor, 0, 0, factor, 0, 0);
       context.clearRect(0, 0, plan.canvas.width, plan.canvas.height);
       if (plan.background.kind === "color") {
@@ -195,13 +228,13 @@ export function createMockupWorkspace(input: {
       }
       for (let index = 0; index < plan.planes.length; index += 1) {
         const plane = plan.planes[index]!;
-        const image = sourceForPlane(source.sources, plane.sourceId);
-        if (!image) throw new Error(`Missing ${plane.sourceId}`);
-        renderer.render(image.image, scaleSolveByFactor(plane.solve, factor), undefined, quality);
+        const layer = planeLayers[index];
+        if (!layer) throw new Error(`Missing ${plane.id}`);
+        const opacity = spec.planes.find((candidate) => candidate.id === plane.id)?.opacity ?? plane.opacity;
         context.save();
-        context.globalAlpha = plane.opacity;
+        context.globalAlpha = opacity;
         context.drawImage(
-          renderer.canvas,
+          layer,
           0,
           0,
           plane.solve.resolvedDestination.reference.width,
@@ -216,6 +249,9 @@ export function createMockupWorkspace(input: {
       return true;
     } catch (error) {
       if (currentGeneration !== generation) return false;
+      previewPlan = undefined;
+      previewGeometryKey = "";
+      planeLayers.length = 0;
       shell.showError(input.formatError(error));
       shell.apply.disabled = true;
       return false;
@@ -358,12 +394,15 @@ export function createMockupWorkspace(input: {
 
   return {
     enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
-    leave() { overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); },
+    leave() { overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; },
     setSource(next) {
       busy = false;
       shell.setBusy(false);
       if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
+      previewPlan = undefined;
+      previewGeometryKey = "";
+      planeLayers.length = 0;
       spec = next.task?.kind === "mockup" ? structuredClone(next.task.spec) : defaultMockup(next.sources);
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
@@ -378,7 +417,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
+    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -405,6 +444,9 @@ export function createMockupWorkspace(input: {
     loadTemplate(template) {
       if (!source || templateSourceCount(template) !== source.sources.length) return false;
       spec = structuredClone(template.operation.spec);
+      previewPlan = undefined;
+      previewGeometryKey = "";
+      planeLayers.length = 0;
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
@@ -431,6 +473,21 @@ export function createMockupWorkspace(input: {
     },
     dispose() { previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
+}
+
+/** Geometry that requires a new solve. Opacity is presentation-only. */
+export function mockupGeometryFingerprint(spec: MockupSpecInput): string {
+  return JSON.stringify({
+    canvas: spec.canvas,
+    background: spec.background,
+    seams: spec.seams,
+    planes: spec.planes.map((plane) => ({
+      id: plane.id,
+      sourceId: plane.sourceId,
+      transform: plane.transform,
+      grid: plane.grid ?? null,
+    })),
+  });
 }
 
 export function defaultMockup(sources: readonly LoadedDesignerSource[]): MockupSpecInput {

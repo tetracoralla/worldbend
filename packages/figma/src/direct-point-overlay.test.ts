@@ -55,6 +55,62 @@ it("keeps off-center grabs fixed until movement and uses the same offset for win
   overlay.dispose();
 });
 
+it("keeps the gesture alive when a host refuses pointer capture", () => {
+  const windowTarget = new EventTarget();
+  const documentTarget = Object.assign(new EventTarget(), { createElement: () => new OverlayElement() });
+  vi.stubGlobal("window", windowTarget);
+  vi.stubGlobal("document", documentTarget);
+  const host = new OverlayElement();
+  const canvas = new OverlayElement();
+  const onMove = vi.fn();
+  const overlay = createDirectPointOverlay({
+    host: host as unknown as HTMLElement,
+    canvas: canvas as unknown as HTMLCanvasElement,
+    onMove,
+  });
+  overlay.set([{ id: "point", x: 0.5, y: 0.5, label: "Point" }]);
+  const button = host.children[0]!.children[0]!;
+  button.setPointerCapture = () => { throw new Error("capture refused"); };
+  const send = (target: EventTarget, type: string, x: number, y: number) => target.dispatchEvent(
+    Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1 }),
+  );
+  send(button, "pointerdown", 300, 150);
+  send(button, "pointermove", 320, 160);
+  expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.55, y: 0.55 }, false);
+  send(windowTarget, "pointerup", 320, 160);
+  expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.55, y: 0.55 }, true);
+  overlay.dispose();
+});
+
+it("cancels Escape back to the grab-start point and does not keep the last preview", () => {
+  const windowTarget = new EventTarget();
+  const documentTarget = Object.assign(new EventTarget(), { createElement: () => new OverlayElement() });
+  vi.stubGlobal("window", windowTarget);
+  vi.stubGlobal("document", documentTarget);
+  const host = new OverlayElement();
+  const canvas = new OverlayElement();
+  const onMove = vi.fn();
+  const overlay = createDirectPointOverlay({
+    host: host as unknown as HTMLElement,
+    canvas: canvas as unknown as HTMLCanvasElement,
+    onMove,
+  });
+  overlay.set([{ id: "point", x: 0.5, y: 0.5, label: "Point" }]);
+  const button = host.children[0]!.children[0]!;
+  const send = (target: EventTarget, type: string, x: number, y: number) => target.dispatchEvent(
+    Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1 }),
+  );
+  send(button, "pointerdown", 300, 150);
+  send(button, "pointermove", 340, 170);
+  expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.6, y: 0.6 }, false);
+  const escape = Object.assign(new Event("keydown", { cancelable: true, bubbles: true }), { key: "Escape" });
+  const stopped = vi.spyOn(escape, "stopPropagation");
+  windowTarget.dispatchEvent(escape);
+  expect(stopped).toHaveBeenCalled();
+  expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.5, y: 0.5 }, true);
+  overlay.dispose();
+});
+
 describe("keyboardNudgeDelta", () => {
   it("nudges one canvas pixel per press and ten with Shift", () => {
     expect(keyboardNudgeDelta("ArrowRight", false, 400, 200)).toEqual({ x: 0.0025, y: 0 });
@@ -91,6 +147,24 @@ describe("direct point gesture session", () => {
     ]);
     expect(commits).toEqual([
       { id: "center", point: { x: 0.65, y: 0.4 } },
+    ]);
+  });
+
+  it("restores the gesture-start point on cancel instead of keeping the last preview", () => {
+    const previews: unknown[] = [];
+    const commits: unknown[] = [];
+    const session = createDirectPointGestureSession({
+      onPreview(id, point) { previews.push({ id, point }); },
+      onCommit(id, point) { commits.push({ id, point }); },
+    });
+
+    session.begin(7, "center", { x: 0.5, y: 0.5 });
+    session.update(7, { x: 0.65, y: 0.4 });
+    expect(session.cancel(7)).toBe(true);
+    expect(session.cancel(7)).toBe(false);
+    expect(session.active()).toBe(false);
+    expect(commits).toEqual([
+      { id: "center", point: { x: 0.5, y: 0.5 } },
     ]);
   });
 

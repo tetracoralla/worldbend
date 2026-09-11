@@ -3,12 +3,23 @@ import {
   addCanvasVariant,
   createCanvasDraft,
   MAX_FIGMA_CANVAS_PIXELS,
+  parseCanvasNumericPreview,
   removeCanvasVariant,
   renameCanvasVariant,
   selectCanvasVariant,
   updateCanvasVariant,
   validateCanvasDraft,
 } from "./canvas-state";
+
+describe("parseCanvasNumericPreview", () => {
+  it("stays quiet for incomplete typing and accepts finite values", () => {
+    expect(parseCanvasNumericPreview("")).toBeUndefined();
+    expect(parseCanvasNumericPreview("  ")).toBeUndefined();
+    expect(parseCanvasNumericPreview("12.")).toBe(12);
+    expect(parseCanvasNumericPreview("800")).toBe(800);
+    expect(parseCanvasNumericPreview("not-a-number")).toBeUndefined();
+  });
+});
 
 describe("Canvas draft", () => {
   it("keeps one selected preview while adding and removing ordered variants", () => {

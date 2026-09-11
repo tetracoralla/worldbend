@@ -86,6 +86,7 @@ export function createDesignerWorkspaceShell(root: HTMLElement): DesignerWorkspa
     },
     setBusy(busy) {
       for (const element of shell.root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
+        if (element.dataset.role === "back") continue;
         element.disabled = busy;
       }
     },
@@ -162,8 +163,11 @@ export function fitPreviewCanvas(canvas: HTMLCanvasElement, host: HTMLElement): 
   const availableWidth = Math.max(1, host.clientWidth - 40);
   const availableHeight = Math.max(1, host.clientHeight - 40);
   const scale = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
-  canvas.style.width = `${Math.max(1, Math.round(canvas.width * scale))}px`;
-  canvas.style.height = `${Math.max(1, Math.round(canvas.height * scale))}px`;
+  const width = `${Math.max(1, Math.round(canvas.width * scale))}px`;
+  const height = `${Math.max(1, Math.round(canvas.height * scale))}px`;
+  if (canvas.style.width === width && canvas.style.height === height) return;
+  canvas.style.width = width;
+  canvas.style.height = height;
 }
 
 export function numericInput(value: number, minimum: number, maximum: number, step = "1"): HTMLInputElement {

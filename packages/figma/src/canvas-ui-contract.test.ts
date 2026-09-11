@@ -193,6 +193,20 @@ describe("Figma product workspace markup", () => {
     }
   });
 
+  it("previews Sizes numeric edits live without locking the inspector to planning", () => {
+    const source = readFileSync(new URL("./canvas-workspace.ts", import.meta.url), "utf8");
+    expect(source).toContain("bindNumericField");
+    expect(source).toContain("parseCanvasNumericPreview");
+    expect(source).toContain("previewDraft");
+    expect(source).toContain('const busy = phase === "applying"');
+    expect(source).not.toContain('const busy = phase === "planning" || phase === "applying"');
+    // Non-numeric commits (operation, background, anchor, reset, variants)
+    // changed geometry with nothing queued; a flush-only tail froze their
+    // preview on the stale plan.
+    expect(source).toContain("if (planFrames.pending()) planFrames.flush();");
+    expect(source).toContain("else void requestPlan();");
+  });
+
   it("keeps output density visible but unobtrusive in the preview corner", () => {
     const editorStart = html.indexOf('<div id="editor"');
     const editorEnd = html.indexOf("</div>", editorStart);
@@ -304,5 +318,36 @@ describe("Figma product workspace markup", () => {
     expect(source).toContain('addEventListener("blur"');
     expect(source).toContain('addEventListener("visibilitychange"');
     expect(source).toContain('event.buttons === 0');
+    expect(source).toContain("event.stopPropagation()");
+    expect(source).toContain("cancelPointer()");
+  });
+
+  it("keeps Mesh density changes from discarding interior edits", () => {
+    const source = readFileSync(new URL("./mesh-workspace.ts", import.meta.url), "utf8");
+    expect(source).toContain("resampleMesh(spec.mesh, Number(subdivisions.value))");
+    expect(source).not.toContain("mesh: identityMesh(Number(subdivisions.value))");
+  });
+
+  it("does not rebuild the whole Perspective dock on every live geometry sample", () => {
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).toContain('? "publication"');
+    expect(uiSource).toContain('if (scope === "publication") return;');
+  });
+
+  it("seeds the rectify output at a publishable size instead of an invalid one", () => {
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    // Both raw render-size seeds route through the axis-limit fit; the entry
+    // path must derive validity honestly instead of asserting it.
+    expect(uiSource).toContain("fitRectifySeed(activeFrame.renderWidth, activeFrame.renderHeight)");
+    expect(uiSource).toContain("fitRectifySeed(nextInitial.renderWidth, nextInitial.renderHeight)");
+    const hardValidLines = uiSource
+      .split("\n")
+      .filter((line) => line.includes("rectifyInputsValid = true"));
+    expect(hardValidLines).toEqual(["let rectifyInputsValid = true;"]);
+  });
+
+  it("hides native spin buttons on every numeric field", () => {
+    expect(html).toContain('input[type="number"]::-webkit-inner-spin-button');
+    expect(html).not.toContain(".transform-number::-webkit-inner-spin-button");
   });
 });

@@ -137,6 +137,9 @@ export class PerspectiveEditor {
     generation: number;
     resolve: (rendered: boolean) => void;
   }> = [];
+  private sourceFrameSolve:
+    | { key: string; solved: PreviewSolveOutput }
+    | undefined;
   private disabled = false;
   private disposed = false;
   private dragCleanup: (() => void) | undefined;
@@ -307,6 +310,7 @@ export class PerspectiveEditor {
     this.cancelDrag();
     this.cancelGesture();
     this.sourceSelectionMode = enabled;
+    this.sourceFrameSolve = undefined;
     this.element.dataset.sourceSelection = String(enabled);
     this.correctionGridAvailable = false;
     this.setCorrectionGridVisibility(false);
@@ -689,6 +693,7 @@ export class PerspectiveEditor {
     this.renderer.dispose();
     this.exportRenderer?.dispose();
     this.exportRenderer = undefined;
+    this.sourceFrameSolve = undefined;
     this.source = undefined;
     this.discardPreviewSource();
     this.handles.clear();
@@ -1475,10 +1480,9 @@ export class PerspectiveEditor {
       if (this.sourceSelectionMode) {
         await solveTransformPreview(snapshot, this.previewSize);
       }
-      const renderSpec = this.sourceSelectionMode
-        ? this.captureSourceFramePreviewSpec()
-        : snapshot;
-      const solved = await solveTransformPreview(renderSpec, this.previewSize);
+      const solved = this.sourceSelectionMode
+        ? await this.resolveSourceFrameSolve()
+        : await solveTransformPreview(snapshot, this.previewSize);
       const warpMesh = this.sourceSelectionMode
         ? undefined
         : await this.resolveWarpMesh(snapshot);
@@ -1631,6 +1635,28 @@ export class PerspectiveEditor {
       this.orientation,
       this.warp,
     );
+  }
+
+  private sourceFrameSolveKey(): string {
+    return [
+      this.previewSize.width,
+      this.previewSize.height,
+      this.workspaceOrigin.x,
+      this.workspaceOrigin.y,
+      this.workspaceSize.width,
+      this.workspaceSize.height,
+    ].join("\u0000");
+  }
+
+  private async resolveSourceFrameSolve(): Promise<PreviewSolveOutput> {
+    const key = this.sourceFrameSolveKey();
+    if (this.sourceFrameSolve?.key === key) return this.sourceFrameSolve.solved;
+    const solved = await solveTransformPreview(
+      this.captureSourceFramePreviewSpec(),
+      this.previewSize,
+    );
+    this.sourceFrameSolve = { key, solved };
+    return solved;
   }
 
   private captureSourceFramePreviewSpec(): TransformSpec {

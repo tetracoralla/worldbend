@@ -754,9 +754,14 @@ function createEditor(): PerspectiveEditor | undefined {
           viewport?.handleCanvasResized();
         }
         // Apply validity and the quiet output-size HUD both depend on live
-        // dimensions. Re-render after every coalesced geometry sample so a
-        // previously blocked Apply cannot stay stale once the user recovers.
-        renderState();
+        // dimensions. Rebuild only publication chrome during a live gesture:
+        // rewriting every dock control on each paint is what made continuous
+        // Distort/Transform feel sticky.
+        renderState(
+          editorMode === "distort" || editorMode === "rectify" || continuousPreviewInFlight
+            ? "publication"
+            : "full",
+        );
       },
       onValidityChange(next) {
         valid = next;
@@ -953,8 +958,9 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
       rectifyWidthInput.value = String(payload.rectification.output.width);
       rectifyHeightInput.value = String(payload.rectification.output.height);
     } else if (!refreshing) {
-      rectifyWidthInput.value = String(nextInitial.renderWidth);
-      rectifyHeightInput.value = String(nextInitial.renderHeight);
+      const seed = fitRectifySeed(nextInitial.renderWidth, nextInitial.renderHeight);
+      rectifyWidthInput.value = String(seed.width);
+      rectifyHeightInput.value = String(seed.height);
     }
     rectifyInputsValid = readRectifyOutput() !== undefined;
     if (!retainedSession) {
@@ -1201,13 +1207,14 @@ async function enterRectifyMode(): Promise<void> {
     initialFrame: cloneFrame(initialFrame),
     entry: currentHistoryEntry(),
   };
-  rectifyWidthInput.value = String(activeFrame.renderWidth);
-  rectifyHeightInput.value = String(activeFrame.renderHeight);
+  const rectifySeed = fitRectifySeed(activeFrame.renderWidth, activeFrame.renderHeight);
+  rectifyWidthInput.value = String(rectifySeed.width);
+  rectifyHeightInput.value = String(rectifySeed.height);
   rectifyInitialOutput = {
     width: rectifyWidthInput.value,
     height: rectifyHeightInput.value,
   };
-  rectifyInputsValid = true;
+  rectifyInputsValid = readRectifyOutput() !== undefined;
   const selectionFrame: TransformFrame = {
     spec: normalizedSpec(unitQuad()),
     renderWidth: Math.max(1, Math.round(sourceSize.width)),
@@ -2077,6 +2084,24 @@ function renderOptionsContext(workspace: ProductWorkspace): void {
   }
 }
 
+/**
+ * A rectify output the user starts from must be publishable: a natural size
+ * beyond the Figma axis limit is fitted under it (aspect preserved) instead of
+ * seeding a value the input constraints and Apply gate would call invalid.
+ */
+function fitRectifySeed(width: number, height: number): { width: number; height: number } {
+  const source = { width: Math.max(1, width), height: Math.max(1, height) };
+  const scale = Math.min(
+    1,
+    MAX_FIGMA_IMAGE_AXIS / source.width,
+    MAX_FIGMA_IMAGE_AXIS / source.height,
+  );
+  return {
+    width: Math.max(1, Math.round(source.width * scale)),
+    height: Math.max(1, Math.round(source.height * scale)),
+  };
+}
+
 function readRectifyOutput(): { width: number; height: number } | undefined {
   const width = Number(rectifyWidthInput.value);
   const height = Number(rectifyHeightInput.value);
@@ -2601,7 +2626,7 @@ function cancelSourceRasterRequests(error: unknown): void {
   pendingSourceRasterRequests.clear();
 }
 
-function renderState(): void {
+function renderState(scope: "full" | "publication" = "full"): void {
   const ready = phase === "ready" && Boolean(current) && Boolean(editor);
   const blockingCompose = composeInFlight && !continuousPreviewInFlight;
   const transformInitializing = ready && editorMode === "transform" && !lastCompose;
@@ -2622,6 +2647,29 @@ function renderState(): void {
     !current?.nativeRenderer ? current?.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable" :
     !editableApplicable ? "nativeOutputLimit" : "editableOutputHelp");
   actionApplyEditable.title = editableHelp;
+  actionApplyCopy.hidden = !current?.targetNodeId;
+  actionApplyCopy.disabled = !menuReady || !transformInputsValid || transformInitializing ||
+    !outputApplicable || (editorMode === "rectify" && !rectifyInputsValid);
+  const imageSize = outputPlan && rasterSizeForPolicy(outputPlan, outputDensityPolicy);
+  const imageHelp = `${translate(activeLocale, "imageOutputHelp")}${imageSize ? ` · ${imageSize.width} × ${imageSize.height} px` : ""}`;
+  actionApplyCopy.title = imageHelp;
+  applyButton.disabled =
+    !ready ||
+    !valid ||
+    !transformInputsValid ||
+    !outputApplicable ||
+    (editorMode === "rectify" && !rectifyInputsValid) ||
+    blockingCompose ||
+    refreshInFlight;
+  // A Warp operation cannot publish an editable result, so on native-capable
+  // files the primary button must stay the HD route instead of taking the
+  // editable gate and disabling itself: the alternate HD button only exists
+  // once a result is selected, which would leave a fresh Warp unapplicable.
+  const primaryEditable = Boolean(current?.nativeTarget) && editableModeSupported;
+  if (primaryEditable) applyButton.disabled = !editableReady;
+  applyButton.title = primaryEditable ? editableHelp : imageHelp;
+  renderOutputSize(outputPlan);
+  if (scope === "publication") return;
   // A missing native effect cannot be fixed by editing transform inputs, so
   // its recovery guidance must stay keyboard-reachable and visible instead of
   // hiding behind a disabled button's hover-only tooltip.
@@ -2642,13 +2690,7 @@ function renderState(): void {
     button.disabled = !positionReady;
   }
   actionCopyParameters.disabled = !positionReady || editorMode === "rectify";
-  actionApplyCopy.hidden = !current?.targetNodeId;
-  actionApplyCopy.disabled = !menuReady || !transformInputsValid || transformInitializing ||
-    !outputApplicable || (editorMode === "rectify" && !rectifyInputsValid);
   actionApplyCopy.textContent = translate(activeLocale, "createHighResolutionImage");
-  const imageSize = outputPlan && rasterSizeForPolicy(outputPlan, outputDensityPolicy);
-  const imageHelp = `${translate(activeLocale, "imageOutputHelp")}${imageSize ? ` · ${imageSize.width} × ${imageSize.height} px` : ""}`;
-  actionApplyCopy.title = imageHelp;
   workspaceNavigation.setDisabled(!taskReady);
   // Transform Again repeats onto the current source and lands in Transform
   // mode itself, so it must stay reachable from the Distort mode a fresh
@@ -2664,21 +2706,6 @@ function renderState(): void {
   renderTransformActionStates();
   editor?.setDisabled(!ready || transformInitializing || blockingCompose || refreshInFlight);
   resetButton.disabled = !ready || blockingCompose || refreshInFlight;
-  applyButton.disabled =
-    !ready ||
-    !valid ||
-    !transformInputsValid ||
-    !outputApplicable ||
-    (editorMode === "rectify" && !rectifyInputsValid) ||
-    blockingCompose ||
-    refreshInFlight;
-  // A Warp operation cannot publish an editable result, so on native-capable
-  // files the primary button must stay the HD route instead of taking the
-  // editable gate and disabling itself: the alternate HD button only exists
-  // once a result is selected, which would leave a fresh Warp unapplicable.
-  const primaryEditable = Boolean(current?.nativeTarget) && editableModeSupported;
-  if (primaryEditable) applyButton.disabled = !editableReady;
-  applyButton.title = primaryEditable ? editableHelp : imageHelp;
   const rectificationOnly = editorMode === "rectify" && !rectifyParent;
   modeTransformButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
   modeDistortButton.disabled = !ready || !valid || blockingCompose || refreshInFlight || rectificationOnly;
@@ -2697,7 +2724,6 @@ function renderState(): void {
   rectifyWidthInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
   rectifyHeightInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
   renderOutputPolicy();
-  renderOutputSize(outputPlan);
   resetButton.textContent = translate(activeLocale, phase === "resetting" ? "resetting" : "reset");
   // Keep each action's meaning visible while publishing. A new copy must not
   // make the disabled Update button announce that the old result is replaced.

@@ -218,6 +218,13 @@ describe("PerspectiveEditor interaction pipeline", () => {
     expect(solveTransform.mock.calls[1]?.[0]).toEqual(normalizedSpec(unitQuad()));
     expect(renderer.render).toHaveBeenCalledTimes(1);
     expect(editor.captureSpec()).toEqual(selection);
+
+    solveTransform.mockClear();
+    renderer.render.mockClear();
+    await editor.setSpec(selection, { width: 200, height: 100 });
+    expect(solveTransform).toHaveBeenCalledTimes(1);
+    expect(solveTransform.mock.calls[0]?.[0]).toEqual(selection);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
   });
 
   it("invalidates a late spec render before restoring a known frame", async () => {

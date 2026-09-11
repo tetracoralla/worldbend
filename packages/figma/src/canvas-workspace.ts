@@ -10,6 +10,7 @@ import {
   addCanvasVariant,
   cloneCanvasDraft,
   createCanvasDraft,
+  parseCanvasNumericPreview,
   removeCanvasVariant,
   renameCanvasVariant,
   selectCanvasVariant,
@@ -40,6 +41,7 @@ import {
   specFromDraft,
   type CanvasWorkspacePhase,
 } from "./canvas-workspace-support";
+import { createFrameCoalescer } from "./frame-coalescer";
 import {
   canvasTemplateFromSet,
   normalizeTemplateName,
@@ -96,6 +98,7 @@ export function createCanvasWorkspace(input: {
   let pendingTemplateRequestId: number | undefined;
   let nextTemplateRequestId = 1;
   let savedNotice = false;
+  const planFrames = createFrameCoalescer(() => void requestPlan());
 
   view.back.addEventListener("click", input.onBack);
   view.addVariant.addEventListener("click", () => {
@@ -115,26 +118,30 @@ export function createCanvasWorkspace(input: {
       }),
     );
   });
-  view.width.addEventListener("change", () => commitNumber("width", view.width.value));
-  view.height.addEventListener("change", () => commitNumber("height", view.height.value));
+  bindNumericField(view.width, (value) => ({ width: value }));
+  bindNumericField(view.height, (value) => ({ height: value }));
+  bindNumericField(view.trimThreshold, (value) => ({ trimThreshold: value }));
   for (const [control, key] of [
     [view.cropX, "x"],
     [view.cropY, "y"],
     [view.cropWidth, "width"],
     [view.cropHeight, "height"],
   ] as const) {
-    control.addEventListener("change", () => commitNestedNumber("crop", key, control.value));
+    bindNumericField(control, (value) => {
+      const variant = draft ? activeCanvasVariant(draft) : undefined;
+      return variant ? { crop: { ...variant.crop, [key]: value } } : undefined;
+    });
   }
-  view.trimThreshold.addEventListener("change", () =>
-    commitNumber("trimThreshold", view.trimThreshold.value),
-  );
   for (const [control, key] of [
     [view.padTop, "top"],
     [view.padRight, "right"],
     [view.padBottom, "bottom"],
     [view.padLeft, "left"],
   ] as const) {
-    control.addEventListener("change", () => commitNestedNumber("insets", key, control.value));
+    bindNumericField(control, (value) => {
+      const variant = draft ? activeCanvasVariant(draft) : undefined;
+      return variant ? { insets: { ...variant.insets, [key]: value } } : undefined;
+    });
   }
   view.background.addEventListener("change", () => {
     commitBackground(
@@ -181,6 +188,7 @@ export function createCanvasWorkspace(input: {
     if (!active) return;
     active = false;
     planGeneration += 1;
+    planFrames.cancel();
     plan = undefined;
     savedNotice = false;
     renderer?.dispose();
@@ -207,6 +215,7 @@ export function createCanvasWorkspace(input: {
         : createCanvasDraft(image.naturalWidth, image.naturalHeight);
       baseline = cloneCanvasDraft(draft);
       history = createCanvasHistory(draft);
+      plan = undefined;
       view.templateName.value = input.copy().templateNamePlaceholder;
     } else {
       draft = { ...draft, source: { width: image.naturalWidth, height: image.naturalHeight } };
@@ -219,7 +228,10 @@ export function createCanvasWorkspace(input: {
     }
     phase = active ? "planning" : "ready";
     render();
-    if (active) void requestPlan();
+    if (active) {
+      planFrames.cancel();
+      void requestPlan();
+    }
   }
 
   function selectionLoading(): void {
@@ -259,28 +271,28 @@ export function createCanvasWorkspace(input: {
       plan = undefined;
       phase = "ready";
       visibleError = input.copy().invalid;
-      render();
+      renderChrome();
       return;
     }
     const generation = ++planGeneration;
     const plannedDraft = draft;
-    phase = "planning";
     savedNotice = false;
     visibleError = "";
-    render();
     try {
       const nextPlan = await planDraft(plannedDraft, sourceImage);
       if (!active || generation !== planGeneration || draft !== plannedDraft) return;
       plan = nextPlan;
       phase = "ready";
       renderActivePreview();
-      render();
+      renderChrome();
+      const variant = activeCanvasVariant(plannedDraft);
+      if (variant) renderVariantTabs(view, plannedDraft, plan, selectVariant);
     } catch (error) {
       if (!active || generation !== planGeneration) return;
       plan = undefined;
       phase = "ready";
       visibleError = input.formatError(error);
-      render();
+      renderChrome();
     }
   }
 
@@ -310,7 +322,8 @@ export function createCanvasWorkspace(input: {
     }
     const applyingSource = source;
     const applyingDraft = draft;
-    const generation = planGeneration;
+    planFrames.cancel();
+    const generation = ++planGeneration;
     phase = "applying";
     savedNotice = false;
     visibleError = "";
@@ -436,11 +449,31 @@ export function createCanvasWorkspace(input: {
       post: input.post,
       restore(restored) {
         draft = restored;
+        render();
+        planFrames.cancel();
         void requestPlan();
       },
     });
     undoRouted = result.undoRouted;
     return result.handled;
+  }
+
+  function selectVariant(id: string): void {
+    if (!draft) return;
+    draft = selectCanvasVariant(draft, id);
+    renderActivePreview();
+    render();
+  }
+
+  function previewDraft(next: CanvasDraft): void {
+    if (!draft || next === draft) return;
+    draft = next;
+    phase = "ready";
+    appliedResultPending = false;
+    undoRouted = false;
+    visibleError = "";
+    planFrames.request();
+    renderChrome();
   }
 
   function updateDraft(next: CanvasDraft): void {
@@ -452,7 +485,35 @@ export function createCanvasWorkspace(input: {
     undoRouted = false;
     visibleError = "";
     render();
-    void requestPlan();
+    // Numeric typing already queued a coalesced preview behind this commit;
+    // flush it. Every other commit path (operation, background, anchor,
+    // reset, variant add/remove) changed geometry with nothing queued, and
+    // without a fresh plan the preview and variant sizes freeze on the old
+    // plan.
+    if (planFrames.pending()) planFrames.flush();
+    else void requestPlan();
+  }
+
+  function bindNumericField(
+    control: HTMLInputElement,
+    patch: (value: number) => Partial<Omit<CanvasVariantDraft, "id">> | undefined,
+  ): void {
+    control.addEventListener("input", () => {
+      if (!draft) return;
+      const value = parseCanvasNumericPreview(control.value);
+      if (value === undefined) return;
+      const nextPatch = patch(value);
+      if (!nextPatch) return;
+      const next = updateCanvasVariant(draft, draft.activeId, nextPatch);
+      if (next === draft || validateCanvasDraft(next)) return;
+      previewDraft(next);
+    });
+    control.addEventListener("change", () => {
+      if (!draft) return;
+      const nextPatch = patch(Number(control.value));
+      if (!nextPatch) return;
+      updateDraft(updateCanvasVariant(draft, draft.activeId, nextPatch));
+    });
   }
 
   function commitVariantId(): void {
@@ -468,26 +529,6 @@ export function createCanvasWorkspace(input: {
     updateDraft(next);
   }
 
-  function commitNumber(key: "width" | "height" | "trimThreshold", value: string): void {
-    if (!draft) return;
-    updateDraft(updateCanvasVariant(draft, draft.activeId, { [key]: Number(value) }));
-  }
-
-  function commitNestedNumber(
-    group: "crop" | "insets",
-    key: string,
-    value: string,
-  ): void {
-    if (!draft) return;
-    const variant = activeCanvasVariant(draft);
-    if (!variant) return;
-    updateDraft(
-      updateCanvasVariant(draft, draft.activeId, {
-        [group]: { ...variant[group], [key]: Number(value) },
-      }),
-    );
-  }
-
   function commitBackground(background: CanvasBackground): void {
     if (!draft) return;
     updateDraft(updateCanvasVariant(draft, draft.activeId, { background }));
@@ -499,7 +540,7 @@ export function createCanvasWorkspace(input: {
   }
 
   function renderTemplateSave(): void {
-    const busy = phase === "planning" || phase === "applying";
+    const busy = phase === "applying";
     view.templateName.disabled = busy || savingTemplate || !draft;
     const saveDisabled =
       busy ||
@@ -516,16 +557,17 @@ export function createCanvasWorkspace(input: {
     const copy = input.copy();
     view.applyCopy(copy);
     view.sourceName.textContent = source?.sourceName ?? "";
-    renderVariantTabs(view, draft, plan, (id) => {
-      if (!draft) return;
-      draft = selectCanvasVariant(draft, id);
-      renderActivePreview();
-      render();
-    });
+    renderVariantTabs(view, draft, plan, selectVariant);
     const variant = draft ? activeCanvasVariant(draft) : undefined;
     if (variant) renderInspector(variant, copy);
-    const busy = phase === "planning" || phase === "applying";
-    const ready = Boolean(source && variant) && phase === "ready" && !validateCanvasDraft(draft!);
+    renderChrome();
+  }
+
+  function renderChrome(): void {
+    const copy = input.copy();
+    const variant = draft ? activeCanvasVariant(draft) : undefined;
+    const busy = phase === "applying";
+    const ready = Boolean(source && variant && plan) && phase === "ready" && !validateCanvasDraft(draft!);
     for (const control of inspectorControls(view)) control.disabled = busy || !variant;
     view.addVariant.disabled =
       busy || !draft || Boolean(source?.targetNodeId) || draft.variants.length >= 8;
@@ -557,8 +599,12 @@ export function createCanvasWorkspace(input: {
     input.root.setAttribute("aria-busy", String(busy));
   }
 
+  function syncField(field: HTMLInputElement, value: string): void {
+    if (document.activeElement === field) return;
+    if (field.value !== value) field.value = value;
+  }
+
   function renderInspector(variant: CanvasVariantDraft, copy: CanvasWorkspaceCopy): void {
-    view.variantId.value = variant.id;
     view.operation.value = variant.kind;
     for (const button of view.operationChoices.querySelectorAll<HTMLButtonElement>("button[data-operation]")) {
       button.setAttribute("aria-pressed", String(button.dataset.operation === variant.kind));
@@ -571,17 +617,18 @@ export function createCanvasWorkspace(input: {
     view.backgroundField.hidden = !["pad", "contain", "cover"].includes(variant.kind);
     view.backgroundColor.hidden =
       view.backgroundField.hidden || variant.background.kind !== "color";
-    view.width.value = String(variant.width);
-    view.height.value = String(variant.height);
-    view.cropX.value = String(variant.crop.x);
-    view.cropY.value = String(variant.crop.y);
-    view.cropWidth.value = String(variant.crop.width);
-    view.cropHeight.value = String(variant.crop.height);
-    view.trimThreshold.value = String(variant.trimThreshold);
-    view.padTop.value = String(variant.insets.top);
-    view.padRight.value = String(variant.insets.right);
-    view.padBottom.value = String(variant.insets.bottom);
-    view.padLeft.value = String(variant.insets.left);
+    syncField(view.variantId, variant.id);
+    syncField(view.width, String(variant.width));
+    syncField(view.height, String(variant.height));
+    syncField(view.cropX, String(variant.crop.x));
+    syncField(view.cropY, String(variant.crop.y));
+    syncField(view.cropWidth, String(variant.crop.width));
+    syncField(view.cropHeight, String(variant.crop.height));
+    syncField(view.trimThreshold, String(variant.trimThreshold));
+    syncField(view.padTop, String(variant.insets.top));
+    syncField(view.padRight, String(variant.insets.right));
+    syncField(view.padBottom, String(variant.insets.bottom));
+    syncField(view.padLeft, String(variant.insets.left));
     renderAnchors(view, variant.anchor, copy, (anchor) => {
       if (!draft) return;
       updateDraft(updateCanvasVariant(draft, draft.activeId, { anchor }));
@@ -618,7 +665,10 @@ export function createCanvasWorkspace(input: {
       view.templateName.value = input.copy().templateNamePlaceholder;
       visibleError = "";
       render();
-      if (active) void requestPlan();
+      if (active) {
+        planFrames.cancel();
+        void requestPlan();
+      }
       return true;
     },
     finishTemplateSave(requestId, error) {

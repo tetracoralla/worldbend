@@ -19,14 +19,24 @@ export interface DirectPointGestureSession {
   update(pointerId: number, point: DirectPointPosition): boolean;
   finish(pointerId: number, point?: DirectPointPosition): boolean;
   interrupt(pointerId?: number): boolean;
+  /** Restore the gesture-start point instead of keeping the last preview. */
+  cancel(pointerId?: number): boolean;
   owns(pointerId: number): boolean;
+  active(): boolean;
 }
 
 export function createDirectPointGestureSession(input: {
   onPreview(id: string, point: DirectPointPosition): void;
   onCommit(id: string, point: DirectPointPosition): void;
 }): DirectPointGestureSession {
-  let active: { pointerId: number; id: string; lastPoint: DirectPointPosition } | undefined;
+  let active:
+    | {
+        pointerId: number;
+        id: string;
+        origin: DirectPointPosition;
+        lastPoint: DirectPointPosition;
+      }
+    | undefined;
 
   const commit = (pointerId?: number, point?: DirectPointPosition): boolean => {
     if (!active || (pointerId !== undefined && pointerId !== active.pointerId)) return false;
@@ -36,10 +46,18 @@ export function createDirectPointGestureSession(input: {
     return true;
   };
 
+  const restoreOrigin = (pointerId?: number): boolean => {
+    if (!active || (pointerId !== undefined && pointerId !== active.pointerId)) return false;
+    const completed = active;
+    active = undefined;
+    input.onCommit(completed.id, completed.origin);
+    return true;
+  };
+
   return {
     begin(pointerId, id, point) {
       if (active) commit();
-      active = { pointerId, id, lastPoint: point };
+      active = { pointerId, id, origin: point, lastPoint: point };
       input.onPreview(id, point);
     },
     update(pointerId, point) {
@@ -50,7 +68,9 @@ export function createDirectPointGestureSession(input: {
     },
     finish: commit,
     interrupt: commit,
+    cancel: restoreOrigin,
     owns(pointerId) { return active?.pointerId === pointerId; },
+    active: () => active !== undefined,
   };
 }
 
@@ -161,13 +181,16 @@ export function createDirectPointOverlay(input: {
     return true;
   };
 
-  const interruptPointer = (pointerId?: number): boolean => {
+  const closePointer = (
+    pointerId: number | undefined,
+    close: (id?: number) => boolean,
+  ): boolean => {
     const button = capturedButton;
     const capturedPointer = pointerId ?? (button
       ? Number(button.dataset.activePointerId)
       : undefined);
-    const interrupted = gesture.interrupt(pointerId);
-    if (!interrupted) return false;
+    const closed = close(pointerId);
+    if (!closed) return false;
     capturedButton = undefined;
     grabOffset = { x: 0, y: 0 };
     if (capturedPointer !== undefined && Number.isFinite(capturedPointer)) {
@@ -176,6 +199,12 @@ export function createDirectPointOverlay(input: {
     if (button) delete button.dataset.activePointerId;
     return true;
   };
+
+  const interruptPointer = (pointerId?: number): boolean =>
+    closePointer(pointerId, (id) => gesture.interrupt(id));
+
+  const cancelPointer = (pointerId?: number): boolean =>
+    closePointer(pointerId, (id) => gesture.cancel(id));
 
   const onWindowPointerUp = (event: PointerEvent): void => {
     if (gesture.owns(event.pointerId)) {
@@ -190,7 +219,12 @@ export function createDirectPointOverlay(input: {
     if (document.visibilityState === "hidden") interruptPointer();
   };
   const onWindowKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") interruptPointer();
+    if (event.key !== "Escape" || !gesture.active()) return;
+    // Cancel only the in-flight point. A workspace-level Escape can still
+    // leave after the drag has been restored.
+    event.preventDefault();
+    event.stopPropagation();
+    cancelPointer();
   };
 
   const set = (next: readonly DirectPoint[]): void => {
@@ -216,7 +250,12 @@ export function createDirectPointOverlay(input: {
         };
         capturedButton = button;
         button.dataset.activePointerId = String(event.pointerId);
-        button.setPointerCapture(event.pointerId);
+        try {
+          button.setPointerCapture(event.pointerId);
+        } catch {
+          // A host can refuse capture for a pointer it does not own; drag on
+          // without it — window pointerup still closes the gesture.
+        }
         gesture.begin(event.pointerId, point.id, { x: tracked.x, y: tracked.y });
       });
       button.addEventListener("pointermove", (event) => {

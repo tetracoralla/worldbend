@@ -106,39 +106,56 @@ export function renderVariantTabs(
   plan: CanvasSetPlan | undefined,
   select: (id: string) => void,
 ): void {
-  view.variants.replaceChildren();
   const variants = draft?.variants ?? [];
+  const existing = Array.from(
+    view.variants.querySelectorAll<HTMLButtonElement>("button[data-variant-id]"),
+  );
+  const reusable =
+    existing.length === variants.length &&
+    existing.every((button, index) => button.dataset.variantId === variants[index]?.id);
+  if (!reusable) {
+    view.variants.replaceChildren();
+    for (let index = 0; index < variants.length; index += 1) {
+      const variant = variants[index]!;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.role = "tab";
+      button.id = `canvas-variant-tab-${variant.id}`;
+      button.dataset.variantId = variant.id;
+      button.setAttribute("aria-controls", "canvas-preview");
+      button.addEventListener("click", () => select(variant.id));
+      button.addEventListener("keydown", (event) => {
+        const current = draft?.variants ?? [];
+        const currentIndex = current.findIndex((candidate) => candidate.id === variant.id);
+        const targetIndex = variantTabTargetIndex(event.key, currentIndex, current.length);
+        if (targetIndex === undefined) return;
+        event.preventDefault();
+        const next = current[targetIndex];
+        if (!next) return;
+        select(next.id);
+        queueMicrotask(() => {
+          view.variants
+            .querySelector<HTMLButtonElement>(`[data-variant-id="${next.id}"]`)
+            ?.focus();
+        });
+      });
+      view.variants.append(button);
+    }
+  }
+  const buttons = view.variants.querySelectorAll<HTMLButtonElement>("button[data-variant-id]");
   for (let index = 0; index < variants.length; index += 1) {
     const variant = variants[index]!;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.role = "tab";
-    button.id = `canvas-variant-tab-${variant.id}`;
-    button.dataset.variantId = variant.id;
+    const button = buttons[index];
+    if (!button) continue;
     const active = variant.id === draft?.activeId;
     button.setAttribute("aria-selected", String(active));
-    button.setAttribute("aria-controls", "canvas-preview");
     button.tabIndex = active ? 0 : -1;
     const planned = plan?.variants.find((candidate) => candidate.id === variant.id)?.plan.outputSize;
     const output = planned ?? (draft
       ? canvasVariantOutputSize(draft, variant)
       : { width: 0, height: 0 });
-    button.textContent = `${variant.id} · ${output.width} × ${output.height}`;
-    button.addEventListener("click", () => select(variant.id));
-    button.addEventListener("keydown", (event) => {
-      const targetIndex = variantTabTargetIndex(event.key, index, variants.length);
-      if (targetIndex === undefined) return;
-      event.preventDefault();
-      const next = variants[targetIndex];
-      if (!next) return;
-      select(next.id);
-      queueMicrotask(() => {
-        view.variants
-          .querySelector<HTMLButtonElement>(`[data-variant-id="${next.id}"]`)
-          ?.focus();
-      });
-    });
-    view.variants.append(button);
+    const label = `${variant.id} · ${output.width} × ${output.height}`;
+    if (button.textContent !== label) button.textContent = label;
     if (active) view.preview.setAttribute("aria-labelledby", button.id);
   }
 }
@@ -186,18 +203,26 @@ export function renderAnchors(
   copy: CanvasWorkspaceCopy,
   choose: (anchor: { x: CanvasAnchor; y: CanvasAnchor }) => void,
 ): void {
-  view.anchorGrid.replaceChildren();
   const values: CanvasAnchor[] = [0, 0.5, 1];
-  let index = 0;
-  for (const y of values) {
-    for (const x of values) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.setAttribute("aria-label", copy.anchors[index++] ?? copy.anchor);
-      button.setAttribute("aria-pressed", String(x === selected.x && y === selected.y));
-      button.addEventListener("click", () => choose({ x, y }));
-      view.anchorGrid.append(button);
+  if (view.anchorGrid.childElementCount !== 9) {
+    view.anchorGrid.replaceChildren();
+    let index = 0;
+    for (const y of values) {
+      for (const x of values) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.anchor = `${x},${y}`;
+        button.setAttribute("aria-label", copy.anchors[index++] ?? copy.anchor);
+        button.addEventListener("click", () => choose({ x, y }));
+        view.anchorGrid.append(button);
+      }
     }
+  }
+  let index = 0;
+  for (const button of view.anchorGrid.querySelectorAll<HTMLButtonElement>("button")) {
+    const [x, y] = (button.dataset.anchor ?? "0.5,0.5").split(",").map(Number);
+    button.setAttribute("aria-label", copy.anchors[index++] ?? copy.anchor);
+    button.setAttribute("aria-pressed", String(x === selected.x && y === selected.y));
   }
 }
 

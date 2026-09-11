@@ -263,7 +263,8 @@
       .transform-slider:disabled { cursor: default; opacity: .45; }
       .transform-value { position: relative; display: block; min-width: 0; }
       .transform-number { width: 100%; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 6px 20px 6px 8px; color: var(--figma-color-text, #1e1e1e); background: var(--wb-control-bg); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion); }
-      .transform-number::-webkit-inner-spin-button { display: none; }
+      /* No numeric field in this UI wants native spin buttons. */
+      input[type="number"]::-webkit-inner-spin-button { display: none; }
       .transform-number:hover { border-color: var(--figma-color-border, #d6d6d6); background: var(--figma-color-bg, #fff); }
       .transform-number:focus { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 16%, transparent); outline: none; }
       .transform-number:invalid, .transform-number[aria-invalid="true"] { border-color: var(--figma-color-border-danger-strong, #f24822); }

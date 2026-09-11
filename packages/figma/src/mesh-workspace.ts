@@ -76,7 +76,7 @@ export function createMeshWorkspace(input: {
   });
   subdivisions.addEventListener("change", () => {
     if (!spec) return;
-    spec = { ...spec, mesh: identityMesh(Number(subdivisions.value)) };
+    spec = { ...spec, mesh: resampleMesh(spec.mesh, Number(subdivisions.value)) };
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
@@ -248,6 +248,64 @@ function identityMesh(subdivisions: number): WarpMesh {
     }
   }
   return { subdivisions, vertices };
+}
+
+/**
+ * Rebuild a fixed-boundary mesh at a new regular density. Interior warped
+ * positions are bilinear samples of the previous source grid so changing
+ * 3×3 / 4×4 / 5×5 does not discard the current deformation.
+ */
+export function resampleMesh(mesh: WarpMesh, subdivisions: number): WarpMesh {
+  const next = Math.max(2, Math.min(16, Math.round(subdivisions)));
+  if (next === mesh.subdivisions && mesh.vertices.length === (next + 1) ** 2) {
+    return mesh;
+  }
+  const previous = Math.max(1, mesh.subdivisions);
+  const previousSide = previous + 1;
+  const vertices = [];
+  for (let y = 0; y <= next; y += 1) {
+    for (let x = 0; x <= next; x += 1) {
+      const source = { x: x / next, y: y / next };
+      const boundary = x === 0 || y === 0 || x === next || y === next;
+      vertices.push({
+        source,
+        warped: boundary ? { ...source } : sampleWarped(mesh, previous, previousSide, source),
+      });
+    }
+  }
+  return { subdivisions: next, vertices };
+}
+
+function sampleWarped(
+  mesh: WarpMesh,
+  subdivisions: number,
+  side: number,
+  point: { x: number; y: number },
+): { x: number; y: number } {
+  const x = point.x * subdivisions;
+  const y = point.y * subdivisions;
+  const x0 = Math.min(subdivisions - 1, Math.max(0, Math.floor(x)));
+  const y0 = Math.min(subdivisions - 1, Math.max(0, Math.floor(y)));
+  const tx = x - x0;
+  const ty = y - y0;
+  const at = (column: number, row: number) =>
+    mesh.vertices[row * side + column]?.warped ?? { x: column / subdivisions, y: row / subdivisions };
+  return lerpPoint(
+    lerpPoint(at(x0, y0), at(x0 + 1, y0), tx),
+    lerpPoint(at(x0, y0 + 1), at(x0 + 1, y0 + 1), tx),
+    ty,
+  );
+}
+
+function lerpPoint(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  amount: number,
+): { x: number; y: number } {
+  return {
+    x: start.x + (end.x - start.x) * amount,
+    y: start.y + (end.y - start.y) * amount,
+  };
 }
 
 function nextTask(source: DesignerWorkspaceSource, kind: "mesh"): MeshWarpSpecInput | undefined {
