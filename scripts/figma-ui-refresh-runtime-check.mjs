@@ -654,6 +654,26 @@ async function runFixture() {
       check(arced.spec.content.warp && arced.spec.content.warp.preset === "arc" &&
         Math.abs(arced.spec.content.warp.amount - 0.25) < 1e-6, "Arced logo lost its Warp preset or amount");
       check(arced.bytes.length > 0, "Arced logo published no output");
+      // After a Warp HD publication the footer keeps the primary HD route and
+      // never offers editable output for an operation that cannot publish it.
+      check(get("#apply").disabled === false && (get("#action-apply-editable").disabled ||
+        get("#action-apply-editable").getAttribute("aria-disabled") === "true"),
+        "Footer offered editable output for a published Warp");
+      // Reopen the arced result alone and update it in place: the saved Warp
+      // must survive the round trip (the arc draft lives in content.warp,
+      // while the Distort tab legitimately shows the unchanged rectangle).
+      // A published HD image is a raster result: no native target to reopen.
+      const arcedResult = { ...payload, sourceNodeId: "logo", targetNodeId: "arced-result",
+        spec: arced.spec, placement: arced.placement, sourceName: "Logo" };
+      delete arcedResult.nativeTarget;
+      await selectSource(arcedResult, "Logo");
+      check(get("#apply").textContent === "Update HD Image", "Reopened Warp result lost its update action");
+      const arcedUpdate = await publishWithRetry("#apply", "apply", "arced-update");
+      send({ type: "apply-complete", generation, operation: "replace", targetNodeId: "arced-result" });
+      await ready();
+      check(arcedUpdate.spec.content.warp && arcedUpdate.spec.content.warp.preset === "arc" &&
+        Math.abs(arcedUpdate.spec.content.warp.amount - 0.25) < 1e-6,
+        `Updating the reopened Warp result lost its arc: ${JSON.stringify(arcedUpdate.spec.content)}`);
       removeEventListener("message", rasterAnswer);
 
       // Task 6 - source replacement: select the saved result with new source

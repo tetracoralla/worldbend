@@ -8,7 +8,7 @@ source repository.
 
 ## Current package and companion effect
 
-The Figma package is `0.3.0`. Figma assigns its own Community version number;
+The Figma package is `0.3.1`. Figma assigns its own Community version number;
 local package creation and submission do not establish marketplace approval.
 
 The optional [Worldbend Perspective effect](https://www.figma.com/community/shader/1679431734495527701)

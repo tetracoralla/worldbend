@@ -3,6 +3,37 @@
 All notable changes to Worldbend are documented here. Versioning begins with
 the first Figma Community release.
 
+## 0.3.1 - 2026-09-11
+
+### Transform reliability
+
+- On native-capable files a Warp operation could no longer be applied to a
+  fresh selection: the primary Apply took the editable gate and disabled
+  itself while the alternate HD button only appears once a result exists.
+  The primary Apply now falls back to the HD image route for Warp.
+- Repeat Last Transform required switching to Transform mode first although
+  fresh selections open in Distort; it is now reachable there and stages the
+  repeat for the primary Apply to publish.
+- Valid sources could rarely report "The selected layer could not be
+  previewed" when rapid render coalescing settled a superseded load as a
+  failure, or when a preview resource was released while an upload was still
+  in flight. Superseded renders now settle with the replacing render's
+  outcome, and preview resources close only after in-flight renders drain.
+- Image elements are staged through a canvas before WebGL upload, working
+  around embedded and headless host builds that reject blob-backed image
+  sources with WebGL 1281.
+
+### Verification
+
+- The designer dogfood lane covers all six roadmap tasks end to end on the
+  built plugin UI, including Warp apply through the primary route, reopening
+  and updating a Warp result in place without losing its arc, and Repeat Last
+  Transform from Distort.
+- The same development build passed real Figma Desktop spot checks across
+  the repaired flows — reopening saved results, Warp apply through the
+  primary route, Repeat Last Transform, rapid re-selection, and source
+  replacement — with no defects.
+
 ## 0.3.0 - 2026-09-09
 
 ### Figma continued editing

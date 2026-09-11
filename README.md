@@ -15,10 +15,11 @@ contracts. PSD interoperability is bounded, read-only Smart Object inspection
 and Spatial Template projection rather than a Photoshop document editor.
 
 > Project status: the shared core and Agent toolchain remain an experimental
-> `0.1.0` commercial pre-release. The Figma `0.3.0` package adds the HD image
+> `0.1.0` commercial pre-release. The Figma `0.3.1` package includes the HD image
 > and editable-result workflows in [FIGMA_HANDOFF.md](docs/FIGMA_HANDOFF.md).
 > Editable output requires the companion Worldbend Perspective effect; its
-> Community submission is under review. HD output works independently.
+> first Community submission was rejected and a labeled resubmission is
+> prepared. HD output works independently.
 > Source is maintained in a private repository. The transform
 > and error contracts are versioned, but compatibility guarantees may tighten
 > before `1.0.0`.
