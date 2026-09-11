@@ -2678,7 +2678,7 @@ mod tests {
         assert!(result.evidence.render_ms.is_finite() && result.evidence.render_ms >= 0.0);
         assert!(result.evidence.warnings.is_empty());
         assert_eq!(
-            format!("{:x}", Sha256::digest(fs::read(&source_path).unwrap())),
+            hex::encode(Sha256::digest(fs::read(&source_path).unwrap())),
             result.evidence.source_sha256
         );
 
@@ -2702,7 +2702,7 @@ mod tests {
             result.evidence.output_sha256
         );
         assert_eq!(
-            format!("{:x}", Sha256::digest(fs::read(&output_path).unwrap())),
+            hex::encode(Sha256::digest(fs::read(&output_path).unwrap())),
             written.evidence.output_sha256
         );
     }

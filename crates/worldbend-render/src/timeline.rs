@@ -246,7 +246,7 @@ pub fn render_timeline_files_with_cancel(
             .sync_all()
             .map_err(render_io("failed to sync staged timeline frame"))?;
         let bytes = writer.bytes;
-        let sha256 = format!("{:x}", writer.digest.finalize());
+        let sha256 = hex::encode(writer.digest.finalize());
         items.push(TimelineRenderedItem {
             index: frame.index,
             id: frame.id.clone(),

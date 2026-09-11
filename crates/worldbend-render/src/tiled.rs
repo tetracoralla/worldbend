@@ -392,7 +392,7 @@ pub fn render_tiled_media_directory_with_cancel(
         TransformError::new(ErrorCode::Render, "failed to write tiled manifest")
             .with_details(json!({ "reason": error.to_string() }))
     })?;
-    let manifest_sha256 = format!("{:x}", Sha256::digest(&manifest_bytes));
+    let manifest_sha256 = hex::encode(Sha256::digest(&manifest_bytes));
     if is_cancelled() {
         return Err(cancelled_error());
     }
@@ -554,7 +554,7 @@ fn hash_regular_file(path: &Path) -> TransformResult<(u64, String)> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok((metadata.len(), format!("{:x}", hasher.finalize())))
+    Ok((metadata.len(), hex::encode(hasher.finalize())))
 }
 
 fn cancelled_error() -> TransformError {

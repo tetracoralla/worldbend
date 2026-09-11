@@ -508,7 +508,7 @@ impl<W> HashingWriter<W> {
         }
     }
     fn finish(self) -> (u64, String) {
-        (self.bytes, format!("{:x}", self.hasher.finalize()))
+        (self.bytes, hex::encode(self.hasher.finalize()))
     }
 }
 

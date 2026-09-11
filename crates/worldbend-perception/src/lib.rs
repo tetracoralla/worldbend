@@ -842,7 +842,7 @@ mod tests {
         assert_eq!(response.source.height, 160);
         assert_eq!(
             response.source.source_sha256,
-            format!("{:x}", Sha256::digest(fs::read(&source).unwrap()))
+            hex::encode(Sha256::digest(fs::read(&source).unwrap()))
         );
         assert!(!response.provider.automatic_execution);
         assert_eq!(

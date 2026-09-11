@@ -98,7 +98,7 @@ pub fn render_vector_file_with_cancel(
     }
     validate_render_target(spec, options.target_size)?;
     let source_bytes = read_svg(source, options.max_source_bytes)?;
-    let source_sha256 = format!("{:x}", Sha256::digest(&source_bytes));
+    let source_sha256 = hex::encode(Sha256::digest(&source_bytes));
     let solved = solve_spec(spec, options.target_size)?;
     if let Some(warp) = spec.content.warp {
         warp.validate()?;
@@ -146,7 +146,7 @@ pub fn render_vector_file_with_cancel(
     if is_cancelled() {
         return Err(cancelled_error());
     }
-    let output_sha256 = format!("{:x}", Sha256::digest(&document));
+    let output_sha256 = hex::encode(Sha256::digest(&document));
     let parent = output_parent(output);
     let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| {
         TransformError::new(ErrorCode::Render, "output directory is not writable")
@@ -435,7 +435,7 @@ mod tests {
         )
         .unwrap();
         assert!(!result.projective);
-        assert_eq!(result.source_sha256, format!("{:x}", Sha256::digest(bytes)));
+        assert_eq!(result.source_sha256, hex::encode(Sha256::digest(bytes)));
         assert!(
             fs::read_to_string(output)
                 .unwrap()

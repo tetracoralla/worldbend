@@ -6183,7 +6183,7 @@ fn hash_regular_file(
         }
         digest.update(&buffer[..count]);
     }
-    Ok((metadata.len(), format!("{:x}", digest.finalize())))
+    Ok((metadata.len(), hex::encode(digest.finalize())))
 }
 
 fn verify_reported_output_file(
@@ -8439,7 +8439,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let output = directory.path().join("result.png");
         fs::write(&output, b"first").unwrap();
-        let reported_sha256 = format!("{:x}", Sha256::digest(b"first"));
+        let reported_sha256 = hex::encode(Sha256::digest(b"first"));
 
         verify_worker_output(
             output.clone(),
@@ -8490,7 +8490,7 @@ mod tests {
                 id: "square".to_owned(),
                 output: output.to_string_lossy().into_owned(),
                 bytes: 5,
-                sha256: format!("{:x}", Sha256::digest(b"first")),
+                sha256: hex::encode(Sha256::digest(b"first")),
                 width: 2,
                 height: 2,
             }],

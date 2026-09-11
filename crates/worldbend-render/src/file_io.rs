@@ -61,7 +61,7 @@ pub(crate) fn decode_file_with_limits(
         TransformError::new(ErrorCode::UnsupportedMedia, "failed to read source image")
             .with_details(json!({ "reason": error.to_string() }))
     })?;
-    let source_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let source_sha256 = hex::encode(Sha256::digest(&bytes));
     if let Some(claimed) = known_source_sha256
         && !claimed.eq_ignore_ascii_case(&source_sha256)
     {
@@ -128,7 +128,7 @@ impl<W> EvidenceWriter<W> {
     }
 
     pub(crate) fn finish(self) -> (u64, String) {
-        (self.bytes, format!("{:x}", self.hasher.finalize()))
+        (self.bytes, hex::encode(self.hasher.finalize()))
     }
 }
 
@@ -606,7 +606,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let source = write_png_source(directory.path(), "source.png");
         let bytes = fs::read(&source).unwrap();
-        let digest = format!("{:x}", Sha256::digest(&bytes));
+        let digest = hex::encode(Sha256::digest(&bytes));
         let output = directory.path().join("out.png");
         let spec = unit_spec();
         let result = render_file_with_source_sha256(
