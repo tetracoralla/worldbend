@@ -60,6 +60,13 @@ Transform, Distort, Perspective, Warp or Correct, then create an HD image.
 Sizes creates named variants; Templates save repeatable work. Composition,
 Mesh and Lens & maps are discoverable under More.
 
+Keep the two output routes' purposes distinct in the listing text: editable
+Frames are for continuing to design with native content, and HD images are
+the final-delivery route when high sharpness matters; raising an editable
+export's density does not restore full source detail. Do not present the
+editable route as production-hardened — host Undo across consecutive
+shader-effect updates is a documented limitation.
+
 A saved result can reopen alone through its source binding. Update HD Image
 or Update Frame preserves that result; either New action creates another
 independent result. Native content is edited directly on the Figma canvas.
