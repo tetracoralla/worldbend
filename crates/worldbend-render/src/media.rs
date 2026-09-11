@@ -698,7 +698,7 @@ pub(crate) fn decode_media_file(
     if is_cancelled() {
         return Err(cancelled_error());
     }
-    let source_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let source_sha256 = hex::encode(Sha256::digest(&bytes));
     let mut reader = ImageReader::new(Cursor::new(&bytes))
         .with_guessed_format()
         .map_err(|error| media_error("source raster format is not recognized", error))?;
@@ -750,7 +750,7 @@ pub(crate) fn decode_media_file(
     }
     let icc_profile_sha256 = icc_profile
         .as_ref()
-        .map(|profile| format!("{:x}", Sha256::digest(profile)));
+        .map(|profile| hex::encode(Sha256::digest(profile)));
     Ok(DecodedMedia {
         image,
         info: MediaSourceInfo {
@@ -1029,7 +1029,7 @@ fn hash_file(file: &mut fs::File) -> TransformResult<(u64, String)> {
         bytes = bytes.saturating_add(count as u64);
         hasher.update(&buffer[..count]);
     }
-    Ok((bytes, format!("{:x}", hasher.finalize())))
+    Ok((bytes, hex::encode(hasher.finalize())))
 }
 
 fn media_format(value: ImageFormat) -> Option<MediaFormat> {

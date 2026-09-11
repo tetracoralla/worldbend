@@ -294,7 +294,7 @@ pub fn inspect_psd_smart_objects(bytes: &[u8]) -> TransformResult<PsdSmartObject
         source: PsdSourceFacts {
             format: header.format,
             bytes: bytes.len() as u64,
-            sha256: format!("{:x}", Sha256::digest(bytes)),
+            sha256: hex::encode(Sha256::digest(bytes)),
             document: header.document,
             bits_per_channel: header.bits_per_channel,
             color_mode: header.color_mode,

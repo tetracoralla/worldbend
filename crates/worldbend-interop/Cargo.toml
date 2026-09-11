@@ -7,6 +7,7 @@ publish = false
 description = "Bounded read-only ecosystem interoperability for Worldbend"
 
 [dependencies]
+hex = "0.4"
 ag-psd.workspace = true
 schemars.workspace = true
 serde.workspace = true

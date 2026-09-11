@@ -832,7 +832,7 @@ pub fn copy_source_to_private_staging(
     target
         .flush()
         .map_err(render_io("failed to flush private source staging"))?;
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 fn validate_relative_path(value: &str) -> TransformResult<Vec<OsString>> {

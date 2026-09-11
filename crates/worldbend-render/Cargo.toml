@@ -27,6 +27,7 @@ surface-deformation = ["worldbend-core/surface-deformation", "deform"]
 motion = ["worldbend-core/motion", "timeline"]
 
 [dependencies]
+hex = "0.4"
 base64.workspace = true
 image.workspace = true
 libc.workspace = true
