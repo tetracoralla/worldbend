@@ -2,6 +2,7 @@ import type {
   MeshWarpSpecInput,
   MockupSpecInput,
   RemapSpecInput,
+  SurfaceDeformationSpecInput,
 } from "@worldbend/web/types";
 import { isFigmaImageAxis, isOwnedTransformSpec, isRecord } from "./stored-plane";
 
@@ -10,6 +11,7 @@ export const SHARED_DESIGNER_TASK_KEY = "task";
 export type StoredDesignerTask =
   | { kind: "mockup"; spec: MockupSpecInput }
   | { kind: "mesh"; spec: MeshWarpSpecInput }
+  | { kind: "surface"; spec: SurfaceDeformationSpecInput }
   | { kind: "remap"; spec: RemapSpecInput };
 
 export function parseStoredDesignerTask(value: string): StoredDesignerTask | undefined {
@@ -26,6 +28,7 @@ export function isStoredDesignerTask(value: unknown): value is StoredDesignerTas
   if (!isRecord(value) || !exact(value, ["kind", "spec"])) return false;
   if (value["kind"] === "mesh") return isMeshSpec(value["spec"]);
   if (value["kind"] === "mockup") return isMockupSpec(value["spec"]);
+  if (value["kind"] === "surface") return isSurfaceSpec(value["spec"]);
   return value["kind"] === "remap" && isRemapSpec(value["spec"]);
 }
 
@@ -55,6 +58,60 @@ function isMeshSpec(value: unknown): value is MeshWarpSpecInput {
       isNormalizedPoint(vertex["warped"]),
     )
   );
+}
+
+function isSurfaceSpec(value: unknown): value is SurfaceDeformationSpecInput {
+  if (
+    !isRecord(value) ||
+    !exact(value, ["schema", "version", "transform", "targetSize", "meshSubdivisions", "envelope", "anchors", "strokes"]) ||
+    value["schema"] !== "worldbend.surface-deformation" ||
+    value["version"] !== "0.1" ||
+    !isOwnedTransformSpec(value["transform"]) ||
+    !isSize(value["targetSize"]) ||
+    !Number.isInteger(value["meshSubdivisions"]) ||
+    Number(value["meshSubdivisions"]) < 4 ||
+    Number(value["meshSubdivisions"]) > 16 ||
+    !Array.isArray(value["anchors"]) ||
+    value["anchors"].length !== 0 ||
+    !Array.isArray(value["strokes"]) ||
+    value["strokes"].length !== 0
+  ) return false;
+  const transform = value["transform"];
+  if (isRecord(transform) && isRecord(transform["content"]) && transform["content"]["warp"] !== undefined) {
+    return false;
+  }
+  return isBezierEnvelope(value["envelope"], Number(value["meshSubdivisions"]));
+}
+
+function isBezierEnvelope(value: unknown, subdivisions: number): boolean {
+  if (
+    !isRecord(value) ||
+    !exact(value, ["columns", "rows", "points"]) ||
+    !Number.isInteger(value["columns"]) ||
+    !Number.isInteger(value["rows"]) ||
+    Number(value["columns"]) < 1 ||
+    Number(value["columns"]) > 4 ||
+    Number(value["rows"]) < 1 ||
+    Number(value["rows"]) > 4
+  ) return false;
+  const columns = Number(value["columns"]);
+  const rows = Number(value["rows"]);
+  if (subdivisions % columns !== 0 || subdivisions % rows !== 0) return false;
+  const controlColumns = columns * 3 + 1;
+  const controlRows = rows * 3 + 1;
+  const points = value["points"];
+  if (!Array.isArray(points) || points.length !== controlColumns * controlRows) return false;
+  return points.every((point, index) => {
+    if (!isPoint(point, -2, 3)) return false;
+    const column = index % controlColumns;
+    const row = Math.floor(index / controlColumns);
+    if (column === 0 || row === 0 || column + 1 === controlColumns || row + 1 === controlRows) {
+      const expectedX = column / (controlColumns - 1);
+      const expectedY = row / (controlRows - 1);
+      return Math.abs(point.x - expectedX) <= 1e-12 && Math.abs(point.y - expectedY) <= 1e-12;
+    }
+    return true;
+  });
 }
 
 function isMockupSpec(value: unknown): value is MockupSpecInput {

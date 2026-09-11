@@ -7,11 +7,14 @@ import {
   type MockupSpecInput,
   type RemapPlanOutput,
   type RemapSpecInput,
+  type SurfaceDeformationPlanOutput,
+  type SurfaceDeformationSpecInput,
 } from "@worldbend/web";
 import {
   mesh_warp_plan_json as meshWarpPlanJson,
   mockup_plan_json as mockupPlanJson,
   remap_plan_json as remapPlanJson,
+  surface_deformation_plan_json as surfaceDeformationPlanJson,
 } from "./figma-wasm-runtime";
 
 export async function planMockup(spec: MockupSpecInput): Promise<MockupPlanOutput> {
@@ -27,6 +30,13 @@ export async function planMeshWarp(spec: MeshWarpSpecInput): Promise<MeshWarpPla
 export async function planRemap(spec: RemapSpecInput): Promise<RemapPlanOutput> {
   await initializeWorldbend();
   return invoke<RemapPlanOutput>(() => remapPlanJson(JSON.stringify(spec)));
+}
+
+export async function planSurfaceDeformation(
+  spec: SurfaceDeformationSpecInput,
+): Promise<SurfaceDeformationPlanOutput> {
+  await initializeWorldbend();
+  return invoke<SurfaceDeformationPlanOutput>(() => surfaceDeformationPlanJson(JSON.stringify(spec)));
 }
 
 function invoke<T>(operation: () => string): T {

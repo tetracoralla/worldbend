@@ -50,6 +50,26 @@ const mockupPlan = JSON.parse(wasm.mockup_plan_json(JSON.stringify(template.oper
 assert.deepEqual(mockupPlan.planes.map((plane) => plane.sourceId), ["source-1"]);
 assert.equal(wasm.spatial_template_inspect_json, undefined);
 
+const envelopePoints = [];
+for (let row = 0; row < 4; row += 1) {
+  for (let column = 0; column < 4; column += 1) {
+    envelopePoints.push({ x: column / 3, y: row / 3 });
+  }
+}
+const surfacePlan = JSON.parse(wasm.surface_deformation_plan_json(JSON.stringify({
+  schema: "worldbend.surface-deformation",
+  version: "0.1",
+  transform: spec,
+  targetSize: { width: 64, height: 64 },
+  meshSubdivisions: 12,
+  envelope: { columns: 1, rows: 1, points: envelopePoints },
+  anchors: [],
+  strokes: [],
+})));
+assert.equal(surfacePlan.schema, "worldbend.surface-deformation-plan");
+assert.equal(surfacePlan.meshWarp.spec.mesh.subdivisions, 12);
+assert.equal(surfacePlan.spec.envelope.points.length, 16);
+
 let cssFailure;
 try {
   wasm.css_json(JSON.stringify(spec), 640, 480, 640, 480);

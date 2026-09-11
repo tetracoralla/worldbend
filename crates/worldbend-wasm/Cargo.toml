@@ -10,7 +10,7 @@ description = "WASM geometry bridge for Worldbend web and Figma adapters"
 default = ["css", "template"]
 css = ["worldbend-core/css"]
 template = ["worldbend-core/template"]
-designer = ["worldbend-core/place", "worldbend-core/deform", "worldbend-core/remap"]
+designer = ["worldbend-core/place", "worldbend-core/deform", "worldbend-core/remap", "worldbend-core/surface-deformation"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

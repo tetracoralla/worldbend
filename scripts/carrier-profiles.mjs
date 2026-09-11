@@ -99,17 +99,17 @@ export async function loadCarrierProfiles(file = carrierProfilesPath) {
   );
   if (
     JSON.stringify(value.carriers.figma.workspace.siblingWorkspaceIds) !==
-    JSON.stringify(["canvas", "templates", "mockup", "mesh", "remap"])
+    JSON.stringify(["canvas", "templates", "mockup", "mesh", "surface", "remap"])
   ) {
-    throw new Error("The current Figma sibling workspaces must remain canvas, templates, mockup, mesh, remap");
+    throw new Error("The current Figma sibling workspaces must remain canvas, templates, mockup, mesh, surface, remap");
   }
   if (
     JSON.stringify(value.carriers.figma.workspace.primaryWorkspaceIds) !==
       JSON.stringify(["canvas", "templates"]) ||
     JSON.stringify(value.carriers.figma.workspace.secondaryWorkspaceIds) !==
-      JSON.stringify(["mockup", "mesh", "remap"])
+      JSON.stringify(["mockup", "mesh", "surface", "remap"])
   ) {
-    throw new Error("The Figma workspace hierarchy must keep Sizes and Templates primary, with Composition, Mesh, and Lens/Maps secondary");
+    throw new Error("The Figma workspace hierarchy must keep Sizes and Templates primary, with Composition, Mesh, Split Warp, and Lens/Maps secondary");
   }
   return value;
 }

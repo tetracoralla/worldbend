@@ -441,14 +441,15 @@ async function runFixture() {
       const unavailable = get("#action-apply-editable");
       check(unavailable.getAttribute("aria-disabled") === "true" && !unavailable.disabled &&
         !get("#native-guidance").hidden &&
-        get("#native-guidance").textContent === "Editable output requires a supported Frame and a configured perspective effect in this file." &&
+        get("#native-guidance").textContent.includes("HD images still work") &&
+        !get("#copy-effect-listing").hidden &&
         unavailable.getAttribute("aria-describedby") === "native-guidance",
         "Unavailable native output hid its focusable recovery guidance");
       const nativeCalls = window.fixtureMessages.filter(message => message.type === "apply-native").length;
       unavailable.focus();
       check(document.activeElement === unavailable, "Unavailable editable output is not keyboard-reachable");
       unavailable.click();
-      check(!get("#error").hidden, "Unavailable editable activation gave no feedback");
+      await wait(() => get("#status").textContent.length > 0, "Unavailable editable activation gave no feedback");
       check(window.fixtureMessages.filter(message => message.type === "apply-native").length === nativeCalls,
         "Unavailable editable activation attempted publication");
       check(!get("#apply").disabled, "Missing native effect blocked raster delivery");
@@ -650,6 +651,21 @@ async function runFixture() {
       get("#warp-amount").value = "25";
       get("#warp-amount").dispatchEvent(new Event("input", { bubbles: true }));
       get("#warp-amount").dispatchEvent(new Event("change", { bubbles: true })); await ready();
+      get("#warp-mesh-continue").click();
+      await wait(() => !get("#mesh-workspace").hidden &&
+        get('#mesh-workspace [data-role="subdivisions"]').value === "16",
+        "Warp continue did not seed the Arc preset as a 16×16 mesh");
+      get("#workspace-tab-perspective").click();
+      await wait(() => !get("#controls").hidden, "return from Mesh");
+      get("#more-options").click();
+      get("#workspace-menu-surface").click();
+      await wait(() => !get("#surface-workspace").hidden &&
+        get('#surface-workspace [data-role="patches"]').value === "1x1" &&
+        get('#surface-workspace [data-role="subdivisions"]').value === "12",
+        "Split Warp did not open a 1×1 envelope on a 12×12 mesh");
+      get("#workspace-tab-perspective").click();
+      await wait(() => !get("#controls").hidden, "return from Split Warp");
+      await ready();
       const arced = await publishWithRetry("#apply", "apply", "arced"); complete(); await ready();
       check(arced.spec.content.warp && arced.spec.content.warp.preset === "arc" &&
         Math.abs(arced.spec.content.warp.amount - 0.25) < 1e-6, "Arced logo lost its Warp preset or amount");

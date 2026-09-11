@@ -1,7 +1,9 @@
 import {
   TransformWebGLRenderer,
+  buildWarpMesh,
   normalizedSpec,
   type MeshWarpSpecInput,
+  type TransformSpec,
   type WarpMesh,
 } from "@worldbend/web";
 import { planMeshWarp } from "./designer-plan";
@@ -28,12 +30,19 @@ export interface MeshWorkspaceCopy extends DesignerWorkspaceCopy {
   pointLabel: string;
 }
 
+export interface LivePerspectiveMesh {
+  spec: TransformSpec;
+  width: number;
+  height: number;
+}
+
 export function createMeshWorkspace(input: {
   root: HTMLElement;
   copy(): MeshWorkspaceCopy;
   onBack(): void;
   post(message: UiToMainMessage): void;
   formatError(error: unknown): string;
+  livePerspective?(): LivePerspectiveMesh | undefined;
 }): DesignerTaskWorkspace {
   const shell = createDesignerWorkspaceShell(input.root);
   shell.inspector.innerHTML = `<label class="designer-field"><span data-role="subdivisions-label"></span><select data-role="subdivisions"></select></label>`;
@@ -113,29 +122,46 @@ export function createMeshWorkspace(input: {
     shell.applyNew.hidden = !source?.targetNodeId;
   }
 
+  function applyVertexMoves(
+    moves: readonly { id: string; point: { x: number; y: number } }[],
+    final: boolean,
+  ): void {
+    if (!spec || moves.length === 0) return;
+    const relocated = new Map(moves.map((move) => [Number(move.id), move.point]));
+    const vertices = spec.mesh.vertices.map((candidate, index) => {
+      const point = relocated.get(index);
+      return point ? { ...candidate, warped: point } : candidate;
+    });
+    const unchanged = vertices.every((vertex, index) => {
+      const previous = spec!.mesh.vertices[index];
+      return previous !== undefined &&
+        vertex.warped.x === previous.warped.x &&
+        vertex.warped.y === previous.warped.y;
+    });
+    if (unchanged) return;
+    spec = { ...spec, mesh: { ...spec.mesh, vertices } };
+    phase = "ready";
+    undoRouted = false;
+    appliedResultPending = false;
+    moveFrames.request();
+    if (final) {
+      moveFrames.flush();
+      history?.push(spec);
+    }
+  }
+
   function renderOverlay(): void {
     overlay?.dispose();
     if (!spec) return;
     overlay = createDirectPointOverlay({
       host: shell.preview,
       canvas: renderer.canvas,
+      selection: "multiple",
       onMove(id, point, final) {
-        if (!spec) return;
-        const index = Number(id);
-        const vertex = spec.mesh.vertices[index];
-        if (!vertex) return;
-        const vertices = spec.mesh.vertices.map((candidate, candidateIndex) =>
-          candidateIndex === index ? { ...candidate, warped: point } : candidate,
-        );
-        spec = { ...spec, mesh: { ...spec.mesh, vertices } };
-        phase = "ready";
-        undoRouted = false;
-        appliedResultPending = false;
-        moveFrames.request();
-        if (final) {
-          moveFrames.flush();
-          history?.push(spec);
-        }
+        applyVertexMoves([{ id, point }], final);
+      },
+      onMoves(moves, final) {
+        applyVertexMoves(moves, final);
       },
     });
     const count = spec.mesh.subdivisions;
@@ -185,8 +211,35 @@ export function createMeshWorkspace(input: {
     void render();
   }
 
+  async function seedAndRender(): Promise<void> {
+    await seedFromPerspectiveIfNeeded();
+    if (!active) return;
+    void render();
+    overlay?.refresh();
+  }
+
+  async function seedFromPerspectiveIfNeeded(): Promise<void> {
+    if (!source || nextTask(source, "mesh")) return;
+    if (history?.canUndo() || appliedResultPending) return;
+    const live = input.livePerspective?.();
+    if (!live) return;
+    try {
+      spec = await meshSpecFromPerspective(live);
+      baseline = structuredClone(spec);
+      history = createWorkspaceHistory(spec);
+      phase = "ready";
+      renderControls();
+    } catch (error) {
+      shell.showError(input.formatError(error));
+    }
+  }
+
   return {
-    enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
+    enter() {
+      active = true;
+      shell.root.hidden = false;
+      void seedAndRender();
+    },
     leave() { overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
     setSource(next) {
       busy = false;
@@ -195,13 +248,13 @@ export function createMeshWorkspace(input: {
       source = next;
       const first = next.sources[0];
       if (!first) return;
-      spec = nextTask(next, "mesh") ?? createMeshSpec(first.renderWidth, first.renderHeight, 2);
+      spec = nextTask(next, "mesh") ?? createMeshSpec(first.renderWidth, first.renderHeight);
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
       undoRouted = false;
       renderControls();
-      if (active) void render();
+      if (active) void seedAndRender();
     },
     clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
@@ -229,13 +282,54 @@ export function createMeshWorkspace(input: {
   };
 }
 
-export function createMeshSpec(width: number, height: number, subdivisions: number): MeshWarpSpecInput {
+/** Photoshop-style 4×4 cells / 5×5 interior-capable grid. */
+export const DEFAULT_MESH_SUBDIVISIONS = 4;
+
+export function createMeshSpec(
+  width: number,
+  height: number,
+  subdivisions: number = DEFAULT_MESH_SUBDIVISIONS,
+  transform: TransformSpec = normalizedSpec({
+    tl: { x: 0, y: 0 },
+    tr: { x: 1, y: 0 },
+    br: { x: 1, y: 1 },
+    bl: { x: 0, y: 1 },
+  }),
+): MeshWarpSpecInput {
   return {
     schema: "worldbend.mesh-warp",
     version: "0.1",
-    transform: normalizedSpec({ tl: { x: 0, y: 0 }, tr: { x: 1, y: 0 }, br: { x: 1, y: 1 }, bl: { x: 0, y: 1 } }),
+    transform: transformForMesh(transform),
     targetSize: { width, height },
     mesh: identityMesh(subdivisions),
+  };
+}
+
+/** Mesh warp cannot carry a preset Warp; the custom grid is the deformation. */
+export function transformForMesh(spec: TransformSpec): TransformSpec {
+  const { warp: _warp, ...content } = spec.content;
+  return {
+    ...spec,
+    destination: structuredClone(spec.destination),
+    content,
+  };
+}
+
+export async function meshSpecFromPerspective(input: {
+  spec: TransformSpec;
+  width: number;
+  height: number;
+}): Promise<MeshWarpSpecInput> {
+  const warp = input.spec.content.warp;
+  const mesh = warp && warp.amount !== 0
+    ? await buildWarpMesh(warp)
+    : identityMesh(DEFAULT_MESH_SUBDIVISIONS);
+  return {
+    schema: "worldbend.mesh-warp",
+    version: "0.1",
+    transform: transformForMesh(input.spec),
+    targetSize: { width: input.width, height: input.height },
+    mesh,
   };
 }
 

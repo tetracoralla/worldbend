@@ -82,7 +82,7 @@ surface, Product Skill, installed provider manifest, and live transport.
 ## Error-contract review
 
 The persistent icon workspace navigation exposes Perspective, Sizes, and
-Templates through localized tooltips, with Composition, Mesh, and Lens & maps
+Templates through localized tooltips, with Composition, Mesh, Split Warp, and Lens & maps
 as task-labeled advanced entries under More, and sits above the
 Perspective mode strip, whose checked order is Transform, Distort, Warp,
 Correct with Free and Perspective as Distort-local peers. More is the final
@@ -253,7 +253,7 @@ must disclose the substitution or any uncovered seam.
   distinct from the paired precise field domain; inspect Width -> Height ->
   Link, Skew X -> Skew Y, and Angle -> Placement as three uninterrupted groups;
   confirm More remains the final control of the workspace navigation, exposes
-  Composition, Mesh, and Lens & maps with task descriptions, hides its
+  Composition, Mesh, Split Warp, and Lens & maps with task descriptions, hides its
   Perspective-only entries inside task workspaces, omits active Transform
   commands, and carries selected emphasis for an active advanced workspace.
   The mode strip keeps the checked Transform, Distort, Warp, Correct order with

@@ -50,8 +50,11 @@ resolved anchor indices, and the total stroke-sample count.
 Native rendering delegates to the current mesh renderer, including inverse
 mapping, premultiplied-alpha filtering, configured limits, cancellation, dry
 run, and atomic PNG publication. CLI and compact Agent operations expose plan
-and render. Web, Figma, ComfyUI, and the conditional portable Capability do not
-gain this operation merely because it exists in the source superset.
+and render. Figma's Split Warp workspace authors the Bezier envelope, mesh
+density, and base transform; it stores empty anchors and strokes. Anchors,
+strokes, and Liquify-like brushing remain Agent/full-only. Web, ComfyUI, and
+the conditional portable Capability do not gain this operation merely because
+it exists in the source superset.
 
 ## Non-goals
 

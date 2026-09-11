@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultMockup } from "./mockup-workspace";
 import { createMeshSpec } from "./mesh-workspace";
+import { createSurfaceSpec } from "./surface-workspace";
 import { defaultRemap } from "./remap-workspace";
 import { isStoredDesignerTask, parseStoredDesignerTask } from "./stored-designer-task";
 import { isUiToMainMessage } from "./messages";
@@ -15,9 +16,10 @@ const source = (id: string, x: number, width = 100) => ({
 });
 
 describe("designer task contracts", () => {
-  it("stores only closed canonical Mockup, Mesh, and Remap specs", () => {
+  it("stores only closed canonical Mockup, Mesh, Split Warp, and Remap specs", () => {
     const tasks = [
       { kind: "mesh" as const, spec: createMeshSpec(100, 80, 2) },
+      { kind: "surface" as const, spec: createSurfaceSpec(100, 80) },
       { kind: "mockup" as const, spec: defaultMockup([source("one", 10), source("two", 130)]) },
       { kind: "remap" as const, spec: defaultRemap(100, 80, true) },
     ];

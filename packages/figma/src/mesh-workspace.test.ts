@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createMeshSpec, resampleMesh } from "./mesh-workspace";
-import type { WarpMesh } from "@worldbend/web";
+import {
+  createMeshSpec,
+  DEFAULT_MESH_SUBDIVISIONS,
+  meshSpecFromPerspective,
+  resampleMesh,
+  transformForMesh,
+} from "./mesh-workspace";
+import { normalizedSpec, type WarpMesh } from "@worldbend/web";
 
 function vertex(mesh: WarpMesh, x: number, y: number) {
   return mesh.vertices[y * (mesh.subdivisions + 1) + x];
@@ -34,5 +40,46 @@ describe("resampleMesh", () => {
   it("returns the same mesh when density is unchanged", () => {
     const mesh = createMeshSpec(100, 80, 4).mesh;
     expect(resampleMesh(mesh, 4)).toBe(mesh);
+  });
+});
+
+describe("meshSpecFromPerspective", () => {
+  const plane = normalizedSpec({
+    tl: { x: 0.1, y: 0 },
+    tr: { x: 1, y: 0.05 },
+    br: { x: 0.9, y: 1 },
+    bl: { x: 0, y: 0.95 },
+  });
+
+  it("defaults a new grid to 4×4 cells", () => {
+    expect(createMeshSpec(100, 80).mesh.subdivisions).toBe(DEFAULT_MESH_SUBDIVISIONS);
+    expect(DEFAULT_MESH_SUBDIVISIONS).toBe(4);
+  });
+
+  it("strips preset Warp so Mesh cannot carry two deformation models", () => {
+    const spec = {
+      ...plane,
+      content: { ...plane.content, warp: { preset: "arc" as const, amount: 0.5 } },
+    };
+    expect(transformForMesh(spec).content.warp).toBeUndefined();
+    expect(transformForMesh(spec).destination.quad).toEqual(plane.destination.quad);
+  });
+
+  it("keeps the live plane and a default grid when Warp is unused", async () => {
+    const mesh = await meshSpecFromPerspective({ spec: plane, width: 120, height: 90 });
+    expect(mesh.mesh.subdivisions).toBe(4);
+    expect(mesh.transform.content?.warp).toBeUndefined();
+    expect(mesh.transform.destination.quad.tl).toEqual({ x: 0.1, y: 0 });
+    expect(mesh.targetSize).toEqual({ width: 120, height: 90 });
+  });
+
+  it("treats a zero Warp amount as the default editable grid", async () => {
+    const spec = {
+      ...plane,
+      content: { ...plane.content, warp: { preset: "arc" as const, amount: 0 } },
+    };
+    const mesh = await meshSpecFromPerspective({ spec, width: 100, height: 80 });
+    expect(mesh.mesh.subdivisions).toBe(DEFAULT_MESH_SUBDIVISIONS);
+    expect(mesh.transform.content?.warp).toBeUndefined();
   });
 });

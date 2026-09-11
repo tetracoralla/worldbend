@@ -25,6 +25,7 @@ export function taskWorkspaceAvailability(
     templates: sourceCount >= 1 && sourceCount <= 8,
     canvas: sourceCount === 1,
     mesh: sourceCount === 1,
+    surface: sourceCount === 1,
     mockup: sourceCount >= 1 && sourceCount <= 8,
     remap: sourceCount === 1 || sourceCount === 2,
   };

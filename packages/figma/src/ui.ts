@@ -121,8 +121,10 @@ import { createHorizontalStrip } from "./horizontal-strip";
 import { createCanvasWorkspace } from "./canvas-workspace";
 import type { CanvasWorkspaceCopy } from "./canvas-workspace-view";
 import { createMeshWorkspace, type MeshWorkspaceCopy } from "./mesh-workspace";
+import { createSurfaceWorkspace, type SurfaceWorkspaceCopy } from "./surface-workspace";
 import { createMockupWorkspace, type MockupWorkspaceCopy } from "./mockup-workspace";
 import { createRemapWorkspace, type RemapWorkspaceCopy } from "./remap-workspace";
+import { NATIVE_EFFECT_LISTING_URL } from "./native-renderer";
 import type { DesignerTaskWorkspace, DesignerWorkspaceSource } from "./designer-workspace-common";
 import { createTemplateWorkspace, type TemplateWorkspaceCopy } from "./template-workspace";
 
@@ -133,6 +135,7 @@ const editorMount = required<HTMLDivElement>("editor");
 const canvasWorkspaceRoot = required<HTMLElement>("canvas-workspace");
 const mockupWorkspaceRoot = required<HTMLElement>("mockup-workspace");
 const meshWorkspaceRoot = required<HTMLElement>("mesh-workspace");
+const surfaceWorkspaceRoot = required<HTMLElement>("surface-workspace");
 const remapWorkspaceRoot = required<HTMLElement>("remap-workspace");
 const templatesWorkspaceRoot = required<HTMLElement>("templates-workspace");
 const selectionState = required<HTMLElement>("selection-state");
@@ -172,6 +175,7 @@ const warpPresetSelect = required<HTMLSelectElement>("warp-preset");
 const warpAmountLabel = required<HTMLSpanElement>("warp-amount-label");
 const warpAmountSlider = required<HTMLInputElement>("warp-amount-slider");
 const warpAmountInput = required<HTMLInputElement>("warp-amount");
+const warpMeshContinue = required<HTMLButtonElement>("warp-mesh-continue");
 const linkScaleButton = required<HTMLButtonElement>("link-scale");
 const moreOptionsButton = required<HTMLButtonElement>("more-options");
 const settingsPopover = required<HTMLDivElement>("settings-popover");
@@ -179,6 +183,7 @@ const advancedToolsTitle = required<HTMLParagraphElement>("advanced-tools-title"
 const perspectiveOptionsTitle = required<HTMLParagraphElement>("perspective-options-title");
 const workspaceMockupDetail = required<HTMLElement>("workspace-mockup-detail");
 const workspaceMeshDetail = required<HTMLElement>("workspace-mesh-detail");
+const workspaceSurfaceDetail = required<HTMLElement>("workspace-surface-detail");
 const workspaceRemapDetail = required<HTMLElement>("workspace-remap-detail");
 const transformActions = required<HTMLDivElement>("transform-actions");
 const actionFlipX = required<HTMLButtonElement>("action-flip-x");
@@ -189,6 +194,7 @@ const actionTransformAgain = required<HTMLButtonElement>("action-transform-again
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
 const actionApplyEditable = required<HTMLButtonElement>("action-apply-editable");
 const nativeGuidance = required<HTMLParagraphElement>("native-guidance");
+const copyEffectListing = required<HTMLButtonElement>("copy-effect-listing");
 const workspaceNavigationRoot = required<HTMLElement>("workspace-navigation");
 const workspaceStripViewport = required<HTMLElement>("workspace-strip-viewport");
 const workspaceBackward = required<HTMLButtonElement>("workspace-backward");
@@ -416,6 +422,29 @@ const meshWorkspace = createMeshWorkspace({
   onBack() { productWorkspace.returnToPerspective(); },
   post,
   formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
+  livePerspective() {
+    if (!editor || !activeFrame || editorMode === "rectify") return undefined;
+    return {
+      spec: editor.captureSpec(),
+      width: activeFrame.renderWidth,
+      height: activeFrame.renderHeight,
+    };
+  },
+});
+const surfaceWorkspace = createSurfaceWorkspace({
+  root: surfaceWorkspaceRoot,
+  copy: surfaceWorkspaceCopy,
+  onBack() { productWorkspace.returnToPerspective(); },
+  post,
+  formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
+  livePerspective() {
+    if (!editor || !activeFrame || editorMode === "rectify") return undefined;
+    return {
+      spec: editor.captureSpec(),
+      width: activeFrame.renderWidth,
+      height: activeFrame.renderHeight,
+    };
+  },
 });
 const mockupWorkspace = createMockupWorkspace({
   root: mockupWorkspaceRoot,
@@ -449,8 +478,9 @@ const templateWorkspace = createTemplateWorkspace({
   post,
   formatError(error) { return translate(activeLocale, messageFromError(error, "unexpectedError")); },
 });
-const designerWorkspaces: Record<"mesh" | "mockup" | "remap" | "templates", DesignerTaskWorkspace> = {
+const designerWorkspaces: Record<"mesh" | "surface" | "mockup" | "remap" | "templates", DesignerTaskWorkspace> = {
   mesh: meshWorkspace,
+  surface: surfaceWorkspace,
   mockup: mockupWorkspace,
   remap: remapWorkspace,
   templates: templateWorkspace,
@@ -459,19 +489,20 @@ const taskRoots = {
   canvas: canvasWorkspaceRoot,
   mockup: mockupWorkspaceRoot,
   mesh: meshWorkspaceRoot,
+  surface: surfaceWorkspaceRoot,
   remap: remapWorkspaceRoot,
   templates: templatesWorkspaceRoot,
 } as const;
 productWorkspace = createProductWorkspaceRouter({
   onChange(previous, next) {
     if (previous === "canvas") canvasWorkspace.leave();
-    if (previous === "mesh" || previous === "mockup" || previous === "remap" || previous === "templates") designerWorkspaces[previous].leave();
+    if (previous === "mesh" || previous === "surface" || previous === "mockup" || previous === "remap" || previous === "templates") designerWorkspaces[previous].leave();
     if (previous !== "perspective") taskRoots[previous].hidden = true;
     controls.inert = next !== "perspective";
     controls.hidden = next !== "perspective" || !current;
     selectionState.hidden = next !== "perspective" || Boolean(current);
     if (next === "canvas") canvasWorkspace.enter();
-    if (next === "mesh" || next === "mockup" || next === "remap" || next === "templates") designerWorkspaces[next].enter();
+    if (next === "mesh" || next === "surface" || next === "mockup" || next === "remap" || next === "templates") designerWorkspaces[next].enter();
     if (next !== "perspective") taskRoots[next].hidden = false;
     renderOptionsContext(next);
     workspaceNavigation.setCurrent(next);
@@ -513,6 +544,7 @@ const pivotPicker: PivotPicker = createPivotPicker({
 applyLocale(localePreference, activeLocale);
 canvasWorkspace.updateLocale();
 meshWorkspace.updateLocale();
+surfaceWorkspace.updateLocale();
 mockupWorkspace.updateLocale();
 remapWorkspace.updateLocale();
 templateWorkspace.updateLocale();
@@ -575,6 +607,7 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
     applyLocale(message.preference, message.locale);
     canvasWorkspace.updateLocale();
     meshWorkspace.updateLocale();
+    surfaceWorkspace.updateLocale();
     mockupWorkspace.updateLocale();
     remapWorkspace.updateLocale();
     templateWorkspace.updateLocale();
@@ -630,6 +663,9 @@ modeWarpButton.addEventListener("click", () => void switchEditorMode("warp"));
 modeRectifyButton.addEventListener("click", () => void switchEditorMode("rectify"));
 distortFreeButton.addEventListener("click", () => void selectDistortMode("free"));
 distortPerspectiveButton.addEventListener("click", () => void selectDistortMode("perspective"));
+warpMeshContinue.addEventListener("click", () => {
+  productWorkspace.enter("mesh");
+});
 outputPolicyFit.addEventListener("click", () => selectOutputDensityPolicy("fit"));
 outputPolicyOriginal.addEventListener("click", () => selectOutputDensityPolicy("original"));
 // Route the preset through the same latest-wins coalescer as the amount
@@ -672,7 +708,14 @@ actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
 actionCopyParameters.addEventListener("click", () => void copyPlacementParametersToClipboard());
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
 actionApplyCopy.addEventListener("click", () => void applyPerspective(true, false));
-actionApplyEditable.addEventListener("click", () => void applyPerspective(true, true));
+actionApplyEditable.addEventListener("click", () => {
+  if (actionApplyEditable.getAttribute("aria-disabled") === "true") {
+    void copyNativeEffectListing();
+    return;
+  }
+  void applyPerspective(true, true);
+});
+copyEffectListing.addEventListener("click", () => void copyNativeEffectListing());
 errorDismiss.addEventListener("click", clearError);
 nativeRecoverButton.addEventListener("click", () => {
   if (!nativeRecovery) return;
@@ -2681,10 +2724,12 @@ function renderState(scope: "full" | "publication" = "full"): void {
     actionApplyEditable.setAttribute("aria-describedby", "native-guidance");
     nativeGuidance.textContent = translate(activeLocale, current?.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable");
     nativeGuidance.hidden = false;
+    copyEffectListing.hidden = false;
   } else {
     actionApplyEditable.removeAttribute("aria-disabled");
     actionApplyEditable.removeAttribute("aria-describedby");
     nativeGuidance.hidden = true;
+    copyEffectListing.hidden = true;
   }
   for (const button of [actionFlipX, actionFlipY, actionRotateCw, actionCopyParameters]) {
     button.disabled = !positionReady;
@@ -2721,6 +2766,7 @@ function renderState(scope: "full" | "publication" = "full"): void {
   const warpAmountDisabled = warpDisabled || warpPresetSelect.value === "";
   warpAmountSlider.disabled = warpAmountDisabled;
   warpAmountInput.disabled = warpAmountDisabled;
+  warpMeshContinue.disabled = warpDisabled;
   rectifyWidthInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
   rectifyHeightInput.disabled = !ready || refreshInFlight || editorMode !== "rectify";
   renderOutputPolicy();
@@ -2779,6 +2825,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   perspectiveOptionsTitle.textContent = translate(locale, "perspectiveOptions");
   workspaceMockupDetail.textContent = translate(locale, "workspaceMockupDetail");
   workspaceMeshDetail.textContent = translate(locale, "workspaceMeshDetail");
+  workspaceSurfaceDetail.textContent = translate(locale, "workspaceSurfaceDetail");
   workspaceRemapDetail.textContent = translate(locale, "workspaceRemapDetail");
   modeSwitch.setAttribute("aria-label", translate(locale, "modeGroupLabel"));
   distortKind.setAttribute("aria-label", translate(locale, "distortGroupLabel"));
@@ -2806,6 +2853,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   skewYLabel.textContent = translate(locale, "skewY");
   warpPresetLabel.textContent = translate(locale, "warpPreset");
   warpAmountLabel.textContent = translate(locale, "warpAmount");
+  warpMeshContinue.textContent = translate(locale, "meshContinue");
   rectifyWidthLabel.textContent = translate(locale, "rectifyWidth");
   rectifyHeightLabel.textContent = translate(locale, "rectifyHeight");
   const noneOption = warpPresetSelect.querySelector<HTMLOptionElement>('option[value=""]');
@@ -2826,12 +2874,14 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
     canvas: translate(locale, "canvasTitle"),
     mockup: translate(locale, "workspaceMockup"),
     mesh: translate(locale, "workspaceMesh"),
+    surface: translate(locale, "workspaceSurface"),
     remap: translate(locale, "workspaceRemap"),
   }, translate(locale, "previousTools"), translate(locale, "nextTools"));
   modeBackward.setAttribute("aria-label", translate(locale, "previousModes"));
   modeForward.setAttribute("aria-label", translate(locale, "nextModes"));
   actionApplyCopy.textContent = translate(locale, "createHighResolutionImage");
   actionApplyEditable.textContent = translate(locale, "applyEditable");
+  copyEffectListing.textContent = translate(locale, "copyEffectListing");
   shortcutHelp.textContent = translate(locale, "shortcutHelp");
   errorDismiss.setAttribute("aria-label", translate(locale, "dismissError"));
   placementLabel.textContent = translate(locale, "placement");
@@ -2920,11 +2970,25 @@ function designerCopy(title: MessageKey) {
   };
 }
 
+async function copyNativeEffectListing(): Promise<void> {
+  const copied = await copyPlacementParameters(NATIVE_EFFECT_LISTING_URL);
+  setStatus(userMessage(copied ? "effectListingCopied" : "effectListingCopyFailed"));
+}
+
 function meshWorkspaceCopy(): MeshWorkspaceCopy {
   return {
     ...designerCopy("meshTitle"),
     subdivisions: translate(activeLocale, "meshSubdivisions"),
     pointLabel: translate(activeLocale, "meshPointLabel"),
+  };
+}
+
+function surfaceWorkspaceCopy(): SurfaceWorkspaceCopy {
+  return {
+    ...designerCopy("surfaceTitle"),
+    patches: translate(activeLocale, "surfacePatches"),
+    subdivisions: translate(activeLocale, "surfaceSubdivisions"),
+    pointLabel: translate(activeLocale, "surfacePointLabel"),
   };
 }
 
@@ -3068,7 +3132,7 @@ function handleKeydown(event: KeyboardEvent): void {
     canvasWorkspace.handleKeydown(event);
     return;
   }
-  if (workspace === "mesh" || workspace === "mockup" || workspace === "remap" || workspace === "templates") {
+  if (workspace === "mesh" || workspace === "surface" || workspace === "mockup" || workspace === "remap" || workspace === "templates") {
     designerWorkspaces[workspace].handleKeydown(event);
     return;
   }

@@ -1,4 +1,4 @@
-export type ProductWorkspace = "perspective" | "canvas" | "mockup" | "mesh" | "remap" | "templates";
+export type ProductWorkspace = "perspective" | "canvas" | "mockup" | "mesh" | "surface" | "remap" | "templates";
 
 export interface ProductWorkspaceRouter {
   current(): ProductWorkspace;

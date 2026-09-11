@@ -16,13 +16,13 @@ test("current carrier profiles are closed and reference existing features", asyn
     "mode-rectify",
   ]);
   assert.deepEqual(profiles.carriers.figma.workspace.siblingWorkspaceIds, [
-    "canvas", "templates", "mockup", "mesh", "remap",
+    "canvas", "templates", "mockup", "mesh", "surface", "remap",
   ]);
   assert.deepEqual(profiles.carriers.figma.workspace.primaryWorkspaceIds, [
     "canvas", "templates",
   ]);
   assert.deepEqual(profiles.carriers.figma.workspace.secondaryWorkspaceIds, [
-    "mockup", "mesh", "remap",
+    "mockup", "mesh", "surface", "remap",
   ]);
   assert(profiles.carriers.figma.surfaceFeatureIds.includes("canvas-multi-output"));
   assert(profiles.carriers.agent.surfaceFeatureIds.includes("canvas-multi-output"));
@@ -52,6 +52,8 @@ test("current carrier profiles are closed and reference existing features", asyn
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("place-mockup"));
   assert(profiles.carriers.figma.surfaceFeatureIds.includes("mesh-warp"));
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("mesh-warp"));
+  assert(profiles.carriers.figma.surfaceFeatureIds.includes("cubic-surface-deformation"));
+  assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("cubic-surface-deformation"));
   assert(profiles.carriers.figma.surfaceFeatureIds.includes("lens-displacement-remap"));
   assert(profiles.carriers.comfyui.surfaceFeatureIds.includes("lens-displacement-remap"));
   assert(!profiles.carriers.figma.surfaceFeatureIds.includes("timeline-motion"));
@@ -63,7 +65,6 @@ test("current carrier profiles are closed and reference existing features", asyn
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("spatial-template"));
   assert(!profiles.carriers.comfyui.surfaceFeatureIds.includes("variation-job"));
   for (const feature of [
-    "cubic-surface-deformation",
     "eased-motion",
     "psd-smart-object-interop",
   ]) {

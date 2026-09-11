@@ -36,6 +36,7 @@
         "place-mockup",
         "spatial-template",
         "mesh-warp",
+        "cubic-surface-deformation",
         "lens-displacement-remap"
       ],
       "workspace": {
@@ -46,9 +47,9 @@
           "mode-warp",
           "mode-rectify"
         ],
-        "siblingWorkspaceIds": ["canvas", "templates", "mockup", "mesh", "remap"],
+        "siblingWorkspaceIds": ["canvas", "templates", "mockup", "mesh", "surface", "remap"],
         "primaryWorkspaceIds": ["canvas", "templates"],
-        "secondaryWorkspaceIds": ["mockup", "mesh", "remap"]
+        "secondaryWorkspaceIds": ["mockup", "mesh", "surface", "remap"]
       },
       "package": {
         "runtimeEntries": [
@@ -57,7 +58,7 @@
           "dist/ui.html"
         ],
         "maxRuntimeBytes": 655360,
-        "maxArchiveBytes": 524288,
+        "maxArchiveBytes": 540672,
         "maxUnpackedBytes": 2097152,
         "forbiddenSuffixes": [".py"],
         "forbiddenPrefixes": ["bin/", "capabilities/", "skills/"]

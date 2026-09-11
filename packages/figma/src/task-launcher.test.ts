@@ -31,6 +31,7 @@ describe("task workspace availability", () => {
       templates: false,
       canvas: false,
       mesh: false,
+      surface: false,
       mockup: false,
       remap: false,
     });
@@ -38,6 +39,7 @@ describe("task workspace availability", () => {
       templates: true,
       canvas: true,
       mesh: true,
+      surface: true,
       mockup: true,
       remap: true,
     });
@@ -45,6 +47,7 @@ describe("task workspace availability", () => {
       templates: true,
       canvas: false,
       mesh: false,
+      surface: false,
       mockup: true,
       remap: true,
     });

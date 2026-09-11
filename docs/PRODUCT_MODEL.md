@@ -134,9 +134,9 @@ profiles in `config/carrier-profiles.json` project the current semantic core
 into task-native distributions:
 
 - Figma ships the stable Perspective workspace plus Sizes and Templates as its
-  persistent repeat-use navigation. Composition, Mesh, and Lens & maps remain
-  task-labeled advanced transforms under More. Its no-CSS WASM build includes
-  only the planners those human routes consume;
+  persistent repeat-use navigation. Composition, Mesh, Split Warp, and Lens &
+  maps remain task-labeled advanced transforms under More. Its no-CSS WASM
+  build includes only the planners those human routes consume;
 - the Agent plugin ships the full stable headless implementation with no human
   UI, exposes a compact progressive catalog by default, and retains the current
   eight direct tools as an explicit compatibility surface;

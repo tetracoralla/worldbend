@@ -7,10 +7,13 @@ class OverlayElement extends EventTarget {
   children: OverlayElement[] = [];
   dataset: Record<string, string> = {};
   style: Record<string, string> = {};
+  attributes: Record<string, string> = {};
   className = "";
   type = "";
   captured = new Set<number>();
-  setAttribute() {}
+  setAttribute(name: string, value: string) { this.attributes[name] = value; }
+  getAttribute(name: string) { return this.attributes[name]; }
+  closest(selector: string) { return selector.includes("direct-point") && this.className.includes("direct-point") ? this : null; }
   append(child: OverlayElement) { this.children.push(child); }
   replaceChildren() { this.children = []; }
   remove() {}
@@ -108,6 +111,51 @@ it("cancels Escape back to the grab-start point and does not keep the last previ
   windowTarget.dispatchEvent(escape);
   expect(stopped).toHaveBeenCalled();
   expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.5, y: 0.5 }, true);
+  overlay.dispose();
+});
+
+it("moves every selected point together and restores all of them on Escape", () => {
+  const windowTarget = new EventTarget();
+  const documentTarget = Object.assign(new EventTarget(), { createElement: () => new OverlayElement() });
+  vi.stubGlobal("window", windowTarget);
+  vi.stubGlobal("document", documentTarget);
+  const host = new OverlayElement();
+  const canvas = new OverlayElement();
+  const onMoves = vi.fn();
+  const overlay = createDirectPointOverlay({
+    host: host as unknown as HTMLElement,
+    canvas: canvas as unknown as HTMLCanvasElement,
+    selection: "multiple",
+    onMove() {},
+    onMoves,
+  });
+  overlay.set([
+    { id: "a", x: 0.25, y: 0.25, label: "A" },
+    { id: "b", x: 0.75, y: 0.25, label: "B" },
+  ]);
+  const layer = host.children[0]!;
+  const first = layer.children[0]!;
+  const second = layer.children[1]!;
+  const send = (target: EventTarget, type: string, x: number, y: number, shiftKey = false) => target.dispatchEvent(
+    Object.assign(new Event(type, { cancelable: true }), {
+      pointerId: 1, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1, shiftKey,
+    }),
+  );
+  send(first, "pointerdown", 200, 100);
+  send(first, "pointerup", 200, 100);
+  send(second, "pointerdown", 400, 100, true);
+  send(second, "pointermove", 440, 120);
+  expect(onMoves).toHaveBeenLastCalledWith([
+    { id: "a", point: { x: 0.35, y: 0.35 } },
+    { id: "b", point: { x: 0.85, y: 0.35 } },
+  ], false);
+  const escape = Object.assign(new Event("keydown", { cancelable: true, bubbles: true }), { key: "Escape" });
+  windowTarget.dispatchEvent(escape);
+  expect(onMoves).toHaveBeenLastCalledWith([
+    { id: "a", point: { x: 0.25, y: 0.25 } },
+    { id: "b", point: { x: 0.75, y: 0.25 } },
+  ], true);
+  expect(overlay.selected()).toEqual(["a", "b"]);
   overlay.dispose();
 });
 

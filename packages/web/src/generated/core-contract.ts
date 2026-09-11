@@ -213,6 +213,8 @@ export interface WebContract {
   solveOutput: SolveOutput;
   spatialTemplateInspectionOutput: SpatialTemplateInspection;
   spatialTemplateSpecInput: SpatialTemplateSpec;
+  surfaceDeformationPlanOutput: SurfaceDeformationPlan;
+  surfaceDeformationSpecInput: SurfaceDeformationSpec;
   transformError: TransformError;
   transformRecipeInput: TransformRecipe;
   transformSpecInput: TransformSpec1;
@@ -1308,6 +1310,85 @@ export interface RasterProgramSpec {
         RasterProgramStage
       ];
   version: "0.1";
+}
+export interface SurfaceDeformationPlan {
+  /**
+   * @maxItems 64
+   */
+  anchors: ResolvedDeformationAnchor[];
+  meshWarp: MeshWarpPlan;
+  schema: "worldbend.surface-deformation-plan";
+  spec: SurfaceDeformationSpec;
+  strokeSampleCount: number;
+  version: "0.1";
+}
+export interface ResolvedDeformationAnchor {
+  column: number;
+  id: string;
+  row: number;
+  vertexIndex: number;
+}
+export interface SurfaceDeformationSpec {
+  /**
+   * @maxItems 64
+   */
+  anchors?: DeformationAnchor[];
+  envelope: BezierEnvelope;
+  meshSubdivisions?: number;
+  schema: "worldbend.surface-deformation";
+  /**
+   * @maxItems 64
+   */
+  strokes?: DeformationStroke[];
+  targetSize?: Size | null;
+  transform: TransformSpec1;
+  version: "0.1";
+}
+export interface DeformationAnchor {
+  column: number;
+  id: string;
+  row: number;
+}
+export interface BezierEnvelope {
+  columns: number;
+  /**
+   * @minItems 16
+   * @maxItems 169
+   */
+  points: [
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    Point,
+    ...Point[]
+  ];
+  rows: number;
+}
+export interface DeformationStroke {
+  id: string;
+  /**
+   * @minItems 1
+   * @maxItems 256
+   */
+  samples: [StrokeSample, ...StrokeSample[]];
+}
+export interface StrokeSample {
+  delta: Point;
+  position: Point;
+  radius: number;
+  strength: number;
 }
 export interface TransformError {
   code: ErrorCode;

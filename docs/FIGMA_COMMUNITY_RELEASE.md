@@ -16,7 +16,9 @@ was **rejected** on first submission with two findings: the resource's purpose
 was not clear, and using it could blank the image with no obvious recovery
 (hand-editing a control samples outside the source plane, and shader-effect
 Undo does not restore on the tested Figma build). HD images work independently
-of the effect. Editable output requires access to that exact effect.
+of the effect. Editable output requires access to that exact effect. The plugin
+copies this listing URL from the output dock when the effect is missing; it does
+not submit or publish the Community resource.
 
 ### Resubmission package (2026-09-11)
 

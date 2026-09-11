@@ -9,10 +9,19 @@ export interface DirectPointOverlay {
   set(points: readonly DirectPoint[]): void;
   refresh(): void;
   interrupt(): void;
+  selected(): readonly string[];
   dispose(): void;
 }
 
+export interface DirectPointBounds {
+  min: number;
+  max: number;
+}
+
+export type DirectPointSelection = "single" | "multiple";
+
 type DirectPointPosition = { x: number; y: number };
+type DirectPointMove = { id: string; point: DirectPointPosition };
 
 export interface DirectPointGestureSession {
   begin(pointerId: number, id: string, point: DirectPointPosition): void;
@@ -81,6 +90,7 @@ export function createDirectPointGestureSession(input: {
  */
 const KEYBOARD_STEP_PIXELS = 1;
 const KEYBOARD_STEP_SHIFT_PIXELS = 10;
+const DEFAULT_BOUNDS: DirectPointBounds = { min: 0, max: 1 };
 
 export function keyboardNudgeDelta(
   key: string,
@@ -102,16 +112,29 @@ export function createDirectPointOverlay(input: {
   host: HTMLElement;
   canvas: HTMLCanvasElement;
   onMove(id: string, point: { x: number; y: number }, final: boolean): void;
+  onMoves?(moves: readonly DirectPointMove[], final: boolean): void;
+  bounds?: DirectPointBounds;
+  selection?: DirectPointSelection;
 }): DirectPointOverlay {
   const layer = document.createElement("div");
   layer.className = "direct-point-layer";
   input.host.append(layer);
+  const bounds = input.bounds ?? DEFAULT_BOUNDS;
+  const multiple = input.selection === "multiple";
   let points: DirectPoint[] = [];
+  let selected = new Set<string>();
+  let grabOrigins: Record<string, DirectPointPosition> = {};
   let observer: ResizeObserver | undefined;
   let capturedButton: HTMLButtonElement | undefined;
   let grabOffset = { x: 0, y: 0 };
 
-  const trackPoint = (id: string, point: { x: number; y: number }): void => {
+  const clampValue = (value: number): number => Math.max(bounds.min, Math.min(bounds.max, value));
+  const clampPoint = (point: DirectPointPosition): DirectPointPosition => ({
+    x: clampValue(point.x),
+    y: clampValue(point.y),
+  });
+
+  const trackPoint = (id: string, point: DirectPointPosition): void => {
     const index = points.findIndex((candidate) => candidate.id === id);
     if (index >= 0) points[index] = { ...points[index]!, x: point.x, y: point.y };
   };
@@ -120,13 +143,13 @@ export function createDirectPointOverlay(input: {
     button: HTMLButtonElement,
     canvasBox: DOMRect,
     hostBox: DOMRect,
-    point: { x: number; y: number },
+    point: DirectPointPosition,
   ): void => {
     button.style.left = `${canvasBox.left - hostBox.left + point.x * canvasBox.width}px`;
     button.style.top = `${canvasBox.top - hostBox.top + point.y * canvasBox.height}px`;
   };
 
-  const positionButton = (id: string, point: { x: number; y: number }): void => {
+  const positionButton = (id: string, point: DirectPointPosition): void => {
     const button = layer.querySelector<HTMLButtonElement>(`[data-point-id="${id}"]`);
     if (!button) return;
     placeAt(button, input.canvas.getBoundingClientRect(), input.host.getBoundingClientRect(), point);
@@ -143,26 +166,54 @@ export function createDirectPointOverlay(input: {
     }
   };
 
+  const syncPressed = (): void => {
+    if (!multiple) return;
+    for (const button of layer.querySelectorAll<HTMLButtonElement>("button")) {
+      const id = button.dataset.pointId;
+      if (!id) continue;
+      button.setAttribute("aria-pressed", String(selected.has(id)));
+    }
+  };
+
   // Pointer drags and keyboard nudges share one application path so a point
   // stays visually live without rebuilding the overlay: a rebuild here would
   // destroy the focused button and strand keyboard users after one press.
-  const applyPoint = (id: string, point: { x: number; y: number }, final: boolean): void => {
-    trackPoint(id, point);
-    positionButton(id, point);
-    input.onMove(id, point, final);
+  const emitMoves = (moves: readonly DirectPointMove[], final: boolean): void => {
+    for (const move of moves) {
+      trackPoint(move.id, move.point);
+      positionButton(move.id, move.point);
+    }
+    if (input.onMoves) input.onMoves(moves, final);
+    else {
+      for (const move of moves) input.onMove(move.id, move.point, final);
+    }
+  };
+
+  const movesFromGrabbed = (id: string, point: DirectPointPosition): DirectPointMove[] => {
+    const origin = grabOrigins[id];
+    if (!origin) return [{ id, point }];
+    const delta = { x: point.x - origin.x, y: point.y - origin.y };
+    return Object.keys(grabOrigins).map((candidateId) => {
+      const start = grabOrigins[candidateId] ?? point;
+      return { id: candidateId, point: clampPoint({ x: start.x + delta.x, y: start.y + delta.y }) };
+    });
+  };
+
+  const applyGrabbed = (id: string, point: DirectPointPosition, final: boolean): void => {
+    emitMoves(movesFromGrabbed(id, point), final);
   };
 
   const pointFromClient = (clientX: number, clientY: number): DirectPointPosition => {
     const box = input.canvas.getBoundingClientRect();
-    return {
-      x: clamp((clientX - grabOffset.x - box.left) / Math.max(1, box.width)),
-      y: clamp((clientY - grabOffset.y - box.top) / Math.max(1, box.height)),
-    };
+    return clampPoint({
+      x: (clientX - grabOffset.x - box.left) / Math.max(1, box.width),
+      y: (clientY - grabOffset.y - box.top) / Math.max(1, box.height),
+    });
   };
 
   const gesture = createDirectPointGestureSession({
-    onPreview(id, point) { applyPoint(id, point, false); },
-    onCommit(id, point) { applyPoint(id, point, true); },
+    onPreview(id, point) { applyGrabbed(id, point, false); },
+    onCommit(id, point) { applyGrabbed(id, point, true); },
   });
 
   const releaseCapture = (button: HTMLButtonElement | undefined, pointerId: number): void => {
@@ -176,6 +227,7 @@ export function createDirectPointOverlay(input: {
     if (!finished) return false;
     capturedButton = undefined;
     grabOffset = { x: 0, y: 0 };
+    grabOrigins = {};
     if (button) delete button.dataset.activePointerId;
     releaseCapture(button, pointerId);
     return true;
@@ -193,6 +245,7 @@ export function createDirectPointOverlay(input: {
     if (!closed) return false;
     capturedButton = undefined;
     grabOffset = { x: 0, y: 0 };
+    grabOrigins = {};
     if (capturedPointer !== undefined && Number.isFinite(capturedPointer)) {
       releaseCapture(button, capturedPointer);
     }
@@ -226,9 +279,45 @@ export function createDirectPointOverlay(input: {
     event.stopPropagation();
     cancelPointer();
   };
+  const onHostPointerDown = (event: PointerEvent): void => {
+    if (!multiple || event.shiftKey) return;
+    const target = event.target as { closest?: (selector: string) => unknown } | null;
+    if (target?.closest?.(".direct-point")) return;
+    if (selected.size === 0) return;
+    selected = new Set();
+    syncPressed();
+  };
+
+  const beginDrag = (event: PointerEvent, point: DirectPoint, button: HTMLButtonElement): void => {
+    const tracked = points.find((candidate) => candidate.id === point.id) ?? point;
+    const box = input.canvas.getBoundingClientRect();
+    // The whole hit target is draggable. Keep the grabbed offset so an
+    // off-center press does not move the point before the pointer moves.
+    grabOffset = {
+      x: event.clientX - (box.left + tracked.x * box.width),
+      y: event.clientY - (box.top + tracked.y * box.height),
+    };
+    capturedButton = button;
+    button.dataset.activePointerId = String(event.pointerId);
+    grabOrigins = {};
+    for (const id of selected) {
+      const origin = points.find((candidate) => candidate.id === id);
+      if (origin) grabOrigins[id] = { x: origin.x, y: origin.y };
+    }
+    if (!grabOrigins[point.id]) grabOrigins[point.id] = { x: tracked.x, y: tracked.y };
+    try {
+      button.setPointerCapture(event.pointerId);
+    } catch {
+      // A host can refuse capture for a pointer it does not own; drag on
+      // without it — window pointerup still closes the gesture.
+    }
+    gesture.begin(event.pointerId, point.id, { x: tracked.x, y: tracked.y });
+  };
 
   const set = (next: readonly DirectPoint[]): void => {
     interruptPointer();
+    const nextIds = new Set(next.map((point) => point.id));
+    selected = new Set([...selected].filter((id) => nextIds.has(id)));
     points = [...next];
     layer.replaceChildren();
     for (const point of points) {
@@ -237,26 +326,20 @@ export function createDirectPointOverlay(input: {
       button.dataset.pointId = point.id;
       button.className = "direct-point";
       button.setAttribute("aria-label", point.label);
+      if (multiple) button.setAttribute("aria-pressed", String(selected.has(point.id)));
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         interruptPointer();
-        const tracked = points.find((candidate) => candidate.id === point.id) ?? point;
-        const box = input.canvas.getBoundingClientRect();
-        // The whole hit target is draggable. Keep the grabbed offset so an
-        // off-center press does not move the point before the pointer moves.
-        grabOffset = {
-          x: event.clientX - (box.left + tracked.x * box.width),
-          y: event.clientY - (box.top + tracked.y * box.height),
-        };
-        capturedButton = button;
-        button.dataset.activePointerId = String(event.pointerId);
-        try {
-          button.setPointerCapture(event.pointerId);
-        } catch {
-          // A host can refuse capture for a pointer it does not own; drag on
-          // without it — window pointerup still closes the gesture.
+        if (multiple && event.shiftKey) {
+          if (selected.has(point.id)) selected.delete(point.id);
+          else selected.add(point.id);
+          syncPressed();
+          if (!selected.has(point.id)) return;
+        } else if (!selected.has(point.id)) {
+          selected = new Set([point.id]);
+          syncPressed();
         }
-        gesture.begin(event.pointerId, point.id, { x: tracked.x, y: tracked.y });
+        beginDrag(event, point, button);
       });
       button.addEventListener("pointermove", (event) => {
         if (!gesture.owns(event.pointerId)) return;
@@ -282,8 +365,15 @@ export function createDirectPointOverlay(input: {
         event.preventDefault();
         // Repeated presses continue from the tracked position, not the
         // set()-time snapshot, because the overlay is no longer rebuilt.
-        const tracked = points.find((candidate) => candidate.id === point.id) ?? point;
-        applyPoint(point.id, { x: clamp(tracked.x + delta.x), y: clamp(tracked.y + delta.y) }, true);
+        if (multiple && !selected.has(point.id)) {
+          selected = new Set([point.id]);
+          syncPressed();
+        }
+        const ids = multiple && selected.has(point.id) ? [...selected] : [point.id];
+        emitMoves(ids.map((id) => {
+          const tracked = points.find((candidate) => candidate.id === id) ?? point;
+          return { id, point: clampPoint({ x: tracked.x + delta.x, y: tracked.y + delta.y }) };
+        }), true);
       });
       layer.append(button);
     }
@@ -299,10 +389,12 @@ export function createDirectPointOverlay(input: {
   window.addEventListener("blur", onWindowBlur);
   window.addEventListener("keydown", onWindowKeydown, true);
   document.addEventListener("visibilitychange", onVisibilityChange);
+  input.host.addEventListener("pointerdown", onHostPointerDown);
   return {
     set,
     refresh,
     interrupt: interruptPointer,
+    selected: () => [...selected],
     dispose() {
       interruptPointer();
       observer?.disconnect();
@@ -311,9 +403,8 @@ export function createDirectPointOverlay(input: {
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("keydown", onWindowKeydown, true);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      input.host.removeEventListener("pointerdown", onHostPointerDown);
       layer.remove();
     },
   };
 }
-
-function clamp(value: number): number { return Math.max(0, Math.min(1, value)); }

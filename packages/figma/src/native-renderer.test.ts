@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadNativeRenderer } from "./native-document";
-import { BUNDLED_NATIVE_RENDERER } from "./native-renderer";
+import { BUNDLED_NATIVE_RENDERER, NATIVE_EFFECT_LISTING_URL } from "./native-renderer";
 
 const definitions = Object.fromEntries([
   "h00", "h01", "h02", "h10", "h11", "h12", "h20", "h21", "h22", "sourceRight", "sourceBottom",
@@ -14,6 +14,10 @@ function setup(override = "") {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("distributed editable renderer", () => {
+  it("exposes the companion-effect listing URL for in-plugin copy", () => {
+    expect(NATIVE_EFFECT_LISTING_URL).toBe("https://www.figma.com/community/shader/1679431734495527701");
+  });
+
   it("bounds a stalled import and allows a new request without a late failure evicting it", async () => {
     vi.useFakeTimers();
     const h = setup();

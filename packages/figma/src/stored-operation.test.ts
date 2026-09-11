@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RectifySpecInput, TransformSpec } from "@worldbend/web/types";
 import { createMeshSpec } from "./mesh-workspace";
+import { createSurfaceSpec } from "./surface-workspace";
 import { singleCanvasSpec } from "./stored-canvas";
 import {
   readStoredOperation,
@@ -64,6 +65,7 @@ describe("stored operation envelope", () => {
       }),
     },
     { kind: "task", task: { kind: "mesh", spec: createMeshSpec(100, 80, 2) } },
+    { kind: "task", task: { kind: "surface", spec: createSurfaceSpec(100, 80) } },
   ];
 
   it("round-trips each existing persisted operation through one exclusive envelope", () => {

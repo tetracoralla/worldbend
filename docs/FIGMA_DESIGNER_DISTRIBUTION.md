@@ -56,8 +56,12 @@ before reporting its path, byte size, and SHA-256.
 ## Product behavior
 
 - Perspective, Sizes, and Templates form the persistent repeat-use navigation.
-  Composition, Mesh, and Lens & maps remain available under More as advanced
-  transforms; their human labels do not change stored contract identities.
+  Composition, Mesh, Split Warp, and Lens & maps remain available under More as
+  advanced transforms; their human labels do not change stored contract identities.
+  Warp's **Continue in Mesh** carries the current plane and any active preset
+  into Mesh as an editable grid; Mesh opened from More does the same. Split Warp
+  seeds the live plane as a 1×1 Bezier envelope and does not convert a Warp
+  preset into cubic handles.
 - Select one locally exportable source layer. Image-filled Rectangles and
   Frames are covered by the current runtime flow.
 - New HD Image creates a raster Rectangle with an Image fill. The original

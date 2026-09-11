@@ -1,5 +1,8 @@
 /** Exact sampler build shipped with this plugin; never select an effect by name. */
 export const BUNDLED_NATIVE_RENDERER = "20eff4c7-e099-4bf2-937b-1d83305c0851/610eb52f8eeb4810422bf37b504129cf83efa355";
+
+/** Public companion-effect listing. Acquisition still requires a published Community resource. */
+export const NATIVE_EFFECT_LISTING_URL = "https://www.figma.com/community/shader/1679431734495527701";
 const LEGACY_ALPHA_RENDERER = "25fbd473-a6d4-4978-9dac-0a679d35fbad/28a52aefe26125f1b8b4d8c221c5b668466c81d9";
 
 /** Repair the measured alpha defect only when the caller requests a publication. */

@@ -161,6 +161,7 @@
       .direct-point-layer { position: absolute; inset: 0; pointer-events: none; }
       .direct-point { position: absolute; width: 32px; min-width: 0; height: 32px; min-height: 0; margin: -16px 0 0 -16px; border: 0; border-radius: 50%; padding: 0; background: transparent; pointer-events: auto; touch-action: none; }
       .direct-point::after { position: absolute; inset: 10px; content: ""; border: 2px solid var(--figma-color-border-brand-strong, #0d99ff); border-radius: 50%; background: var(--wb-handle-fill); }
+      .direct-point[aria-pressed="true"]::after { background: var(--figma-color-bg-brand, #0d99ff); border-color: var(--figma-color-bg, #fff); }
       .direct-point:focus-visible { outline: 2px solid var(--figma-color-bg, #fff); outline-offset: -4px; }
       .designer-inspector { min-width: 0; overflow: auto; padding: 16px; border-left: 1px solid var(--figma-color-border, #e5e5e5); background: var(--figma-color-bg, #fff); }
       .designer-field { display: grid; gap: 6px; margin-bottom: 13px; color: var(--figma-color-text-secondary, #777); }
@@ -227,6 +228,8 @@
       #apply { padding-inline: 18px; font-weight: 600; }
       #output-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
       .native-guidance { flex: 1 1 100%; margin: 0; max-width: 62ch; font-size: 11px; line-height: 1.5; text-align: right; color: var(--figma-color-text-secondary, #777); }
+      #copy-effect-listing { flex: 1 1 100%; min-height: 28px; padding: 0; border: 0; color: var(--figma-color-text-brand, #0d99ff); background: transparent; font: inherit; font-size: 11px; text-align: right; }
+      #copy-effect-listing[hidden] { display: none; }
       #status:empty { display: none; }
       #error { display: flex; align-items: center; gap: 8px; }
       #error-text { min-width: 0; flex: 1; }
@@ -246,6 +249,8 @@
       .distort-kind-button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 9%); font-weight: 600; }
       #warp-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       #warp-options[hidden] { display: none; }
+      #warp-mesh-continue { grid-column: 1 / -1; width: max-content; min-height: 32px; border: 0; padding: 0 2px; color: var(--figma-color-text-secondary, #777); background: transparent; font: inherit; text-align: left; }
+      #warp-mesh-continue:not(:disabled):hover, #warp-mesh-continue:not(:disabled):focus-visible { color: var(--figma-color-text-brand, #0d99ff); }
       #rectify-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       #rectify-options[hidden] { display: none; }
       .rectify-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 34px; }
@@ -347,8 +352,8 @@
       .worldbend-editor[data-valid="false"] .worldbend-editor__canvas { opacity: .35; }
       button { min-height: 34px; border: 1px solid transparent; border-radius: var(--wb-control-radius); background: var(--wb-control-bg); color: inherit; padding: 7px 12px; font: inherit; transition: background var(--wb-motion), border-color var(--wb-motion), box-shadow var(--wb-motion), color var(--wb-motion), transform var(--wb-motion); }
       button:not(:disabled):not([aria-disabled="true"]) { cursor: pointer; }
-      button:not(:disabled):not([aria-disabled="true"]):not(.primary):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):hover { background: var(--wb-control-hover); }
-      button:not(:disabled):not([aria-disabled="true"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active { transform: translateY(.5px); }
+      button:not(:disabled):not([aria-disabled="true"]):not(.primary):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):not(#warp-mesh-continue):not(#copy-effect-listing):hover { background: var(--wb-control-hover); }
+      button:not(:disabled):not([aria-disabled="true"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):not(#warp-mesh-continue):not(#copy-effect-listing):active { transform: translateY(.5px); }
       button:disabled, button[aria-disabled="true"] { opacity: .45; }
       button[aria-disabled="true"] { cursor: default; }
       button:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 2px; }
@@ -390,6 +395,11 @@
           <span class="ui-icon" data-icon-id="icon-park:grid-nine" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="38" height="38" rx="2" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 18H43M5 30H43M17 5V43M30 5V43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>
           <span data-workspace-name>Mesh</span>
           <small id="workspace-mesh-detail">Shape one image with a bounded control grid</small>
+        </button>
+        <button id="workspace-menu-surface" class="menu-option advanced-workspace-option" type="button" role="menuitem" data-workspace="surface" aria-controls="surface-workspace">
+          <span class="ui-icon" data-icon-id="icon-park:split" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 10V7C19 5.89543 19.8954 5 21 5H41C42.1046 5 43 5.89543 43 7V29C43 30.1046 42.1046 31 41 31H37" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="5" y="18" width="24" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span data-workspace-name>Split Warp</span>
+          <small id="workspace-surface-detail">Bend one image with split Bezier handles</small>
         </button>
         <button id="workspace-menu-remap" class="menu-option advanced-workspace-option" type="button" role="menuitem" data-workspace="remap" aria-controls="remap-workspace">
           <span class="ui-icon" data-icon-id="icon-park:distortion" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V40H17M4 19V8H17M4 19C4 19 13 13 24 19C35 25 44 19 44 19M44 19V8H17M44 19V40H17M4 29C4 29 13 23 24 29C35 35 44 29 44 29M17 8C17 8 23 16 17 24C11 32 17 40 17 40M31 8C31 8 37 16 31 24C25 32 31 40 31 40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -512,6 +522,7 @@
               <input id="warp-amount-slider" class="transform-slider" type="range" min="-100" max="100" step="1" value="50" aria-labelledby="warp-amount-label">
               <span class="transform-value"><input id="warp-amount" class="transform-number" type="number" min="-100" max="100" step="0.1" value="50" inputmode="decimal" aria-labelledby="warp-amount-label warp-amount-unit"><span id="warp-amount-unit" class="transform-unit">%</span></span>
             </div>
+            <button id="warp-mesh-continue" type="button">Continue in Mesh</button>
           </div>
           <div id="transform-options" hidden>
             <div id="transform-default-controls">
@@ -597,6 +608,7 @@
         <p id="status" class="sr-only" role="status" aria-live="polite"></p>
         <div id="output-actions">
           <p id="native-guidance" class="native-guidance" hidden></p>
+          <button id="copy-effect-listing" type="button" hidden>Copy listing link</button>
           <button id="action-apply-editable" type="button" disabled>New Editable Frame</button>
           <button id="action-apply-copy" type="button" disabled hidden>New HD Image</button>
           <button id="apply" class="primary" type="button" disabled>New HD Image</button>
@@ -608,6 +620,7 @@
     <section id="canvas-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-canvas" hidden></section>
     <section id="mockup-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-mockup" hidden></section>
     <section id="mesh-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-mesh" hidden></section>
+    <section id="surface-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-surface" hidden></section>
     <section id="remap-workspace" class="task-workspace" role="region" aria-labelledby="workspace-menu-remap" hidden></section>
     <section id="templates-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-templates" hidden></section>
     <script type="module" src="/src/ui.ts"></script>

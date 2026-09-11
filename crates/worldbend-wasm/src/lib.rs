@@ -9,7 +9,8 @@ use worldbend_core::{
 };
 #[cfg(feature = "designer")]
 use worldbend_core::{
-    MeshWarpSpec, MockupSpec, RemapSpec, plan_mesh_warp, plan_mockup, plan_remap,
+    MeshWarpSpec, MockupSpec, RemapSpec, SurfaceDeformationSpec, plan_mesh_warp, plan_mockup,
+    plan_remap, plan_surface_deformation,
 };
 #[cfg(feature = "css")]
 use worldbend_core::{PlanePoseInput, emit_css_transform, project_plane_pose};
@@ -187,6 +188,13 @@ pub fn remap_plan_json(spec_json: &str) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
+#[cfg(feature = "designer")]
+pub fn surface_deformation_plan_json(spec_json: &str) -> Result<String, JsValue> {
+    let spec = parse_surface_deformation_spec(spec_json)?;
+    serialize_result(plan_surface_deformation(&spec))
+}
+
+#[wasm_bindgen]
 #[cfg(feature = "css")]
 pub fn pose_json(input_json: &str) -> Result<String, JsValue> {
     let input = serde_json::from_str::<PlanePoseInput>(input_json).map_err(|error| {
@@ -341,6 +349,11 @@ fn parse_mesh_warp_spec(value: &str) -> Result<MeshWarpSpec, JsValue> {
 #[cfg(feature = "designer")]
 fn parse_remap_spec(value: &str) -> Result<RemapSpec, JsValue> {
     parse_json(value, "RemapSpec")
+}
+
+#[cfg(feature = "designer")]
+fn parse_surface_deformation_spec(value: &str) -> Result<SurfaceDeformationSpec, JsValue> {
+    parse_json(value, "SurfaceDeformationSpec")
 }
 
 #[cfg(any(feature = "designer", feature = "template"))]

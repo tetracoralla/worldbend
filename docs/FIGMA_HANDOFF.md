@@ -93,7 +93,8 @@ If Tools can apply the effect but the plugin cannot import it, save and reopen
 that file. An unavailable effect leaves editable output explicitly
 unavailable but keyboard-reachable (`aria-disabled`), with its recovery
 instructions visible in the panel beside the output actions, not only in a
-hover tooltip.
+hover tooltip. HD images still work. The panel copies the Community listing
+URL so a designer can add the effect without hunting for the resource id.
 
 Renderer imports have a five-second deadline and a failed import can be retried;
 source raster export and renderer discovery run concurrently. Source delivery

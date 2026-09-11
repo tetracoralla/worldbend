@@ -16,6 +16,8 @@ import type {
   MockupSpec,
   RemapPlan,
   RemapSpec,
+  SurfaceDeformationPlan,
+  SurfaceDeformationSpec,
   SpatialTemplateInspection,
   SpatialTemplateSpec,
   VariationJobPlan,
@@ -61,6 +63,9 @@ export type {
   LensScale,
   MeshWarpPlan,
   MeshWarpSpec,
+  BezierEnvelope,
+  SurfaceDeformationPlan,
+  SurfaceDeformationSpec,
   MockupEdge,
   MockupGrid,
   MockupGridLine,
@@ -85,6 +90,8 @@ export type {
 
 export type MeshWarpSpecInput = MeshWarpSpec;
 export type MeshWarpPlanOutput = MeshWarpPlan;
+export type SurfaceDeformationSpecInput = SurfaceDeformationSpec;
+export type SurfaceDeformationPlanOutput = SurfaceDeformationPlan;
 export type MockupSpecInput = MockupSpec;
 export type MockupPlanOutput = MockupPlan;
 export type RemapSpecInput = RemapSpec;

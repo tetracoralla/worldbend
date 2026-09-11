@@ -7,6 +7,7 @@ const workspaceSources = [
   ["Sizes", "./canvas-workspace.ts"],
   ["Composition", "./mockup-workspace.ts"],
   ["Mesh", "./mesh-workspace.ts"],
+  ["Split Warp", "./surface-workspace.ts"],
   ["Lens & maps", "./remap-workspace.ts"],
   ["Templates", "./template-workspace.ts"],
 ] as const;
@@ -64,6 +65,7 @@ describe("Figma product workspace markup", () => {
     const secondaryIcons = {
       mockup: "icon-park:layout-four",
       mesh: "icon-park:grid-nine",
+      surface: "icon-park:split",
       remap: "icon-park:distortion",
     } as const;
     const popoverStart = navigationMarkup.indexOf('<div id="settings-popover"');
@@ -162,6 +164,7 @@ describe("Figma product workspace markup", () => {
     // A missing effect cannot be fixed by editing inputs, so the guidance
     // cannot hide behind a disabled button's hover-only tooltip.
     expect(dock).toContain('id="native-guidance" class="native-guidance" hidden');
+    expect(dock).toContain('id="copy-effect-listing"');
     expect(html).toContain(".native-guidance {");
     expect(html).toContain('button[aria-disabled="true"] { cursor: default; }');
 
@@ -169,6 +172,11 @@ describe("Figma product workspace markup", () => {
     expect(uiSource).toContain("editableEnvironmentBlocked");
     expect(uiSource).toContain('setAttribute("aria-disabled", "true")');
     expect(uiSource).toContain('setAttribute("aria-describedby", "native-guidance")');
+    expect(uiSource).toContain("copyNativeEffectListing");
+    expect(uiSource).toContain("NATIVE_EFFECT_LISTING_URL");
+    const i18nSource = readFileSync(new URL("./i18n.ts", import.meta.url), "utf8");
+    expect(i18nSource).toContain('copyEffectListing: "Copy listing link"');
+    expect(i18nSource).toContain('copyEffectListing: "复制效果链接"');
     // Transient discovery and unsupported modes keep the quiet disabled form.
     expect(uiSource).toContain("nativeRendererPending ? \"nativePreparing\"");
   });
@@ -240,8 +248,9 @@ describe("Figma product workspace markup", () => {
     expect(html).toContain(
       ".direct-point { position: absolute; width: 32px; min-width: 0; height: 32px; min-height: 0;",
     );
+    expect(html).toContain('.direct-point[aria-pressed="true"]::after');
     expect(html).toContain(
-      "button:not(:disabled):not([aria-disabled=\"true\"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):active",
+      "button:not(:disabled):not([aria-disabled=\"true\"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):not(#warp-mesh-continue):not(#copy-effect-listing):active",
     );
     expect(html).not.toContain("button:not(:disabled):active { transform:");
   });
@@ -273,6 +282,37 @@ describe("Figma product workspace markup", () => {
       .toBeLessThan(errorSource.indexOf("canvasWorkspace.clearSource"));
     // Alert/status semantics are exercised by the built selection-entry flow;
     // empty selections now share this recovery path without being an error.
+  });
+
+  it("keeps Split Warp as an advanced Bezier workspace under More", () => {
+    expect(html).toContain('id="workspace-menu-surface"');
+    expect(html).toContain('id="surface-workspace"');
+    expect(html).not.toContain('id="workspace-tab-surface"');
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).toContain("createSurfaceWorkspace");
+    expect(uiSource).toContain("surfaceWorkspace");
+    const surfaceSource = readFileSync(new URL("./surface-workspace.ts", import.meta.url), "utf8");
+    expect(surfaceSource).toContain("planSurfaceDeformation");
+    expect(surfaceSource).toContain("identityEnvelope");
+    expect(surfaceSource).toContain("transformForMesh");
+    // Stored tasks may carry densities this workspace does not author; the
+    // Patches select must display them instead of going blank.
+    expect(surfaceSource).toContain("patchChoicesFor");
+    const meshSource = readFileSync(new URL("./mesh-workspace.ts", import.meta.url), "utf8");
+    expect(meshSource).toContain('selection: "multiple"');
+  });
+
+  it("lets Warp continue into Mesh without adding a Perspective mode", () => {
+    expect(html).toContain('id="warp-mesh-continue"');
+    const modeSwitchStart = html.indexOf('<div id="mode-switch"');
+    const modeSwitchEnd = html.indexOf("</div>", modeSwitchStart);
+    expect(html.slice(modeSwitchStart, modeSwitchEnd)).not.toContain("warp-mesh-continue");
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).toContain('productWorkspace.enter("mesh")');
+    expect(uiSource).toContain("livePerspective()");
+    const meshSource = readFileSync(new URL("./mesh-workspace.ts", import.meta.url), "utf8");
+    expect(meshSource).toContain("meshSpecFromPerspective");
+    expect(meshSource).toContain("transformForMesh");
   });
 
   it("keeps the primary Apply usable for Warp and Transform Again reachable from Distort", () => {

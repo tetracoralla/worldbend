@@ -946,6 +946,8 @@ struct WebContract {
     mockup_plan_output: MockupPlan,
     mesh_warp_spec_input: MeshWarpSpec,
     mesh_warp_plan_output: MeshWarpPlan,
+    surface_deformation_spec_input: SurfaceDeformationSpec,
+    surface_deformation_plan_output: SurfaceDeformationPlan,
     remap_spec_input: RemapSpec,
     remap_plan_output: RemapPlan,
     spatial_template_spec_input: SpatialTemplateSpec,
