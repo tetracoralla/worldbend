@@ -79,9 +79,12 @@ are discovered from the imported definition, never guessed from display names.
 No capability is advertised without a matching available effect. Availability
 in the developer's account does not establish availability in another account
 or plan. [Worldbend Perspective](https://www.figma.com/community/shader/1679431734495527701)
-has been submitted to Community and is under review. Once available, add it
-from Figma's Tools panel. Until approval, editable output is available only to
-accounts that already have the exact effect; HD images work independently.
+was rejected on first submission (unclear purpose; a hand-edited control could
+blank the image without obvious recovery). A labeled resubmission with explicit
+listing directions is prepared; see `docs/FIGMA_COMMUNITY_RELEASE.md`. Until a
+submission is approved, editable output is available only to accounts that
+already have the exact effect; HD images work independently. Once available,
+add it from Figma's Tools panel.
 Bundling its identity does not install the effect. Imports verify
 the exact version, including the observed resource-hash/UUID alias. A failed
 import is retryable after installation; no name-only fallback is used.

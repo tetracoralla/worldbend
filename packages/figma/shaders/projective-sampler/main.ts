@@ -319,7 +319,7 @@ export function render(device, frame) {
 defineProperties(Effect, {
   "h00": {
     type: "number",
-    label: "H00",
+    label: "H00 · set by Worldbend",
     defaultValue: 1,
     control: "slider",
     min: -1000000,
@@ -328,7 +328,7 @@ defineProperties(Effect, {
   },
   "h01": {
     type: "number",
-    label: "H01",
+    label: "H01 · set by Worldbend",
     defaultValue: 0,
     control: "slider",
     min: -1000000,
@@ -337,7 +337,7 @@ defineProperties(Effect, {
   },
   "h02": {
     type: "number",
-    label: "H02",
+    label: "H02 · set by Worldbend",
     defaultValue: 0,
     control: "slider",
     min: -1000000,
@@ -346,7 +346,7 @@ defineProperties(Effect, {
   },
   "h10": {
     type: "number",
-    label: "H10",
+    label: "H10 · set by Worldbend",
     defaultValue: 0,
     control: "slider",
     min: -1000000,
@@ -355,7 +355,7 @@ defineProperties(Effect, {
   },
   "h11": {
     type: "number",
-    label: "H11",
+    label: "H11 · set by Worldbend",
     defaultValue: 1,
     control: "slider",
     min: -1000000,
@@ -364,7 +364,7 @@ defineProperties(Effect, {
   },
   "h12": {
     type: "number",
-    label: "H12",
+    label: "H12 · set by Worldbend",
     defaultValue: 0,
     control: "slider",
     min: -1000000,
@@ -373,7 +373,7 @@ defineProperties(Effect, {
   },
   "h20": {
     type: "number",
-    label: "H20",
+    label: "H20 · set by Worldbend",
     defaultValue: 0,
     control: "slider",
     min: -1000000,
@@ -382,7 +382,7 @@ defineProperties(Effect, {
   },
   "h21": {
     type: "number",
-    label: "H21",
+    label: "H21 · set by Worldbend",
     defaultValue: 0,
     control: "slider",
     min: -1000000,
@@ -391,7 +391,7 @@ defineProperties(Effect, {
   },
   "h22": {
     type: "number",
-    label: "H22",
+    label: "H22 · set by Worldbend",
     defaultValue: 1,
     control: "slider",
     min: -1000000,
@@ -400,7 +400,7 @@ defineProperties(Effect, {
   },
   "sourceRight": {
     type: "number",
-    label: "Source Right",
+    label: "Source right · set by Worldbend",
     defaultValue: 1,
     control: "slider",
     min: 0.000001,
@@ -409,7 +409,7 @@ defineProperties(Effect, {
   },
   "sourceBottom": {
     type: "number",
-    label: "Source Bottom",
+    label: "Source bottom · set by Worldbend",
     defaultValue: 1,
     control: "slider",
     min: 0.000001,
