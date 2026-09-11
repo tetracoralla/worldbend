@@ -18,6 +18,6 @@
     "@figma/plugin-typings": "1.138.0",
     "typescript": "7.0.2",
     "vite": "7.3.6",
-    "vite-plugin-singlefile": "2.3.0"
+    "vite-plugin-singlefile": "2.3.3"
   }
 }

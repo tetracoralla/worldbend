@@ -30,8 +30,8 @@ importers:
         specifier: 7.3.6
         version: 7.3.6(@types/node@26.4.1)(tsx@4.23.12)
       vite-plugin-singlefile:
-        specifier: 2.3.0
-        version: 2.3.0(rollup@4.62.4)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12))
+        specifier: 2.3.3
+        version: 2.3.3(rollup@4.62.4)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12))
       vitest:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12))
@@ -52,8 +52,8 @@ importers:
         specifier: 7.3.6
         version: 7.3.6(@types/node@26.4.1)(tsx@4.23.12)
       vite-plugin-singlefile:
-        specifier: 2.3.0
-        version: 2.3.0(rollup@4.62.4)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12))
+        specifier: 2.3.3
+        version: 2.3.3(rollup@4.62.4)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12))
 
   packages/wasm: {}
 
@@ -709,12 +709,15 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  vite-plugin-singlefile@2.3.0:
-    resolution: {integrity: sha512-DAcHzYypM0CasNLSz/WG0VdKOCxGHErfrjOoyIPiNxTPTGmO6rRD/te93n1YL/s+miXq66ipF1brMBikf99c6A==}
+  vite-plugin-singlefile@2.3.3:
+    resolution: {integrity: sha512-XVnGH0QzbOa8fxRSsHdCarVN1BSBXNi7uLMQYlrGRN5apdHkk62XQWRJhVever0lnfuyBkwn+kvVChdm/OoOUg==}
     engines: {node: '>18.0.0'}
     peerDependencies:
-      rollup: ^4.44.1
-      vite: ^5.4.11 || ^6.0.0 || ^7.0.0
+      rollup: ^4.59.0
+      vite: ^5.4.21 || ^6.0.0 || ^7.0.0 || ^8.0.0
+    peerDependenciesMeta:
+      rollup:
+        optional: true
 
   vite@7.3.6:
     resolution: {integrity: sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==}
@@ -1269,11 +1272,12 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  vite-plugin-singlefile@2.3.0(rollup@4.62.4)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12)):
+  vite-plugin-singlefile@2.3.3(rollup@4.62.4)(vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12)):
     dependencies:
       micromatch: 4.0.8
-      rollup: 4.62.4
       vite: 7.3.6(@types/node@26.4.1)(tsx@4.23.12)
+    optionalDependencies:
+      rollup: 4.62.4
 
   vite@7.3.6(@types/node@26.4.1)(tsx@4.23.12):
     dependencies:
