@@ -3,7 +3,7 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "worldbend-codex-plugin-macos-arm64",
-  "documentNamespace": "https://spdx.org/spdxdocs/worldbend-codex-plugin-macos-arm64-0.1.0-76afc162297f124c2a58505252e71ad9fa038e5f42b6d6687d888ebd2a0d1332",
+  "documentNamespace": "https://spdx.org/spdxdocs/worldbend-codex-plugin-macos-arm64-0.1.0-c0bf773ed2c1509f1a70a19a93dba0ea200d229db93b1152650ee35d5bd79fd6",
   "creationInfo": {
     "created": "1970-01-01T00:00:00Z",
     "creators": [
@@ -182,22 +182,6 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-base64-0.22.1",
-      "name": "base64",
-      "versionInfo": "0.22.1",
-      "downloadLocation": "https://crates.io/crates/base64/0.22.1",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "MIT OR Apache-2.0",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/base64@0.22.1"
-        }
-      ]
-    },
-    {
       "SPDXID": "SPDXRef-Crate-base64-0.23.1",
       "name": "base64",
       "versionInfo": "0.23.1",
@@ -230,10 +214,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-block-buffer-0.10.4",
+      "SPDXID": "SPDXRef-Crate-block-buffer-0.12.1",
       "name": "block-buffer",
-      "versionInfo": "0.10.4",
-      "downloadLocation": "https://crates.io/crates/block-buffer/0.10.4",
+      "versionInfo": "0.12.1",
+      "downloadLocation": "https://crates.io/crates/block-buffer/0.12.1",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -241,7 +225,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/block-buffer@0.10.4"
+          "referenceLocator": "pkg:cargo/block-buffer@0.12.1"
         }
       ]
     },
@@ -438,6 +422,22 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Crate-const-oid-0.10.2",
+      "name": "const-oid",
+      "versionInfo": "0.10.2",
+      "downloadLocation": "https://crates.io/crates/const-oid/0.10.2",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 OR MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/const-oid@0.10.2"
+        }
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Crate-core-foundation-sys-0.8.7",
       "name": "core-foundation-sys",
       "versionInfo": "0.8.7",
@@ -454,10 +454,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-cpufeatures-0.2.17",
+      "SPDXID": "SPDXRef-Crate-cpufeatures-0.3.1",
       "name": "cpufeatures",
-      "versionInfo": "0.2.17",
-      "downloadLocation": "https://crates.io/crates/cpufeatures/0.2.17",
+      "versionInfo": "0.3.1",
+      "downloadLocation": "https://crates.io/crates/cpufeatures/0.3.1",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -465,7 +465,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/cpufeatures@0.2.17"
+          "referenceLocator": "pkg:cargo/cpufeatures@0.3.1"
         }
       ]
     },
@@ -534,10 +534,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-crypto-common-0.1.7",
+      "SPDXID": "SPDXRef-Crate-crypto-common-0.2.2",
       "name": "crypto-common",
-      "versionInfo": "0.1.7",
-      "downloadLocation": "https://crates.io/crates/crypto-common/0.1.7",
+      "versionInfo": "0.2.2",
+      "downloadLocation": "https://crates.io/crates/crypto-common/0.2.2",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -545,7 +545,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/crypto-common@0.1.7"
+          "referenceLocator": "pkg:cargo/crypto-common@0.2.2"
         }
       ]
     },
@@ -598,10 +598,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-digest-0.10.7",
+      "SPDXID": "SPDXRef-Crate-digest-0.11.3",
       "name": "digest",
-      "versionInfo": "0.10.7",
-      "downloadLocation": "https://crates.io/crates/digest/0.10.7",
+      "versionInfo": "0.11.3",
+      "downloadLocation": "https://crates.io/crates/digest/0.11.3",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -609,7 +609,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/digest@0.10.7"
+          "referenceLocator": "pkg:cargo/digest@0.11.3"
         }
       ]
     },
@@ -902,22 +902,6 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-generic-array-0.14.7",
-      "name": "generic-array",
-      "versionInfo": "0.14.7",
-      "downloadLocation": "https://crates.io/crates/generic-array/0.14.7",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "MIT",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/generic-array@0.14.7"
-        }
-      ]
-    },
-    {
       "SPDXID": "SPDXRef-Crate-getrandom-0.4.3",
       "name": "getrandom",
       "versionInfo": "0.4.3",
@@ -1042,6 +1026,38 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:cargo/heck@0.5.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-hex-0.4.3",
+      "name": "hex",
+      "versionInfo": "0.4.3",
+      "downloadLocation": "https://crates.io/crates/hex/0.4.3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/hex@0.4.3"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-hybrid-array-0.4.15",
+      "name": "hybrid-array",
+      "versionInfo": "0.4.15",
+      "downloadLocation": "https://crates.io/crates/hybrid-array/0.4.15",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/hybrid-array@0.4.15"
         }
       ]
     },
@@ -1654,10 +1670,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-rmcp-3.1.4",
+      "SPDXID": "SPDXRef-Crate-rmcp-3.2.0",
       "name": "rmcp",
-      "versionInfo": "3.1.4",
-      "downloadLocation": "https://crates.io/crates/rmcp/3.1.4",
+      "versionInfo": "3.2.0",
+      "downloadLocation": "https://crates.io/crates/rmcp/3.2.0",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "Apache-2.0",
@@ -1665,15 +1681,15 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/rmcp@3.1.4"
+          "referenceLocator": "pkg:cargo/rmcp@3.2.0"
         }
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-rmcp-macros-3.1.4",
+      "SPDXID": "SPDXRef-Crate-rmcp-macros-3.2.0",
       "name": "rmcp-macros",
-      "versionInfo": "3.1.4",
-      "downloadLocation": "https://crates.io/crates/rmcp-macros/3.1.4",
+      "versionInfo": "3.2.0",
+      "downloadLocation": "https://crates.io/crates/rmcp-macros/3.2.0",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "Apache-2.0",
@@ -1681,7 +1697,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/rmcp-macros@3.1.4"
+          "referenceLocator": "pkg:cargo/rmcp-macros@3.2.0"
         }
       ]
     },
@@ -1814,10 +1830,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-sha2-0.10.9",
+      "SPDXID": "SPDXRef-Crate-sha2-0.11.0",
       "name": "sha2",
-      "versionInfo": "0.10.9",
-      "downloadLocation": "https://crates.io/crates/sha2/0.10.9",
+      "versionInfo": "0.11.0",
+      "downloadLocation": "https://crates.io/crates/sha2/0.11.0",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -1825,7 +1841,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/sha2@0.10.9"
+          "referenceLocator": "pkg:cargo/sha2@0.11.0"
         }
       ]
     },
@@ -2166,22 +2182,6 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-version-check-0.9.5",
-      "name": "version_check",
-      "versionInfo": "0.9.5",
-      "downloadLocation": "https://crates.io/crates/version_check/0.9.5",
-      "filesAnalyzed": false,
-      "licenseConcluded": "NOASSERTION",
-      "licenseDeclared": "MIT OR Apache-2.0",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/version_check@0.9.5"
-        }
-      ]
-    },
-    {
       "SPDXID": "SPDXRef-Crate-weezl-0.1.12",
       "name": "weezl",
       "versionInfo": "0.1.12",
@@ -2348,11 +2348,6 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-base64-0.22.1"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-Worldbend",
-      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-base64-0.23.1"
     },
     {
@@ -2363,7 +2358,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-block-buffer-0.10.4"
+      "relatedSpdxElement": "SPDXRef-Crate-block-buffer-0.12.1"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2428,12 +2423,17 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-const-oid-0.10.2"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-core-foundation-sys-0.8.7"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-cpufeatures-0.2.17"
+      "relatedSpdxElement": "SPDXRef-Crate-cpufeatures-0.3.1"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2458,7 +2458,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-crypto-common-0.1.7"
+      "relatedSpdxElement": "SPDXRef-Crate-crypto-common-0.2.2"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2478,7 +2478,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-digest-0.10.7"
+      "relatedSpdxElement": "SPDXRef-Crate-digest-0.11.3"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2573,11 +2573,6 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-generic-array-0.14.7"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-Worldbend",
-      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-getrandom-0.4.3"
     },
     {
@@ -2614,6 +2609,16 @@
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-heck-0.5.0"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-hex-0.4.3"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-hybrid-array-0.4.15"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2808,12 +2813,12 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-rmcp-3.1.4"
+      "relatedSpdxElement": "SPDXRef-Crate-rmcp-3.2.0"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-rmcp-macros-3.1.4"
+      "relatedSpdxElement": "SPDXRef-Crate-rmcp-macros-3.2.0"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2858,7 +2863,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-sha2-0.10.9"
+      "relatedSpdxElement": "SPDXRef-Crate-sha2-0.11.0"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2964,11 +2969,6 @@
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-uuid-1.24.1"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-Worldbend",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-version-check-0.9.5"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
