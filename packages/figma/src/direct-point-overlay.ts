@@ -3,6 +3,7 @@ export interface DirectPoint {
   x: number;
   y: number;
   label: string;
+  tone?: "curve" | "handle" | "anchor";
 }
 
 export interface DirectPointOverlay {
@@ -113,8 +114,11 @@ export function createDirectPointOverlay(input: {
   canvas: HTMLCanvasElement;
   onMove(id: string, point: { x: number; y: number }, final: boolean): void;
   onMoves?(moves: readonly DirectPointMove[], final: boolean): void;
+  onActivate?(id: string, event: PointerEvent): boolean;
   bounds?: DirectPointBounds;
   selection?: DirectPointSelection;
+  /** False when the points are activation-only targets, not movable. */
+  draggable?: boolean;
 }): DirectPointOverlay {
   const layer = document.createElement("div");
   layer.className = "direct-point-layer";
@@ -324,12 +328,14 @@ export function createDirectPointOverlay(input: {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.pointId = point.id;
-      button.className = "direct-point";
+      button.className = point.tone ? `direct-point direct-point--${point.tone}` : "direct-point";
       button.setAttribute("aria-label", point.label);
       if (multiple) button.setAttribute("aria-pressed", String(selected.has(point.id)));
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         interruptPointer();
+        if (input.onActivate?.(point.id, event)) return;
+        if (input.draggable === false) return;
         if (multiple && event.shiftKey) {
           if (selected.has(point.id)) selected.delete(point.id);
           else selected.add(point.id);
@@ -363,6 +369,9 @@ export function createDirectPointOverlay(input: {
         const delta = keyboardNudgeDelta(event.key, event.shiftKey, box.width, box.height);
         if (delta.x === 0 && delta.y === 0) return;
         event.preventDefault();
+        // Activation-only points (pin targets) have nothing to nudge; moving
+        // the button would desync it from the spec until the next rebuild.
+        if (input.draggable === false) return;
         // Repeated presses continue from the tracked position, not the
         // set()-time snapshot, because the overlay is no longer rebuilt.
         if (multiple && !selected.has(point.id)) {

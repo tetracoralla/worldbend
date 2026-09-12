@@ -114,6 +114,36 @@ it("cancels Escape back to the grab-start point and does not keep the last previ
   overlay.dispose();
 });
 
+it("does not drag or nudge activation-only points", () => {
+  const windowTarget = new EventTarget();
+  const documentTarget = Object.assign(new EventTarget(), { createElement: () => new OverlayElement() });
+  vi.stubGlobal("window", windowTarget);
+  vi.stubGlobal("document", documentTarget);
+  const host = new OverlayElement();
+  const canvas = new OverlayElement();
+  const onMove = vi.fn();
+  const onActivate = vi.fn(() => true);
+  const overlay = createDirectPointOverlay({
+    host: host as unknown as HTMLElement,
+    canvas: canvas as unknown as HTMLCanvasElement,
+    onMove,
+    onActivate,
+    draggable: false,
+  });
+  overlay.set([{ id: "pin", x: 0.5, y: 0.5, label: "Pin" }]);
+  const button = host.children[0]!.children[0]!;
+  button.dispatchEvent(Object.assign(new Event("pointerdown", { cancelable: true }), {
+    pointerId: 1, clientX: 300, clientY: 150, buttons: 1,
+  }));
+  button.dispatchEvent(Object.assign(new Event("pointermove", { cancelable: true }), {
+    pointerId: 1, clientX: 340, clientY: 170, buttons: 1,
+  }));
+  button.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { key: "ArrowRight" }));
+  expect(onActivate).toHaveBeenCalledWith("pin", expect.anything());
+  expect(onMove).not.toHaveBeenCalled();
+  overlay.dispose();
+});
+
 it("moves every selected point together and restores all of them on Escape", () => {
   const windowTarget = new EventTarget();
   const documentTarget = Object.assign(new EventTarget(), { createElement: () => new OverlayElement() });

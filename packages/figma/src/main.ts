@@ -53,8 +53,11 @@ import {
   checkedTemplateLibrary,
   canvasTemplateFromSet,
   emptyTemplateLibrary,
+  meshTemplateFromSpec,
   parseTemplateLibrary,
   spatialTemplateFromMockup,
+  surfaceTemplateFromSpec,
+  type FigmaTaskTemplate,
   type SavedSpatialTemplate,
   type StoredTemplateLibrary,
 } from "./stored-template-library";
@@ -204,9 +207,7 @@ figma.ui.onmessage = (message: unknown) => {
       const record: SavedSpatialTemplate = {
         id: createTemplateId(templateLibrary.templates),
         name: message.name,
-        template: message.template.operation.kind === "canvas"
-          ? canvasTemplateFromSet(message.template.operation.spec)
-          : spatialTemplateFromMockup(message.template.operation.spec),
+        template: storedTemplateFromMessage(message.template),
       };
       const next = checkedTemplateLibrary([...templateLibrary.templates, record]);
       if (!next) throw userError("templateSaveFailed");
@@ -292,6 +293,13 @@ function postTemplateLibrary(mutation?: TemplateMutationReceipt): void {
     templates: checkedTemplateLibrary(templateLibrary.templates)?.templates ?? [],
     ...(mutation ? { mutation } : {}),
   });
+}
+
+function storedTemplateFromMessage(template: FigmaTaskTemplate): FigmaTaskTemplate {
+  if (template.operation.kind === "canvas") return canvasTemplateFromSet(template.operation.spec);
+  if (template.operation.kind === "mesh") return meshTemplateFromSpec(template.operation.spec);
+  if (template.operation.kind === "surface") return surfaceTemplateFromSpec(template.operation.spec);
+  return spatialTemplateFromMockup(template.operation.spec);
 }
 
 function createTemplateId(existing: readonly SavedSpatialTemplate[]): string {

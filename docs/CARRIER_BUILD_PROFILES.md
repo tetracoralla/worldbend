@@ -14,7 +14,7 @@ checks consume this file; it is not a future marketplace or plugin registry.
 
 | Carrier | Current product surface | Compiled or packaged runtime | Deliberately absent |
 | --- | --- | --- | --- |
-| Figma | A primary Perspective -> Sizes -> Templates loop, with Composition, Mesh, Split Warp, and Lens & maps as task-labeled advanced transforms under More | One self-contained UI, main adapter, and a no-CSS WASM build with Canvas/Place/Deform/Surface/Remap planners; Templates persists the bounded task-native values those planners consume | Timeline/Motion rendering, Agent binaries, MCP schemas, Comfy Python, CSS emission, automatic perception/calibration |
+| Figma | A primary Perspective -> Sizes -> Templates loop, with Composition, Mesh, Split Warp, and Lens & maps as task-labeled advanced transforms under More | One self-contained UI, main adapter, and a WASM build with Canvas/Place/Deform/Surface/Remap planners plus CSS emission for Copy CSS; Templates persists the bounded task-native values those planners consume | Timeline/Motion rendering, Agent binaries, MCP schemas, Comfy Python, automatic perception/calibration |
 | Agent | Compact `search` / `describe` / `run` MCP projection by default, the eight direct headless tools as an explicit compatibility surface, plus CLI and the unchanged conditional Capability projection | Full stable native source superset: Place/Mockup, custom Mesh and Surface Deformation, Lens/Displacement Remap, Timeline/Motion, Program, Spatial Template/Variation, production media/vector/tiling, assisted perception, and PSD projection, with no human UI | Figma HTML/CSS and Comfy Python |
 | ComfyUI | Nine V3 nodes: transform/rectification pairs, Canvas Set validation/application/plan replay, and Remap validation/application | A `comfy` CLI build containing only transform, rectification, Canvas, and Remap commands | Place, custom Mesh/Surface, Timeline/Motion, Program, Template/Variation, production media/vector/tiling, perception, PSD, Compose/Solve/CSS/Schema, MCP/Skill/Capability files, Figma UI |
 
@@ -54,7 +54,7 @@ lists plus plan replay.
 The Figma package is sufficiently platform-stable for deterministic byte
 ceilings:
 
-- runtime entries: at most 655,360 bytes;
+- runtime entries: at most 688,128 bytes;
 - complete archive: at most 540,672 bytes;
 - complete unpacked package: at most 2,097,152 bytes.
 
@@ -62,8 +62,9 @@ These are growth tripwires, not performance or UX acceptance. An intentional
 feature may revise a limit only with a current package measurement and review
 of the user-visible change. Split Warp added the cubic-surface planner to the
 Figma WASM build; the measured archive after that change was 524,923 bytes, so
-the archive tripwire moved from 512 KiB to 528 KiB. Runtime remained under
-640 KiB. Agent and Comfy native binary sizes vary by target,
+the archive tripwire moved from 512 KiB to 528 KiB. Copy CSS linked the core
+CSS emitter into the Figma WASM build; the measured runtime after that change
+was 668,141 bytes, so the runtime tripwire moved from 640 KiB to 672 KiB. Agent and Comfy native binary sizes vary by target,
 so their current checks record bytes but do not pretend one macOS value is a
 portable ceiling. The default Agent catalog has a 16,384-byte limit; its direct
 compatibility catalog has a separate 81,920-byte limit. Every tool-list byte

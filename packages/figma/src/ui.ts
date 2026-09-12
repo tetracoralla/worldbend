@@ -1,6 +1,7 @@
 import {
   buildWarpMesh,
   composeAffineTransform,
+  emitCssTransform,
   createPreviewViewport,
   estimateSourceRasterSize,
   formatZoomPercent,
@@ -191,6 +192,7 @@ const actionFlipY = required<HTMLButtonElement>("action-flip-y");
 const actionRotateCw = required<HTMLButtonElement>("action-rotate-cw");
 const actionCopyParameters = required<HTMLButtonElement>("action-copy-parameters");
 const actionTransformAgain = required<HTMLButtonElement>("action-transform-again");
+const actionCopyCss = required<HTMLButtonElement>("action-copy-css");
 const actionApplyCopy = required<HTMLButtonElement>("action-apply-copy");
 const actionApplyEditable = required<HTMLButtonElement>("action-apply-editable");
 const nativeGuidance = required<HTMLParagraphElement>("native-guidance");
@@ -467,6 +469,16 @@ const templateWorkspace = createTemplateWorkspace({
   onCreate(target) { productWorkspace.enter(target); },
   onUse(template) {
     if (template.schema === "worldbend.figma-task-template") {
+      if (template.operation.kind === "mesh") {
+        if (!meshWorkspace.loadTemplate(template.operation.spec)) return false;
+        productWorkspace.enter("mesh");
+        return true;
+      }
+      if (template.operation.kind === "surface") {
+        if (!surfaceWorkspace.loadTemplate(template.operation.spec)) return false;
+        productWorkspace.enter("surface");
+        return true;
+      }
       if (!canvasWorkspace.loadTemplate(template.operation.spec)) return false;
       productWorkspace.enter("canvas");
       return true;
@@ -584,6 +596,10 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
         : undefined;
       if (message.mutation.workspace === "canvas") {
         canvasWorkspace.finishTemplateSave(message.mutation.requestId, error);
+      } else if (message.mutation.workspace === "mesh") {
+        meshWorkspace.finishTemplateSave(message.mutation.requestId, error);
+      } else if (message.mutation.workspace === "surface") {
+        surfaceWorkspace.finishTemplateSave(message.mutation.requestId, error);
       } else {
         mockupWorkspace.finishTemplateSave(message.mutation.requestId, error);
       }
@@ -706,6 +722,7 @@ actionFlipX.addEventListener("click", () => void toggleRecipeFlip("x"));
 actionFlipY.addEventListener("click", () => void toggleRecipeFlip("y"));
 actionRotateCw.addEventListener("click", () => void rotateByQuarter(90));
 actionCopyParameters.addEventListener("click", () => void copyPlacementParametersToClipboard());
+actionCopyCss.addEventListener("click", () => void copyCssTransformToClipboard());
 actionTransformAgain.addEventListener("click", () => void applyTransformAgain());
 actionApplyCopy.addEventListener("click", () => void applyPerspective(true, false));
 actionApplyEditable.addEventListener("click", () => {
@@ -1940,6 +1957,29 @@ async function copyPlacementParametersToClipboard(): Promise<void> {
   setStatus({ key: copied ? "parametersCopied" : "copyParametersFailed" });
 }
 
+async function copyCssTransformToClipboard(): Promise<void> {
+  if (!menuActionAvailable() || editorMode === "rectify") return;
+  const spec = editor?.captureSpec() ?? activeFrame?.spec;
+  if (!spec || !activeFrame) return;
+  if (spec.content.warp && spec.content.warp.amount !== 0) {
+    showError(userMessage("cssWarpUnsupported"));
+    return;
+  }
+  try {
+    const css = await emitCssTransform(
+      spec,
+      { width: activeFrame.renderWidth, height: activeFrame.renderHeight },
+      { width: activeFrame.renderWidth, height: activeFrame.renderHeight },
+    );
+    const copied = await copyPlacementParameters(
+      `${css.transform};\ntransform-origin: ${css.transformOrigin};`,
+    );
+    setStatus({ key: copied ? "cssCopied" : "cssCopyFailed" });
+  } catch {
+    showError(userMessage("cssWarpUnsupported"));
+  }
+}
+
 async function applyTransformAgain(): Promise<void> {
   if (!menuActionAvailable() || !initialFrame || !activeFrame || !editor) return;
   cancelTransformGesturePreview();
@@ -2118,6 +2158,7 @@ function renderOptionsContext(workspace: ProductWorkspace): void {
   for (const element of [
     perspectiveOptionsTitle,
     actionTransformAgain,
+    actionCopyCss,
     shortcutHelp,
     outputSettingsTitle,
     outputPolicyFit,
@@ -2735,6 +2776,11 @@ function renderState(scope: "full" | "publication" = "full"): void {
     button.disabled = !positionReady;
   }
   actionCopyParameters.disabled = !positionReady || editorMode === "rectify";
+  // CSS emission represents a Distort quad just as well as a Transform
+  // recipe; the documented route is Transform/Distort without Warp.
+  const cssReady = menuReady && !transformInitializing && transformInputsValid &&
+    (editorMode === "transform" || editorMode === "distort");
+  actionCopyCss.disabled = !cssReady;
   actionApplyCopy.textContent = translate(activeLocale, "createHighResolutionImage");
   workspaceNavigation.setDisabled(!taskReady);
   // Transform Again repeats onto the current source and lands in Transform
@@ -2867,6 +2913,7 @@ function applyLocale(preference: LocalePreference, locale: SupportedLocale): voi
   localizeIconAction(actionFlipY, translate(locale, "flipVertical"));
   localizeIconAction(actionRotateCw, translate(locale, "rotateQuarterCw"));
   localizeIconAction(actionCopyParameters, translate(locale, "copyParameters"));
+  actionCopyCss.textContent = translate(locale, "copyCss");
   actionTransformAgain.textContent = translate(locale, "transformAgain");
   workspaceNavigation.setLabels(translate(locale, "workspaceGroupLabel"), {
     perspective: translate(locale, "workspacePerspective"),
@@ -2980,6 +3027,11 @@ function meshWorkspaceCopy(): MeshWorkspaceCopy {
     ...designerCopy("meshTitle"),
     subdivisions: translate(activeLocale, "meshSubdivisions"),
     pointLabel: translate(activeLocale, "meshPointLabel"),
+    templateName: translate(activeLocale, "templateName"),
+    templateNamePlaceholder: translate(activeLocale, "templateNamePlaceholder"),
+    saveTemplate: translate(activeLocale, "saveTemplate"),
+    savingTemplate: translate(activeLocale, "savingTemplate"),
+    templateSaved: translate(activeLocale, "templateSaved"),
   };
 }
 
@@ -2989,6 +3041,16 @@ function surfaceWorkspaceCopy(): SurfaceWorkspaceCopy {
     patches: translate(activeLocale, "surfacePatches"),
     subdivisions: translate(activeLocale, "surfaceSubdivisions"),
     pointLabel: translate(activeLocale, "surfacePointLabel"),
+    handles: translate(activeLocale, "surfaceHandles"),
+    pin: translate(activeLocale, "surfacePin"),
+    brush: translate(activeLocale, "surfaceBrush"),
+    radius: translate(activeLocale, "surfaceRadius"),
+    strength: translate(activeLocale, "surfaceStrength"),
+    templateName: translate(activeLocale, "templateName"),
+    templateNamePlaceholder: translate(activeLocale, "templateNamePlaceholder"),
+    saveTemplate: translate(activeLocale, "saveTemplate"),
+    savingTemplate: translate(activeLocale, "savingTemplate"),
+    templateSaved: translate(activeLocale, "templateSaved"),
   };
 }
 
@@ -3026,6 +3088,8 @@ function templateWorkspaceCopy(): TemplateWorkspaceCopy {
     incompatible: translate(activeLocale, "templateIncompatible"),
     mockup: translate(activeLocale, "workspaceMockup"),
     sizes: translate(activeLocale, "canvasTitle"),
+    mesh: translate(activeLocale, "templateMesh"),
+    surface: translate(activeLocale, "templateSurface"),
     createCanvas: translate(activeLocale, "templateCreateCanvas"),
   };
 }

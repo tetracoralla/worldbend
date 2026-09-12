@@ -120,7 +120,9 @@ metadata in the human surface. A Mockup library entry remains the canonical
 single-output Spatial Template above. A Sizes-only library entry uses the
 adapter-local `worldbend.figma-task-template@0.1` envelope around one canonical
 Canvas Set instead of fabricating a hidden Raster Program root; it is not an
-Agent or CLI Spatial Template and does not widen the core union. If the persisted template library cannot be
+Agent or CLI Spatial Template and does not widen the core union. Mesh and
+Split Warp presets use the same adapter-local envelope around their canonical
+specs. If the persisted template library cannot be
 read or validated, the workspace may remain usable with an empty read-only
 fallback, but save and delete must fail without writing client storage so the
 unread library cannot be silently replaced. Saving under a name that already

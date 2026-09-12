@@ -61,7 +61,9 @@ before reporting its path, byte size, and SHA-256.
   Warp's **Continue in Mesh** carries the current plane and any active preset
   into Mesh as an editable grid; Mesh opened from More does the same. Split Warp
   seeds the live plane as a 1×1 Bezier envelope and does not convert a Warp
-  preset into cubic handles.
+  preset into cubic handles. Mesh and Split Warp can save named presets into
+  Templates. Copy CSS emits a core `matrix3d` for Transform/Distort without
+  Warp; Warp, Mesh, and Split Warp stay raster.
 - Select one locally exportable source layer. Image-filled Rectangles and
   Frames are covered by the current runtime flow.
 - New HD Image creates a raster Rectangle with an Image fill. The original

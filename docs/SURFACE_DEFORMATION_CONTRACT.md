@@ -51,8 +51,9 @@ Native rendering delegates to the current mesh renderer, including inverse
 mapping, premultiplied-alpha filtering, configured limits, cancellation, dry
 run, and atomic PNG publication. CLI and compact Agent operations expose plan
 and render. Figma's Split Warp workspace authors the Bezier envelope, mesh
-density, and base transform; it stores empty anchors and strokes. Anchors,
-strokes, and Liquify-like brushing remain Agent/full-only. Web, ComfyUI, and
+density, interior pins, and explicit source-space brush samples, then stores
+the complete spec. Brush samples are the spec, not a reconstruction of host
+pointer history. It does not claim Liquify or Puppet Warp. Web, ComfyUI, and
 the conditional portable Capability do not gain this operation merely because
 it exists in the source superset.
 

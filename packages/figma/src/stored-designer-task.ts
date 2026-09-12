@@ -72,15 +72,71 @@ function isSurfaceSpec(value: unknown): value is SurfaceDeformationSpecInput {
     Number(value["meshSubdivisions"]) < 4 ||
     Number(value["meshSubdivisions"]) > 16 ||
     !Array.isArray(value["anchors"]) ||
-    value["anchors"].length !== 0 ||
+    value["anchors"].length > 64 ||
     !Array.isArray(value["strokes"]) ||
-    value["strokes"].length !== 0
+    value["strokes"].length > 64
   ) return false;
   const transform = value["transform"];
   if (isRecord(transform) && isRecord(transform["content"]) && transform["content"]["warp"] !== undefined) {
     return false;
   }
-  return isBezierEnvelope(value["envelope"], Number(value["meshSubdivisions"]));
+  const subdivisions = Number(value["meshSubdivisions"]);
+  return isBezierEnvelope(value["envelope"], subdivisions) &&
+    isAnchors(value["anchors"], subdivisions) &&
+    isStrokes(value["strokes"]);
+}
+
+function isAnchors(value: unknown, subdivisions: number): boolean {
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  const vertices = new Set<string>();
+  return value.every((anchor) => {
+    if (
+      !isRecord(anchor) ||
+      !exact(anchor, ["id", "column", "row"]) ||
+      !isId(anchor["id"]) ||
+      !Number.isInteger(anchor["column"]) ||
+      !Number.isInteger(anchor["row"]) ||
+      Number(anchor["column"]) <= 0 ||
+      Number(anchor["row"]) <= 0 ||
+      Number(anchor["column"]) >= subdivisions ||
+      Number(anchor["row"]) >= subdivisions
+    ) return false;
+    const id = String(anchor["id"]);
+    const vertex = `${anchor["column"]},${anchor["row"]}`;
+    if (ids.has(id) || vertices.has(vertex)) return false;
+    ids.add(id);
+    vertices.add(vertex);
+    return true;
+  });
+}
+
+function isStrokes(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  let samples = 0;
+  return value.every((stroke) => {
+    if (
+      !isRecord(stroke) ||
+      !exact(stroke, ["id", "samples"]) ||
+      !isId(stroke["id"]) ||
+      !Array.isArray(stroke["samples"]) ||
+      stroke["samples"].length < 1 ||
+      stroke["samples"].length > 256
+    ) return false;
+    if (ids.has(String(stroke["id"]))) return false;
+    ids.add(String(stroke["id"]));
+    samples += stroke["samples"].length;
+    if (samples > 1024) return false;
+    return stroke["samples"].every((sample) =>
+      isRecord(sample) &&
+      exact(sample, ["position", "delta", "radius", "strength"]) &&
+      isNormalizedPoint(sample["position"]) &&
+      isPoint(sample["delta"], -1, 1) &&
+      isBoundedNumber(sample["radius"], 0.001, 2) &&
+      isUnit(sample["strength"]),
+    );
+  });
 }
 
 function isBezierEnvelope(value: unknown, subdivisions: number): boolean {

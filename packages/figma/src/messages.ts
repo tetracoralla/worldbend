@@ -72,7 +72,7 @@ export type Placement = SourcePayload["placement"];
 export type TemplateMutationReceipt =
   | {
       kind: "save";
-      workspace: "canvas" | "mockup";
+      workspace: "canvas" | "mockup" | "mesh" | "surface";
       requestId: number;
     }
   | { kind: "delete"; requestId: number };
@@ -135,7 +135,7 @@ export type UiToMainMessage =
   | { type: "set-locale"; preference: LocalePreference }
   | {
       type: "save-template";
-      workspace: "canvas" | "mockup";
+      workspace: "canvas" | "mockup" | "mesh" | "surface";
       requestId: number;
       name: string;
       template: FigmaTaskTemplate;
@@ -221,7 +221,8 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
   if (value["type"] === "save-template") {
     return (
       hasExactKeys(value, ["type", "workspace", "requestId", "name", "template"]) &&
-      (value["workspace"] === "canvas" || value["workspace"] === "mockup") &&
+      (value["workspace"] === "canvas" || value["workspace"] === "mockup" ||
+        value["workspace"] === "mesh" || value["workspace"] === "surface") &&
       isRequestId(value["requestId"]) &&
       typeof value["name"] === "string" &&
       normalizeTemplateName(value["name"]) === value["name"] &&

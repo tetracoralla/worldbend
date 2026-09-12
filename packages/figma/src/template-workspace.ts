@@ -26,6 +26,8 @@ export interface TemplateWorkspaceCopy extends DesignerWorkspaceCopy {
   incompatible: string;
   mockup: string;
   sizes: string;
+  mesh: string;
+  surface: string;
 }
 
 export class TemplateWorkspaceAsyncState {
@@ -154,7 +156,7 @@ export function createTemplateWorkspace(input: {
       const detail = button.querySelector<HTMLElement>(".template-item-detail");
       if (!name || !detail) throw new Error("Missing Template item labels");
       name.textContent = template.name;
-      const kind = template.template.operation.kind === "canvas" ? copy.sizes : copy.mockup;
+      const kind = templateKindLabel(template.template.operation.kind, copy);
       const size = template.template.operation.kind === "canvas"
         ? copy.outputCount.replace("{count}", String(templateOutputCount(template.template) ?? 0))
         : copy.sourceCount.replace("{count}", String(count));
@@ -276,4 +278,14 @@ export function createTemplateWorkspace(input: {
     },
     dispose() {},
   };
+}
+
+function templateKindLabel(
+  kind: FigmaTaskTemplate["operation"]["kind"],
+  copy: TemplateWorkspaceCopy,
+): string {
+  if (kind === "canvas") return copy.sizes;
+  if (kind === "mesh") return copy.mesh;
+  if (kind === "surface") return copy.surface;
+  return copy.mockup;
 }

@@ -298,8 +298,22 @@ describe("Figma product workspace markup", () => {
     // Stored tasks may carry densities this workspace does not author; the
     // Patches select must display them instead of going blank.
     expect(surfaceSource).toContain("patchChoicesFor");
+    // Pin targets toggle anchors; they must not be draggable or nudged into
+    // a visual position the spec never took.
+    expect(surfaceSource).toContain("draggable: tool === \"handles\"");
     const meshSource = readFileSync(new URL("./mesh-workspace.ts", import.meta.url), "utf8");
     expect(meshSource).toContain('selection: "multiple"');
+  });
+
+  it("keeps Copy CSS available for Distort quads as documented", () => {
+    expect(html).toContain('id="action-copy-css"');
+    const uiSource = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+    expect(uiSource).toContain("emitCssTransform");
+    expect(uiSource).toContain("cssWarpUnsupported");
+    // A Distort quad is exactly what matrix3d represents; the documented
+    // route is Transform/Distort without Warp, not Transform alone.
+    expect(uiSource).toContain("const cssReady = menuReady && !transformInitializing && transformInputsValid &&");
+    expect(uiSource).toContain('(editorMode === "transform" || editorMode === "distort")');
   });
 
   it("lets Warp continue into Mesh without adding a Perspective mode", () => {

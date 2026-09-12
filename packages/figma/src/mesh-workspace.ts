@@ -13,6 +13,7 @@ import { createFrameCoalescer } from "./frame-coalescer";
 import type { Phase } from "./editor-state";
 import { createWorkspaceHistory, type WorkspaceHistory } from "./workspace-history";
 import { handleWorkspaceHistoryShortcut } from "./workspace-shortcuts";
+import { normalizeTemplateName } from "./stored-template-library";
 import {
   canvasPng,
   createDesignerWorkspaceShell,
@@ -28,6 +29,11 @@ import type { MainToUiMessage, UiToMainMessage } from "./messages";
 export interface MeshWorkspaceCopy extends DesignerWorkspaceCopy {
   subdivisions: string;
   pointLabel: string;
+  templateName: string;
+  templateNamePlaceholder: string;
+  saveTemplate: string;
+  savingTemplate: string;
+  templateSaved: string;
 }
 
 export interface LivePerspectiveMesh {
@@ -43,10 +49,15 @@ export function createMeshWorkspace(input: {
   post(message: UiToMainMessage): void;
   formatError(error: unknown): string;
   livePerspective?(): LivePerspectiveMesh | undefined;
-}): DesignerTaskWorkspace {
+}): DesignerTaskWorkspace & {
+  loadTemplate(spec: MeshWarpSpecInput): boolean;
+  finishTemplateSave(requestId: number, error?: string): void;
+} {
   const shell = createDesignerWorkspaceShell(input.root);
-  shell.inspector.innerHTML = `<label class="designer-field"><span data-role="subdivisions-label"></span><select data-role="subdivisions"></select></label>`;
+  shell.inspector.innerHTML = `<div class="designer-density-row" role="group" data-role="density"><button data-density="3" type="button">3×3</button><button data-density="4" type="button">4×4</button><button data-density="5" type="button">5×5</button></div><label class="designer-field"><span data-role="subdivisions-label"></span><select data-role="subdivisions"></select></label><label class="designer-field"><span data-role="template-name-label"></span><input data-role="template-name" type="text" maxlength="80" autocomplete="off"><button data-role="save-template" type="button"></button></label>`;
   const subdivisions = role<HTMLSelectElement>(shell.inspector, "subdivisions");
+  const templateName = role<HTMLInputElement>(shell.inspector, "template-name");
+  const saveTemplate = role<HTMLButtonElement>(shell.inspector, "save-template");
   for (let value = 2; value <= 16; value += 1) {
     const option = document.createElement("option");
     option.value = String(value);
@@ -66,6 +77,9 @@ export function createMeshWorkspace(input: {
   let phase: Phase = "idle";
   let undoRouted = false;
   let appliedResultPending = false;
+  let nextTemplateRequestId = 1;
+  let pendingTemplateRequestId: number | undefined;
+  let savingTemplate = false;
   // Live point moves collapse to one preview request per paint. The overlay
   // never rebuilds on a move: the dragged or nudged point is already
   // positioned by the overlay itself, and a rebuild would destroy the
@@ -94,6 +108,41 @@ export function createMeshWorkspace(input: {
   });
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
+  for (const button of shell.inspector.querySelectorAll<HTMLButtonElement>("[data-density]")) {
+    button.addEventListener("click", () => {
+      if (!spec) return;
+      const next = Number(button.dataset.density);
+      spec = { ...spec, mesh: resampleMesh(spec.mesh, next) };
+      history?.push(spec);
+      phase = "ready";
+      undoRouted = false;
+      appliedResultPending = false;
+      renderControls();
+      void render();
+    });
+  }
+  templateName.addEventListener("input", () => renderTemplateSave());
+  saveTemplate.addEventListener("click", () => {
+    const name = normalizeTemplateName(templateName.value);
+    if (!spec || !name || savingTemplate) return;
+    savingTemplate = true;
+    renderTemplateSave();
+    shell.status.textContent = input.copy().savingTemplate;
+    const requestId = nextTemplateRequestId;
+    nextTemplateRequestId += 1;
+    pendingTemplateRequestId = requestId;
+    input.post({
+      type: "save-template",
+      workspace: "mesh",
+      requestId,
+      name,
+      template: {
+        schema: "worldbend.figma-task-template",
+        version: "0.1",
+        operation: { kind: "mesh", spec: structuredClone(spec) },
+      },
+    });
+  });
 
   async function render(refreshOverlay = true): Promise<void> {
     if (!source || !spec) return;
@@ -119,7 +168,16 @@ export function createMeshWorkspace(input: {
 
   function renderControls(): void {
     subdivisions.value = String(spec?.mesh.subdivisions ?? 2);
+    for (const button of shell.inspector.querySelectorAll<HTMLButtonElement>("[data-density]")) {
+      button.setAttribute("aria-pressed", String(Number(button.dataset.density) === spec?.mesh.subdivisions));
+    }
+    templateName.disabled = busy || savingTemplate || !spec;
+    saveTemplate.disabled = busy || savingTemplate || !spec || !normalizeTemplateName(templateName.value);
     shell.applyNew.hidden = !source?.targetNodeId;
+  }
+
+  function renderTemplateSave(): void {
+    renderControls();
   }
 
   function applyVertexMoves(
@@ -257,10 +315,34 @@ export function createMeshWorkspace(input: {
       if (active) void seedAndRender();
     },
     clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    loadTemplate(next: MeshWarpSpecInput) {
+      if (!source?.sources[0]) return false;
+      spec = structuredClone(next);
+      spec.targetSize = { width: source.sources[0].renderWidth, height: source.sources[0].renderHeight };
+      baseline = structuredClone(spec);
+      history = createWorkspaceHistory(spec);
+      phase = "ready";
+      undoRouted = false;
+      appliedResultPending = false;
+      renderControls();
+      if (active) void render();
+      return true;
+    },
+    finishTemplateSave(requestId: number, error?: string) {
+      if (!savingTemplate || pendingTemplateRequestId !== requestId) return;
+      savingTemplate = false;
+      pendingTemplateRequestId = undefined;
+      shell.status.textContent = error ? "" : input.copy().templateSaved;
+      renderTemplateSave();
+      if (error) shell.showError(error);
+    },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
       role<HTMLElement>(shell.inspector, "subdivisions-label").textContent = copy.subdivisions;
+      role<HTMLElement>(shell.inspector, "template-name-label").textContent = copy.templateName;
+      templateName.placeholder = copy.templateNamePlaceholder;
+      saveTemplate.textContent = copy.saveTemplate;
       renderOverlay();
     },
     handleMainMessage(message: MainToUiMessage) {

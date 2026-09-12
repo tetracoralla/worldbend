@@ -57,7 +57,7 @@
           "dist/main.js",
           "dist/ui.html"
         ],
-        "maxRuntimeBytes": 655360,
+        "maxRuntimeBytes": 688128,
         "maxArchiveBytes": 540672,
         "maxUnpackedBytes": 2097152,
         "forbiddenSuffixes": [".py"],

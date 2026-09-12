@@ -70,18 +70,21 @@ assert.equal(surfacePlan.schema, "worldbend.surface-deformation-plan");
 assert.equal(surfacePlan.meshWarp.spec.mesh.subdivisions, 12);
 assert.equal(surfacePlan.spec.envelope.points.length, 16);
 
+const css = JSON.parse(wasm.css_json(JSON.stringify(spec), 640, 480, 640, 480));
+assert.equal(typeof css.transform, "string");
+assert.ok(String(css.transform).startsWith("matrix3d("));
 let cssFailure;
 try {
-  wasm.css_json(JSON.stringify(spec), 640, 480, 640, 480);
+  wasm.css_json(JSON.stringify({
+    ...spec,
+    content: { fit: "stretch", warp: { preset: "arc", amount: 0.25 } },
+  }), 640, 480, 640, 480);
 } catch (error) {
   cssFailure = error;
 }
-assert.equal(typeof cssFailure, "string", "Figma CSS closure must return structured JSON");
-assert.deepEqual(JSON.parse(cssFailure), {
-  code: "E_SCHEMA",
-  message: "CSS embedding is not included in this carrier build",
-});
+assert.equal(typeof cssFailure, "string", "Figma CSS must reject non-zero Warp");
+assert.equal(JSON.parse(cssFailure).code, "E_SCHEMA");
 
 process.stdout.write(
-  `Figma WASM profile smoke passed (wasmBytes=${wasmBytes.length}, template=mockup-only, css=E_SCHEMA)\n`,
+  `Figma WASM profile smoke passed (wasmBytes=${wasmBytes.length}, template=mockup-only, css=matrix3d)\n`,
 );
