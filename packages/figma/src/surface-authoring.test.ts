@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DeformationStroke } from "@worldbend/web/types";
 import { createMeshSpec } from "./mesh-workspace";
 import {
   appendStrokeSample,
@@ -6,6 +7,7 @@ import {
   envelopePointRole,
   MAX_SURFACE_ANCHORS,
   sourceUvFromWarped,
+  strokeAppendLimit,
   strokeSample,
   toggleInteriorAnchor,
   nextStrokeId,
@@ -85,5 +87,19 @@ describe("appendStrokeSample", () => {
     expect(moved.delta.x).toBeCloseTo(0.05);
     const next = appendStrokeSample(opened ?? [], "stroke-1", moved);
     expect(next?.[0]?.samples).toHaveLength(2);
+  });
+
+  it("classifies which closed capacity blocks the next sample", () => {
+    const sample = strokeSample({ x: 0.5, y: 0.5 }, undefined, 0.15, 0.5);
+    const stroke = (id: string, samples: number): DeformationStroke => ({
+      id,
+      samples: Array.from({ length: samples }, () => sample) as DeformationStroke["samples"],
+    });
+    expect(strokeAppendLimit([], "stroke-1")).toBe("none");
+    const full = Array.from({ length: 4 }, (_, index) => stroke(`stroke-${index + 1}`, 256));
+    expect(strokeAppendLimit(full, "stroke-4")).toBe("samples");
+    expect(strokeAppendLimit(full, "stroke-5")).toBe("samples");
+    expect(strokeAppendLimit(Array.from({ length: 64 }, (_, index) => stroke(`stroke-${index + 1}`, 1)), "stroke-65")).toBe("strokes");
+    expect(strokeAppendLimit([stroke("stroke-1", 256)], "stroke-1")).toBe("stroke");
   });
 });

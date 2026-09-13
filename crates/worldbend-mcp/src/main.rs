@@ -6092,10 +6092,7 @@ fn normalize_variation_worker_result(
         let Some((root_width, root_height)) = item.rendered_size() else {
             if result.plan.failure_policy != VariationFailurePolicy::Continue
                 || matches!(item, worldbend_render::VariationJobItemOutcome::Failed { error, .. }
-                    if matches!(error.code, ErrorCode::Cancelled | ErrorCode::Timeout | ErrorCode::Memory
-                        | ErrorCode::Capacity | ErrorCode::Internal | ErrorCode::Render
-                        | ErrorCode::PathOutsideRoot | ErrorCode::PathSymlink
-                        | ErrorCode::DestinationExists | ErrorCode::OutputCollision))
+                    if !worldbend_render::is_variation_item_failure(error.code))
             {
                 return Err(invalid_variation_worker_result(
                     "Variation Job worker returned a job-level failure as an item",

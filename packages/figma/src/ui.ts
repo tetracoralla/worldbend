@@ -3052,6 +3052,7 @@ function surfaceWorkspaceCopy(): SurfaceWorkspaceCopy {
     pinLimit: translate(activeLocale, "surfacePinLimit"),
     strokeLimit: translate(activeLocale, "surfaceStrokeLimit"),
     brushLimit: translate(activeLocale, "surfaceBrushLimit"),
+    strokeSampleLimit: translate(activeLocale, "surfaceStrokeSampleLimit"),
     pinLabel: translate(activeLocale, "surfacePinLabel"),
     templateName: translate(activeLocale, "templateName"),
     templateNamePlaceholder: translate(activeLocale, "templateNamePlaceholder"),

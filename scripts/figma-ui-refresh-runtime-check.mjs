@@ -206,6 +206,33 @@ async function runFixture() {
       key(get(`${panel} [data-role="tool-brush"]`), "z", { metaKey: true }); await frames();
       check(!window.fixtureMessages.slice(seenUndo).some(m => m.type === "trigger-undo"), "New brush edit incorrectly routed Undo to the host");
       check((await save()).strokes.length === 1, "Undo after publication did not retain the previous stroke");
+      get(`${panel} [data-role="reset"]`).click(); await frames();
+      const error = () => get(`${panel} [data-role="error"]`);
+      for (let stroke = 0; stroke < 4; stroke += 1) {
+        pointer("pointerdown", 0, 1);
+        for (let sample = 0; sample < 256; sample += 1) {
+          pointer("pointermove", sample % 2 ? .02 : .01, 1);
+        }
+        // Drain preview frames before the rejected sample: release must clear
+        // feedback even when there is no pending frame left to flush.
+        await frames();
+        pointer("pointermove", .03, 1); await frames();
+        check(!error().hidden && error().textContent.includes(stroke === 3 ? "Brush capacity" : "sample limit"),
+          "Brush capacity guidance did not distinguish stroke and total limits");
+        pointer("pointerup", .03, 0); await frames();
+        check(error().hidden, "Completed stroke retained obsolete capacity feedback");
+      }
+      check((await save()).strokes.every(stroke => stroke.samples.length === 256), "Capped stroke changed its samples");
+      pointer("pointerdown", 0, 1); pointer("pointermove", .03, 1); await frames();
+      check(!error().hidden && error().textContent.includes("Brush capacity"), "Full brush did not explain recovery");
+      pointer("pointerup", .03, 0); await frames();
+      check(error().hidden, "Unchanged capped gesture retained obsolete feedback");
+      pointer("pointerdown", 0, 1); pointer("pointermove", .03, 1); await frames();
+      get(`${panel} [data-role="tool-handles"]`).click(); await frames();
+      check(error().hidden, "Switching tools retained a finished brush warning");
+      get(`${panel} [data-role="tool-brush"]`).click();
+      key(get(`${panel} [data-role="tool-brush"]`), "z", { metaKey: true }); await frames();
+      check((await save()).strokes.length === 3, "Rejected gesture consumed an Undo entry");
     } else if (scenario?.startsWith("designer-")) {
       const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       for (const workspace of (scenario === "designer-publication" ? ["mesh", "surface", "mockup", "remap"] : ["mesh", "surface"])) {

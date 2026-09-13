@@ -98,20 +98,30 @@ export function strokeSample(
   };
 }
 
+/** Which closed capacity, if any, blocks appending a sample to this stroke. */
+export function strokeAppendLimit(
+  strokes: readonly DeformationStroke[],
+  strokeId: string,
+): "none" | "samples" | "strokes" | "stroke" {
+  const total = strokes.reduce((sum, stroke) => sum + stroke.samples.length, 0);
+  if (total >= MAX_SAMPLES) return "samples";
+  const index = strokes.findIndex((stroke) => stroke.id === strokeId);
+  if (index < 0) return strokes.length >= MAX_STROKES ? "strokes" : "none";
+  const current = strokes[index];
+  return current && current.samples.length >= MAX_SAMPLES_PER_STROKE ? "stroke" : "none";
+}
+
 export function appendStrokeSample(
   strokes: readonly DeformationStroke[],
   strokeId: string,
   sample: StrokeSample,
 ): DeformationStroke[] | undefined {
-  const total = strokes.reduce((sum, stroke) => sum + stroke.samples.length, 0);
-  if (total >= MAX_SAMPLES) return undefined;
+  if (strokeAppendLimit(strokes, strokeId) !== "none") return undefined;
   const index = strokes.findIndex((stroke) => stroke.id === strokeId);
   if (index < 0) {
-    if (strokes.length >= MAX_STROKES) return undefined;
     return [...strokes, { id: strokeId, samples: [sample] }];
   }
-  const current = strokes[index];
-  if (!current || current.samples.length >= MAX_SAMPLES_PER_STROKE) return undefined;
+  const current = strokes[index]!;
   const next = [...strokes];
   next[index] = { ...current, samples: [...current.samples, sample] };
   return next;

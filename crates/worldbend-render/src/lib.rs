@@ -98,8 +98,8 @@ pub use surface_deformation::{
 pub use template::{
     MAX_VARIATION_JOB_PROCESSED_PIXELS, MAX_VARIATION_JOB_SOURCE_PIXELS, VariationFileAsset,
     VariationJobFileRenderResult, VariationJobItemOutcome, VariationJobRenderOptions,
-    VariationJobRenderStatus, VariationSourceEvidence, render_variation_job_files,
-    render_variation_job_files_with_cancel,
+    VariationJobRenderStatus, VariationSourceEvidence, is_variation_item_failure,
+    render_variation_job_files, render_variation_job_files_with_cancel,
 };
 #[cfg(feature = "timeline")]
 pub use timeline::{

@@ -248,7 +248,7 @@ pub fn render_variation_job_files_with_cancel(
                 rendered_count += 1;
                 items.push(rendered);
             }
-            Err(error) if continue_on_item_failure && is_item_failure(error.code) => {
+            Err(error) if continue_on_item_failure && is_variation_item_failure(error.code) => {
                 let item_directory = staging.path().join(&item.id);
                 if item_directory.exists() {
                     fs::remove_dir_all(item_directory).map_err(render_io(
@@ -645,7 +645,7 @@ fn decode_assets(
                 });
                 decoded.insert(asset_id.clone(), image);
             }
-            Err(error) if continue_on_item_failure && is_item_failure(error.code) => {
+            Err(error) if continue_on_item_failure && is_variation_item_failure(error.code) => {
                 errors.insert(asset_id.clone(), error);
             }
             Err(error) => return Err(error),
@@ -732,7 +732,10 @@ fn check_cancelled(is_cancelled: &(dyn Fn() -> bool + Sync)) -> TransformResult<
     Ok(())
 }
 
-fn is_item_failure(code: ErrorCode) -> bool {
+/// Whether a failure code is item-local under `continue`. The same closed
+/// set is the MCP controller's worker-trust boundary, so both sides share
+/// this one predicate and cannot drift apart.
+pub fn is_variation_item_failure(code: ErrorCode) -> bool {
     !matches!(
         code,
         ErrorCode::Cancelled
@@ -1225,6 +1228,53 @@ mod tests {
             VariationJobItemOutcome::Rendered { .. }
         ));
         assert_eq!(result.cumulative_processed_pixels, 8);
+    }
+
+    #[test]
+    fn continue_source_budget_failure_keeps_evidence_equal_to_total() {
+        let directory = tempfile::tempdir().unwrap();
+        let large = directory.path().join("large.png");
+        let small = directory.path().join("small.png");
+        RgbaImage::from_pixel(4, 2, Rgba([18, 52, 86, 255]))
+            .save(&large)
+            .unwrap();
+        RgbaImage::from_pixel(2, 2, Rgba([18, 52, 86, 255]))
+            .save(&small)
+            .unwrap();
+        let mut job = spec(SpatialTemplateOutput::Single { id: "hero".into() });
+        job.failure_policy = VariationFailurePolicy::Continue;
+        job.items[1].bindings[0].asset_id = "asset-b".into();
+        let output = directory.path().join("job");
+        let result = render_variation_job_files(
+            &HashMap::from([("asset-a".into(), large), ("asset-b".into(), small)]),
+            &job,
+            &output,
+            VariationJobRenderOptions {
+                max_source_pixels: 4,
+                ..VariationJobRenderOptions::default()
+            },
+            false,
+        )
+        .unwrap();
+        // The over-budget decode is a failed item, not a poisoned job; only the
+        // asset that fits remains as evidence, keeping the controller's
+        // source-pixel sum equal to the reported cumulative total.
+        assert!(
+            matches!(&result.items[0], VariationJobItemOutcome::Failed { error, .. } if error.code == ErrorCode::OutputLimit)
+        );
+        assert!(matches!(
+            &result.items[1],
+            VariationJobItemOutcome::Rendered { .. }
+        ));
+        assert_eq!(result.cumulative_source_pixels, 4);
+        assert_eq!(result.sources.len(), 1);
+        assert_eq!(result.sources[0].asset_id, "asset-b");
+        assert_eq!(
+            u64::from(result.sources[0].width) * u64::from(result.sources[0].height),
+            result.cumulative_source_pixels
+        );
+        assert!(!output.join("sku-a").exists());
+        assert!(output.join("sku-b/hero.png").is_file());
     }
 
     #[test]

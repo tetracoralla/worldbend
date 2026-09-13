@@ -24,6 +24,7 @@ import {
   nextStrokeId,
   sourceUvFromWarped,
   warpedFromSource,
+  strokeAppendLimit,
   strokeSample,
   toggleInteriorAnchor,
 } from "./surface-authoring";
@@ -64,6 +65,7 @@ export interface SurfaceWorkspaceCopy extends DesignerWorkspaceCopy {
   pinLimit: string;
   strokeLimit: string;
   brushLimit: string;
+  strokeSampleLimit: string;
   pinLabel: string;
 }
 
@@ -143,7 +145,7 @@ export function createSurfaceWorkspace(input: {
     lastUv: Point; mesh: WarpMesh; coordinates: ReturnType<typeof planeCoordinates>;
     applied: boolean; undoRouted: boolean;
   } | undefined;
-  let brushLimitReached = false;
+  let brushLimitReason: "samples" | "stroke" | undefined;
   let brushHover: Point | undefined;
   let nextTemplateRequestId = 1;
   let pendingTemplateRequestId: number | undefined;
@@ -158,7 +160,7 @@ export function createSurfaceWorkspace(input: {
   shell.back.addEventListener("click", input.onBack);
   shell.reset.addEventListener("click", () => {
     if (!baseline || busy) return;
-    finishBrush(); overlay?.interrupt(); brushLimitReached = false;
+    finishBrush(); overlay?.interrupt(); brushLimitReason = undefined;
     spec = structuredClone(baseline);
     history?.push(spec);
     phase = "ready";
@@ -220,7 +222,7 @@ export function createSurfaceWorkspace(input: {
     if (!uv) return;
     const id = nextStrokeId(spec.strokes ?? []);
     if (!id) { shell.showError(input.copy().strokeLimit); return; }
-    brushLimitReached = false;
+    brushLimitReason = undefined;
     brushHover = uv;
     brush = { pointerId: event.pointerId, id, origin: spec, lastUv: uv, mesh: lastMesh, coordinates,
       applied: appliedResultPending, undoRouted };
@@ -270,7 +272,7 @@ export function createSurfaceWorkspace(input: {
         "preview",
       );
       fitPreviewCanvas(renderer.canvas, shell.preview);
-      shell.showError(brushLimitReached ? input.copy().brushLimit : undefined);
+      shell.showError(brushCapacityMessage());
       if (refreshOverlay) renderOverlay();
       else drawLattice(spec.envelope);
       shell.apply.disabled = busy || refreshing;
@@ -456,7 +458,7 @@ export function createSurfaceWorkspace(input: {
   }
 
   function restoreHistory(restored: SurfaceDeformationSpecInput): void {
-    brushLimitReached = false;
+    brushLimitReason = undefined;
     spec = restored;
     renderControls();
     void render();
@@ -495,7 +497,7 @@ export function createSurfaceWorkspace(input: {
       phase = "ready";
       undoRouted = false;
       appliedResultPending = false;
-      brushLimitReached = false;
+      brushLimitReason = undefined;
       renderControls();
       if (active) void render();
       return true;
@@ -535,7 +537,7 @@ export function createSurfaceWorkspace(input: {
         if (active) void render();
         return;
       }
-      brushLimitReached = false;
+      brushLimitReason = undefined;
       const first = next.sources[0];
       if (!first) return;
       spec = nextTask(next) ?? createSurfaceSpec(first.renderWidth, first.renderHeight);
@@ -546,7 +548,7 @@ export function createSurfaceWorkspace(input: {
       renderControls();
       if (active) void seedAndRender();
     },
-    clearSource(error) { refreshing = false; finishBrush(); brushHover = undefined; brushLimitReached = false; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { refreshing = false; finishBrush(); brushHover = undefined; brushLimitReason = undefined; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -590,12 +592,12 @@ export function createSurfaceWorkspace(input: {
   };
 
   function setTool(next: SurfaceTool): void {
+    finishBrush();
     if (next !== tool) {
       brushHover = undefined;
-      if (next !== "brush") brushLimitReached = false;
+      if (next !== "brush") brushLimitReason = undefined;
     }
     tool = next;
-    finishBrush();
     renderControls();
     renderOverlay();
   }
@@ -612,19 +614,35 @@ export function createSurfaceWorkspace(input: {
     if (Number(strength.value) === 0) { brush.lastUv = uv; return; }
     const next = appendStrokeSample(spec.strokes ?? [], brush.id,
       strokeSample(uv, brush.lastUv, Number(radius.value), Number(strength.value)));
-    if (!next) { brushLimitReached = true; shell.showError(input.copy().brushLimit); return; }
+    if (!next) {
+      brushLimitReason = strokeAppendLimit(spec.strokes ?? [], brush.id) === "stroke" ? "stroke" : "samples";
+      shell.showError(brushCapacityMessage());
+      return;
+    }
     brush.lastUv = uv;
     spec = { ...spec, strokes: next };
     phase = "ready"; undoRouted = false; appliedResultPending = false;
     moveFrames.request();
   }
 
+  function brushCapacityMessage(): string | undefined {
+    if (brushLimitReason === undefined) return undefined;
+    const copy = input.copy();
+    return brushLimitReason === "stroke" ? copy.strokeSampleLimit : copy.brushLimit;
+  }
+
   function finishBrush(cancel = false): void {
     if (!brush) return;
     const completed = brush; brush = undefined;
+    // A finished gesture ends its capacity feedback; the next capped sample
+    // re-raises it, so guidance never outlives the stroke it describes.
+    if (brushLimitReason !== undefined && shell.error.textContent === brushCapacityMessage()) {
+      shell.showError();
+    }
+    brushLimitReason = undefined;
     if (cancel) {
       spec = completed.origin; appliedResultPending = completed.applied; undoRouted = completed.undoRouted;
-      brushLimitReached = false; moveFrames.cancel(); void render(false);
+      moveFrames.cancel(); void render(false);
     } else if (spec !== completed.origin) {
       commitEdit(); moveFrames.flush();
     }
