@@ -825,7 +825,10 @@ impl TryFrom<VariationRenderOptionsInput> for VariationJobRenderOptions {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct VariationRenderInput {
-    #[schemars(description = "One unique entry for every distinct assetId in the job")]
+    #[schemars(
+        length(max = 64),
+        description = "Unique entries for bound assetId values. Under continue, omitted assets fail their items; invalid paths still abort the job."
+    )]
     assets: Vec<VariationAssetInput>,
     spec: VariationJobSpec,
     #[schemars(description = "New relative output directory under the granted workspace root")]
@@ -2428,10 +2431,13 @@ impl TryFrom<VariationRenderInput> for VariationRenderRequest {
                 "maximum": MCP_MAX_VARIATION_OUTPUTS,
             })));
         }
-        if value.assets.is_empty() || value.assets.len() > worldbend_core::MAX_VARIATION_JOB_ITEMS {
+        if (value.assets.is_empty()
+            && value.spec.failure_policy != VariationFailurePolicy::Continue)
+            || value.assets.len() > worldbend_core::MAX_VARIATION_JOB_ITEMS
+        {
             return Err(TransformError::new(
                 ErrorCode::Schema,
-                "Variation Job assets must contain between 1 and 64 entries",
+                "Variation Job assets allow at most 64 entries; an empty set requires continue",
             ));
         }
         let mut ids = HashSet::with_capacity(value.assets.len());
@@ -5955,6 +5961,8 @@ async fn run_variation_worker(
         });
     }
     let staged_output = staging.path().join("result-set");
+    let expected_plan = plan_variation_job(&input.spec)?;
+    let expected_options = input.options;
     let request = WorkerRequest::VariationJob {
         assets: staged_assets,
         spec: input.spec,
@@ -5976,6 +5984,8 @@ async fn run_variation_worker(
         let mut result = result;
         normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output_for_normalize,
             &output_directory,
             dry_run,
@@ -6023,15 +6033,18 @@ async fn run_variation_worker(
 
 fn normalize_variation_worker_result(
     result: &mut VariationJobFileRenderResult,
+    expected_plan: &VariationJobPlan,
+    expected_options: VariationJobRenderOptions,
     staged_output: &std::path::Path,
     output_directory: &str,
     dry_run: bool,
     is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<()> {
-    if result.plan.items.len() != result.items.len()
+    if result.plan != *expected_plan
+        || result.plan.items.len() != result.items.len()
         || result.plan.output_count > MCP_MAX_VARIATION_OUTPUTS
-        || result.cumulative_source_pixels > MCP_MAX_VARIATION_SOURCE_PIXELS
-        || result.cumulative_processed_pixels > MCP_MAX_VARIATION_PROCESSED_PIXELS
+        || result.cumulative_source_pixels > expected_options.max_source_pixels
+        || result.cumulative_processed_pixels > expected_options.max_processed_pixels
     {
         return Err(invalid_variation_worker_result(
             "Variation Job worker result exceeds its correlated plan or Agent limits",
@@ -6043,13 +6056,22 @@ fn normalize_variation_worker_result(
         .iter()
         .collect::<std::collections::HashSet<_>>();
     let mut distinct_sources = std::collections::HashSet::new();
+    let mut evidenced_source_pixels = 0_u64;
     if result.sources.iter().any(|source| {
+        let pixels = u64::from(source.width).checked_mul(u64::from(source.height));
+        evidenced_source_pixels = pixels
+            .and_then(|pixels| evidenced_source_pixels.checked_add(pixels))
+            .unwrap_or(u64::MAX);
         !known_assets.contains(&source.asset_id)
             || !distinct_sources.insert(&source.asset_id)
             || source.width == 0
             || source.height == 0
+            || source.width > expected_options.limits.max_width
+            || source.height > expected_options.limits.max_height
+            || pixels.is_none_or(|pixels| pixels > expected_options.limits.max_pixels)
             || !valid_sha256(&source.source_sha256)
-    }) {
+    }) || evidenced_source_pixels != result.cumulative_source_pixels
+    {
         return Err(invalid_variation_worker_result(
             "Variation Job worker source result does not match its plan",
         ));
@@ -6058,13 +6080,27 @@ fn normalize_variation_worker_result(
 
     let mut expected_directories = Vec::new();
     let mut encoded_bytes = 0_u64;
-    for (planned, item) in result.plan.items.iter().zip(&mut result.items) {
-        if planned.id != item.id() || planned.bindings != item.bindings() {
+    for (index, (planned, item)) in result.plan.items.iter().zip(&mut result.items).enumerate() {
+        if item.index() as usize != index
+            || planned.id != item.id()
+            || planned.bindings != item.bindings()
+        {
             return Err(invalid_variation_worker_result(
                 "Variation Job worker item does not match its ordered plan",
             ));
         }
         let Some((root_width, root_height)) = item.rendered_size() else {
+            if result.plan.failure_policy != VariationFailurePolicy::Continue
+                || matches!(item, worldbend_render::VariationJobItemOutcome::Failed { error, .. }
+                    if matches!(error.code, ErrorCode::Cancelled | ErrorCode::Timeout | ErrorCode::Memory
+                        | ErrorCode::Capacity | ErrorCode::Internal | ErrorCode::Render
+                        | ErrorCode::PathOutsideRoot | ErrorCode::PathSymlink
+                        | ErrorCode::DestinationExists | ErrorCode::OutputCollision))
+            {
+                return Err(invalid_variation_worker_result(
+                    "Variation Job worker returned a job-level failure as an item",
+                ));
+            }
             continue;
         };
         let item_id = item.id().to_owned();
@@ -8371,9 +8407,13 @@ mod tests {
             false,
         )
         .unwrap();
+        let expected_plan = result.plan.clone();
+        let expected_options = VariationJobRenderOptions::default();
 
         normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output,
             "outputs/job",
             false,
@@ -8388,6 +8428,8 @@ mod tests {
         fs::write(staged_output.join("sku-a/hero.png"), b"tampered").unwrap();
         let error = normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output,
             "outputs/job",
             false,
@@ -8411,6 +8453,19 @@ mod tests {
             id: id.to_owned(),
             source: "asset.png".to_owned(),
         };
+
+        for (policy, allowed) in [
+            (VariationFailurePolicy::Continue, true),
+            (VariationFailurePolicy::AllOrNone, false),
+        ] {
+            let mut empty = spec.clone();
+            empty.failure_policy = policy;
+            let input: VariationRenderInput = serde_json::from_value(json!({
+                "assets": [], "spec": empty, "outputDirectory": "outputs/empty"
+            }))
+            .unwrap();
+            assert_eq!(VariationRenderRequest::try_from(input).is_ok(), allowed);
+        }
 
         spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
         prepare_variation_render_request(
@@ -8474,6 +8529,8 @@ mod tests {
             false,
         )
         .unwrap();
+        let expected_plan = result.plan.clone();
+        let expected_options = VariationJobRenderOptions::default();
         assert!(matches!(
             result.items[1],
             VariationJobItemOutcome::Failed { .. }
@@ -8481,6 +8538,8 @@ mod tests {
 
         normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output,
             "outputs/job",
             false,
@@ -8493,9 +8552,54 @@ mod tests {
         );
         assert!(!staged_output.join("sku-b").exists());
 
+        let mut wrong_index = result.clone();
+        if let VariationJobItemOutcome::Failed { index, .. } = &mut wrong_index.items[1] {
+            *index = 0;
+        }
+        let mut wrong_policy = result.clone();
+        wrong_policy.plan.failure_policy = VariationFailurePolicy::AllOrNone;
+        let mut cancelled = result.clone();
+        if let VariationJobItemOutcome::Failed { error, .. } = &mut cancelled.items[1] {
+            error.code = ErrorCode::Cancelled;
+        }
+        let mut wrong_source_total = result.clone();
+        wrong_source_total.cumulative_source_pixels += 1;
+        for mut invalid in [wrong_index, wrong_policy, cancelled, wrong_source_total] {
+            let error = normalize_variation_worker_result(
+                &mut invalid,
+                &expected_plan,
+                expected_options,
+                &staged_output,
+                "outputs/job",
+                false,
+                &|| false,
+            )
+            .unwrap_err();
+            assert_eq!(error.code, ErrorCode::Internal);
+        }
+
+        let mut over_request_budget = result.clone();
+        let restricted_options = VariationJobRenderOptions {
+            max_processed_pixels: result.cumulative_processed_pixels - 1,
+            ..expected_options
+        };
+        let error = normalize_variation_worker_result(
+            &mut over_request_budget,
+            &expected_plan,
+            restricted_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+
         result.sources.push(result.sources[0].clone());
         let duplicate = normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output,
             "outputs/job",
             false,
@@ -8507,6 +8611,8 @@ mod tests {
         result.sources.clear();
         let unevidenced = normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output,
             "outputs/job",
             false,
@@ -8534,6 +8640,8 @@ mod tests {
             false,
         )
         .unwrap();
+        let expected_plan = result.plan.clone();
+        let expected_options = VariationJobRenderOptions::default();
         assert!(
             result
                 .items
@@ -8544,6 +8652,8 @@ mod tests {
 
         normalize_variation_worker_result(
             &mut result,
+            &expected_plan,
+            expected_options,
             &staged_output,
             "outputs/job",
             false,

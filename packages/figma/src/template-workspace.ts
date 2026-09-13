@@ -43,6 +43,10 @@ export class TemplateWorkspaceAsyncState {
 
   leave(): void {
     this.active = false;
+    this.sourceChanged();
+  }
+
+  sourceChanged(): void {
     this.useGeneration += 1;
     this.usingTemplate = false;
   }
@@ -241,8 +245,9 @@ export function createTemplateWorkspace(input: {
       shell.root.hidden = true;
       confirmingDelete = false;
     },
-    setSource(next) { source = next; render(); },
-    clearSource(error) { source = undefined; if (asyncState.active) shell.showError(error); render(); },
+    selectionLoading() { asyncState.sourceChanged(); source = undefined; render(); },
+    setSource(next) { asyncState.sourceChanged(); source = next; render(); },
+    clearSource(error) { asyncState.sourceChanged(); source = undefined; if (asyncState.active) shell.showError(error); render(); },
     updateLocale() { render(); },
     handleMainMessage(message: MainToUiMessage) {
       if (message.type === "template-library") {

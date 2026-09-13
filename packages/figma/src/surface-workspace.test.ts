@@ -26,18 +26,26 @@ describe("identityEnvelope", () => {
 });
 
 describe("resampleEnvelope", () => {
-  it("keeps a 1×1 interior handle when splitting to 2×2", () => {
+  it("splits and merges a curved cubic envelope without changing its control data", () => {
     const envelope = identityEnvelope(1, 1);
     envelope.points[5] = { x: 0.4, y: 0.45 };
     const next = resampleEnvelope(envelope, 2, 2);
-    expect(next.columns).toBe(2);
-    expect(next.rows).toBe(2);
     expect(next.points).toHaveLength(49);
-    expect(next.points[0]).toEqual({ x: 0, y: 0 });
-    expect(next.points[6]).toEqual({ x: 1, y: 0 });
-    const sampled = next.points[16];
-    expect(sampled?.x).toBeCloseTo(0.4, 6);
-    expect(sampled?.y).toBeCloseTo(0.45, 6);
+    const merged = resampleEnvelope(next, 1, 1);
+    for (let i = 0; i < envelope.points.length; i += 1) {
+      expect(merged.points[i]!.x).toBeCloseTo(envelope.points[i]!.x, 12);
+      expect(merged.points[i]!.y).toBeCloseTo(envelope.points[i]!.y, 12);
+    }
+    // A split control is the exact half-interval derivative, not a sample of
+    // the original control polygon (which would change the rendered curve).
+    expect(next.points[8]!.x).toBeCloseTo(0.18333333333333332, 12);
+    expect(next.points[8]!.y).toBeCloseTo(0.19583333333333333, 12);
+  });
+
+  it("rejects removing a split required by the authored shape", () => {
+    const envelope = identityEnvelope(2, 2);
+    envelope.points[8] = { x: 0.2, y: 0.2 };
+    expect(() => resampleEnvelope(envelope, 1, 1)).toThrow("need these splits");
   });
 
   it("returns the same envelope when patch density is unchanged", () => {

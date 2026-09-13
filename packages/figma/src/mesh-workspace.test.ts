@@ -33,6 +33,7 @@ describe("resampleMesh", () => {
     center.warped = { x: 0.4, y: 0.6 };
     const next = resampleMesh(mesh, 4);
     expect(vertex(next, 2, 2)?.warped).toEqual({ x: 0.4, y: 0.6 });
+    expect(vertex(next, 1, 1)?.warped).toEqual({ x: 0.2, y: 0.3 });
     expect(vertex(next, 0, 0)?.warped).toEqual({ x: 0, y: 0 });
     expect(vertex(next, 4, 4)?.warped).toEqual({ x: 1, y: 1 });
   });

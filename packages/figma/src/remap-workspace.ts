@@ -11,6 +11,7 @@ import {
   fitPreviewCanvas,
   postDesignerResult,
   sameDesignerSelection,
+  canRetainDesignerDraft,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -63,7 +64,9 @@ export function createRemapWorkspace(input: {
   let baseline: RemapSpecInput | undefined;
   let history: WorkspaceHistory<RemapSpecInput> | undefined;
   let generation = 0;
+  let publicationEpoch = 0;
   let busy = false;
+  let refreshing = false;
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
@@ -185,7 +188,7 @@ export function createRemapWorkspace(input: {
   }
 
   async function render(high = false): Promise<boolean> {
-    if (!source || !spec) return false;
+    if (!active || (!high && busy) || !source || !spec) return false;
     const current = ++generation;
     try {
       const plan = await planRemap(spec);
@@ -193,7 +196,7 @@ export function createRemapWorkspace(input: {
       const map = plan.requiresMap ? source.sources[1]?.image : undefined;
       if (plan.requiresMap && !map) {
         shell.showError(input.copy().mapRequired);
-        shell.apply.disabled = true;
+        shell.apply.disabled = true; shell.applyNew.disabled = true;
         return false;
       }
       // Preview draws the validated program at the shared capped axis; the
@@ -206,27 +209,39 @@ export function createRemapWorkspace(input: {
         high ? undefined : scaledPreviewSize(spec.output.width, spec.output.height),
       );
       fitPreviewCanvas(renderer.canvas, shell.preview);
-      shell.showError(); shell.apply.disabled = false;
+      shell.showError(); shell.apply.disabled = busy || refreshing; shell.applyNew.disabled = busy || refreshing;
       return true;
     } catch (error) {
       if (current !== generation) return false;
-      shell.showError(input.formatError(error)); shell.apply.disabled = true;
+      shell.showError(input.formatError(error)); shell.apply.disabled = true; shell.applyNew.disabled = true;
       return false;
     }
   }
 
   async function apply(duplicate: boolean): Promise<void> {
-    if (!source || !spec || busy) return;
+    if (!active || !source || !spec || busy || refreshing) return;
+
+    liveFrames.cancel();
+    const appliedSource = source;
+    const appliedSpec = spec;
+    const epoch = ++publicationEpoch;
+    const current = () => active && publicationEpoch === epoch && source === appliedSource && spec === appliedSpec;
     busy = true;
     phase = "applying";
-    // A queued preview frame must not redraw capped pixels over the full
-    // resolution output between render and encode.
-    liveFrames.cancel();
-    shell.setBusy(true); shell.status.textContent = input.copy().applying;
+    shell.setBusy(true);
+    shell.status.textContent = input.copy().applying;
     try {
-      if (!(await render(true))) throw new Error("Remap output is invalid");
-      postDesignerResult({ post: input.post, source, task: { kind: "remap", spec }, bytes: await renderer.exportPng(), width: spec.output.width, height: spec.output.height, duplicate });
-    } catch (error) { busy = false; phase = "ready"; shell.setBusy(false); shell.showError(input.formatError(error)); }
+      const valid = await render(true);
+      if (!current()) return;
+      if (!valid) throw new Error("Remap output is invalid");
+      const bytes = await renderer.exportPng();
+      if (!current()) return;
+      postDesignerResult({ post: input.post, source: appliedSource, task: { kind: "remap", spec: appliedSpec },
+        bytes, width: appliedSpec.output.width, height: appliedSpec.output.height, duplicate });
+    } catch (error) {
+      if (!current()) return;
+      busy = false; phase = "ready"; shell.setBusy(false); renderControls(); shell.showError(input.formatError(error));
+    }
   }
 
   function commitHistory(): void {
@@ -244,11 +259,26 @@ export function createRemapWorkspace(input: {
   }
 
   return {
-    enter() { active = true; shell.root.hidden = false; void render(false); }, leave() { active = false; shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
+    enter() { active = true; shell.root.hidden = false; void render(false); }, leave() { publicationEpoch += 1; active = false; busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false); shell.root.hidden = true; generation += 1; liveFrames.cancel(); },
+    selectionLoading() {
+
+      refreshing = true; publicationEpoch += 1; generation += 1; liveFrames.cancel();
+      busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false);
+      shell.apply.disabled = true; shell.applyNew.disabled = true;
+    },
     setSource(next) {
+      refreshing = false;
+      const retain = canRetainDesignerDraft(source, next) && spec !== undefined;
+
+      publicationEpoch += 1; generation += 1; liveFrames.cancel();
       busy = false; shell.setBusy(false);
       if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
+      if (retain) {
+        renderControls();
+        if (active) void render();
+        return;
+      }
       const first = next.sources[0]; if (!first) return;
       spec = next.task?.kind === "remap" ? structuredClone(next.task.spec) : defaultRemap(first.renderWidth, first.renderHeight, next.sources.length > 1);
       baseline = structuredClone(spec);
@@ -257,7 +287,7 @@ export function createRemapWorkspace(input: {
       undoRouted = false;
       renderControls(); if (active) void render();
     },
-    clearSource(error) { busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { refreshing = false; publicationEpoch += 1; generation += 1; liveFrames.cancel(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; shell.applyNew.disabled = true; },
     updateLocale() {
       const copy = input.copy(); shell.setCopy(copy);
       for (const [name, text] of [["mode-label", copy.mode], ["width-label", copy.width], ["height-label", copy.height], ["k1-label", copy.k1], ["k2-label", copy.k2], ["k3-label", copy.k3], ["p1-label", copy.p1], ["p2-label", copy.p2], ["center-x-label", copy.centerX], ["center-y-label", copy.centerY], ["lens-scale-x-label", copy.scaleX], ["lens-scale-y-label", copy.scaleY], ["x-channel-label", copy.xChannel], ["y-channel-label", copy.yChannel], ["scale-x-label", copy.scaleX], ["scale-y-label", copy.scaleY], ["neutral-label", copy.neutral], ["boundary-label", copy.boundary]] as const) role<HTMLElement>(shell.inspector, name).textContent = text;
@@ -282,7 +312,7 @@ export function createRemapWorkspace(input: {
       const result = handleWorkspaceHistoryShortcut({ event, phase, appliedResultPending, undoRouted, history, post: input.post, restore: restoreHistory });
       undoRouted = result.undoRouted;
       return result.handled;
-    }, dispose() { liveFrames.cancel(); renderer.dispose(); },
+    }, dispose() { publicationEpoch += 1; generation += 1; active = false; liveFrames.cancel(); renderer.dispose(); },
   };
 
   function number(name: string): number { return Number((controls[name] as HTMLInputElement).value); }

@@ -20,6 +20,7 @@ import {
   numericInput,
   postDesignerResult,
   sameDesignerSelection,
+  canRetainDesignerDraft,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -97,7 +98,9 @@ export function createMockupWorkspace(input: {
   let overlay: DirectPointOverlay | undefined;
   const renderer = new TransformWebGLRenderer(document.createElement("canvas"), { preserveDrawingBuffer: true });
   let generation = 0;
+  let publicationEpoch = 0;
   let busy = false;
+  let refreshing = false;
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
@@ -175,7 +178,7 @@ export function createMockupWorkspace(input: {
   }
 
   async function render(quality: "preview" | "high" = "preview", refreshOverlay = true): Promise<boolean> {
-    if (!source || !spec) return false;
+    if (!active || (quality === "preview" && busy) || !source || !spec) return false;
     const currentGeneration = ++generation;
     try {
       const geometryKey = mockupGeometryFingerprint(spec);
@@ -244,8 +247,8 @@ export function createMockupWorkspace(input: {
         if (plane.grid) drawGrid(context, plane.grid, 1 / factor);
       }
       shell.showError();
-      shell.apply.disabled = false;
-      if (refreshOverlay) renderOverlay();
+      shell.apply.disabled = busy || refreshing; shell.applyNew.disabled = busy || refreshing;
+      if (refreshOverlay && quality === "preview") renderOverlay();
       return true;
     } catch (error) {
       if (currentGeneration !== generation) return false;
@@ -253,7 +256,7 @@ export function createMockupWorkspace(input: {
       previewGeometryKey = "";
       planeLayers.length = 0;
       shell.showError(input.formatError(error));
-      shell.apply.disabled = true;
+      shell.apply.disabled = true; shell.applyNew.disabled = true;
       return false;
     }
   }
@@ -308,22 +311,28 @@ export function createMockupWorkspace(input: {
   }
 
   async function apply(duplicate: boolean): Promise<void> {
-    if (!source || !spec || busy) return;
+    if (!active || !source || !spec || busy || refreshing) return;
+    overlay?.interrupt();
+    previewFrames.cancel();
+    const appliedSource = source;
+    const appliedSpec = spec;
+    const epoch = ++publicationEpoch;
+    const current = () => active && publicationEpoch === epoch && source === appliedSource && spec === appliedSpec;
     busy = true;
     phase = "applying";
-    // A queued preview frame must not redraw capped pixels over the full
-    // resolution output between render and encode.
-    previewFrames.cancel();
     shell.setBusy(true);
     shell.status.textContent = input.copy().applying;
     try {
-      if (!(await render("high"))) throw new Error("Mockup output is invalid");
-      postDesignerResult({ post: input.post, source, task: { kind: "mockup", spec }, bytes: await canvasPng(canvas), width: spec.canvas.width, height: spec.canvas.height, duplicate });
+      const valid = await render("high");
+      if (!current()) return;
+      if (!valid) throw new Error("Mockup output is invalid");
+      const bytes = await canvasPng(canvas);
+      if (!current()) return;
+      postDesignerResult({ post: input.post, source: appliedSource, task: { kind: "mockup", spec: appliedSpec },
+        bytes, width: appliedSpec.canvas.width, height: appliedSpec.canvas.height, duplicate });
     } catch (error) {
-      busy = false;
-      phase = "ready";
-      shell.setBusy(false);
-      shell.showError(input.formatError(error));
+      if (!current()) return;
+      busy = false; phase = "ready"; shell.setBusy(false); renderControls(); shell.showError(input.formatError(error));
     }
   }
 
@@ -394,12 +403,28 @@ export function createMockupWorkspace(input: {
 
   return {
     enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
-    leave() { overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; previewFrames.cancel(); previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; },
+    leave() { overlay?.interrupt(); publicationEpoch += 1; active = false; busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false); shell.root.hidden = true; generation += 1; previewFrames.cancel(); previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; },
+    selectionLoading() {
+      overlay?.interrupt();
+      refreshing = true; publicationEpoch += 1; generation += 1; previewFrames.cancel();
+      busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false);
+      shell.apply.disabled = true; shell.applyNew.disabled = true;
+    },
     setSource(next) {
+      refreshing = false;
+      const retain = canRetainDesignerDraft(source, next) && spec !== undefined;
+
+      publicationEpoch += 1; generation += 1; previewFrames.cancel();
       busy = false;
       shell.setBusy(false);
       if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
+      if (retain) {
+        renderControls();
+        previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0;
+        if (active) void render();
+        return;
+      }
       previewPlan = undefined;
       previewGeometryKey = "";
       planeLayers.length = 0;
@@ -417,7 +442,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; shell.showError(error); shell.apply.disabled = true; renderTemplateSave(); },
+    clearSource(error) { refreshing = false; publicationEpoch += 1; generation += 1; previewFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; shell.showError(error); shell.apply.disabled = true; shell.applyNew.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -471,7 +496,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (error) shell.showError(error);
     },
-    dispose() { previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
+    dispose() { publicationEpoch += 1; generation += 1; active = false; previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }
 

@@ -114,7 +114,12 @@ export function createDirectPointOverlay(input: {
   canvas: HTMLCanvasElement;
   onMove(id: string, point: { x: number; y: number }, final: boolean): void;
   onMoves?(moves: readonly DirectPointMove[], final: boolean): void;
-  onActivate?(id: string, event: PointerEvent): boolean;
+  onActivate?(id: string, event: MouseEvent): boolean;
+  /** Core-solved model coordinates <-> normalized visible canvas coordinates. */
+  coordinates?: {
+    project(point: DirectPointPosition): DirectPointPosition;
+    unproject(point: DirectPointPosition): DirectPointPosition;
+  };
   bounds?: DirectPointBounds;
   selection?: DirectPointSelection;
   /** False when the points are activation-only targets, not movable. */
@@ -125,6 +130,8 @@ export function createDirectPointOverlay(input: {
   input.host.append(layer);
   const bounds = input.bounds ?? DEFAULT_BOUNDS;
   const multiple = input.selection === "multiple";
+  const project = (point: DirectPointPosition) => input.coordinates?.project(point) ?? point;
+  const unproject = (point: DirectPointPosition) => input.coordinates?.unproject(point) ?? point;
   let points: DirectPoint[] = [];
   let selected = new Set<string>();
   let grabOrigins: Record<string, DirectPointPosition> = {};
@@ -149,6 +156,7 @@ export function createDirectPointOverlay(input: {
     hostBox: DOMRect,
     point: DirectPointPosition,
   ): void => {
+    point = project(point);
     button.style.left = `${canvasBox.left - hostBox.left + point.x * canvasBox.width}px`;
     button.style.top = `${canvasBox.top - hostBox.top + point.y * canvasBox.height}px`;
   };
@@ -209,10 +217,10 @@ export function createDirectPointOverlay(input: {
 
   const pointFromClient = (clientX: number, clientY: number): DirectPointPosition => {
     const box = input.canvas.getBoundingClientRect();
-    return clampPoint({
+    return clampPoint(unproject({
       x: (clientX - grabOffset.x - box.left) / Math.max(1, box.width),
       y: (clientY - grabOffset.y - box.top) / Math.max(1, box.height),
-    });
+    }));
   };
 
   const gesture = createDirectPointGestureSession({
@@ -295,11 +303,12 @@ export function createDirectPointOverlay(input: {
   const beginDrag = (event: PointerEvent, point: DirectPoint, button: HTMLButtonElement): void => {
     const tracked = points.find((candidate) => candidate.id === point.id) ?? point;
     const box = input.canvas.getBoundingClientRect();
+    const visible = project(tracked);
     // The whole hit target is draggable. Keep the grabbed offset so an
     // off-center press does not move the point before the pointer moves.
     grabOffset = {
-      x: event.clientX - (box.left + tracked.x * box.width),
-      y: event.clientY - (box.top + tracked.y * box.height),
+      x: event.clientX - (box.left + visible.x * box.width),
+      y: event.clientY - (box.top + visible.y * box.height),
     };
     capturedButton = button;
     button.dataset.activePointerId = String(event.pointerId);
@@ -330,6 +339,10 @@ export function createDirectPointOverlay(input: {
       button.dataset.pointId = point.id;
       button.className = point.tone ? `direct-point direct-point--${point.tone}` : "direct-point";
       button.setAttribute("aria-label", point.label);
+      if (input.draggable === false) button.setAttribute("aria-pressed", String(point.tone === "anchor"));
+      button.addEventListener("click", (event) => {
+        if (event.detail === 0) input.onActivate?.(point.id, event);
+      });
       if (multiple) button.setAttribute("aria-pressed", String(selected.has(point.id)));
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
@@ -381,7 +394,8 @@ export function createDirectPointOverlay(input: {
         const ids = multiple && selected.has(point.id) ? [...selected] : [point.id];
         emitMoves(ids.map((id) => {
           const tracked = points.find((candidate) => candidate.id === id) ?? point;
-          return { id, point: clampPoint({ x: tracked.x + delta.x, y: tracked.y + delta.y }) };
+          const visible = project(tracked);
+          return { id, point: clampPoint(unproject({ x: visible.x + delta.x, y: visible.y + delta.y })) };
         }), true);
       });
       layer.append(button);

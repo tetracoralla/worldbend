@@ -549,16 +549,18 @@ Distort mode button is the control that re-enters it from any other mode. One
 persistent icon-only workspace navigation with localized pointer-hover and
 keyboard-focus tooltips holds the repeat-use `perspective`, `canvas`, and
 `templates` workspaces plus overflow scroll affordances and the More control.
-More exposes the replacing `mockup`, `mesh`, and `remap` workspaces as
+More exposes the replacing `mockup`, `mesh`, `surface`, and `remap` workspaces as
 task-labeled advanced transforms. Their canonical IDs and stored semantics do
-not change with the Composition and Lens & maps human labels.
+not change with the Composition, Split Warp, and Lens & maps human labels.
 Perspective remains the enabled pointer and keyboard recovery destination while
 a task source is refreshing or becomes invalid. A final selection failure
 returns to that base workspace and presents one error surface rather than
 leaving a disabled task selected.
 Each workspace owns its draft, controls, messages, and runtime resources; only
-the active workspace renders. Entering and returning cannot mutate Perspective
-semantic state. The self-contained Figma release may still inline those
+the active workspace renders. Pixel-only refreshes of the same sources, coordinate
+frame and saved task retain local drafts and history. A refresh or workspace
+exit invalidates pending publication, including asynchronous image encoding.
+Entering and returning cannot mutate Perspective semantic state. The self-contained Figma release may still inline those
 modules into one HTML file; package inlining does not authorize a single
 ever-growing control surface or persistent capability copy.
 

@@ -3,8 +3,8 @@ use crate::{
     RasterProgramRenderOptions, RenderLimits, SamplingQuality,
     canvas::{preflight_output_directory, publish_directory_noreplace},
     file_io::{EvidenceWriter, decode_file_with_limits, write_png},
-    render_canvas_set_to_directory, render_mockup_with_cancel, render_raster_program_with_cancel,
-    resolve_canvas_set_for_image, validate_limits,
+    raster_program::render_raster_program_with_budget,
+    render_canvas_set_to_directory, render_mockup_with_cancel, validate_limits,
 };
 use image::DynamicImage;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
@@ -84,7 +84,12 @@ pub struct VariationSourceEvidence {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "status", rename_all = "camelCase", deny_unknown_fields)]
+#[serde(
+    tag = "status",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum VariationJobItemOutcome {
     Rendered {
         index: u32,
@@ -105,6 +110,11 @@ pub enum VariationJobItemOutcome {
 }
 
 impl VariationJobItemOutcome {
+    pub fn index(&self) -> u32 {
+        match self {
+            Self::Rendered { index, .. } | Self::Failed { index, .. } => *index,
+        }
+    }
     pub fn id(&self) -> &str {
         match self {
             Self::Rendered { id, .. } | Self::Failed { id, .. } => id,
@@ -238,8 +248,13 @@ pub fn render_variation_job_files_with_cancel(
                 rendered_count += 1;
                 items.push(rendered);
             }
-            Err(error) if continue_on_item_failure => {
-                let _ = fs::remove_dir_all(staging.path().join(&item.id));
+            Err(error) if continue_on_item_failure && is_item_failure(error.code) => {
+                let item_directory = staging.path().join(&item.id);
+                if item_directory.exists() {
+                    fs::remove_dir_all(item_directory).map_err(render_io(
+                        "failed to discard unsuccessful Variation Job item",
+                    ))?;
+                }
                 items.push(VariationJobItemOutcome::Failed {
                     index,
                     id: item.id.clone(),
@@ -261,6 +276,7 @@ pub fn render_variation_job_files_with_cancel(
         cumulative_source_pixels,
         cumulative_processed_pixels: budget.used,
     };
+    check_cancelled(is_cancelled)?;
     // Publication stays one no-replace rename in every policy; a continue job
     // with zero successful items publishes an empty directory so downstream
     // controllers can stage and commit it like any other result.
@@ -298,59 +314,32 @@ fn render_one_item(
             .with_details(json!({ "itemId": item.id, "assetId": binding.asset_id })));
         }
     }
-    let operation_budget = budget
+    budget
         .remaining()
         .ok_or_else(|| processed_limit_error(options.max_processed_pixels))?;
-    let (root, operation_pixels) = match render_root(
+    let (root, operation_pixels) = render_root(
         decoded,
         &spec.template.operation,
         &item.bindings,
         options,
-        operation_budget,
+        budget,
         is_cancelled,
-    ) {
-        Ok(rendered) => rendered,
-        // Every item shares one template, so a pixel-ceiling failure inside an
-        // item render is systematic: latch the budget so remaining items fail
-        // fast instead of each repeating the same doomed render.
-        Err(error) => {
-            if error.code == ErrorCode::OutputLimit {
-                budget.force_exhausted();
-            }
-            return Err(error);
-        }
-    };
-    let output_pixels = match planned_output_pixels(&root, &spec.template.output) {
-        Ok(pixels) => pixels,
-        Err(error) => {
-            if error.code == ErrorCode::OutputLimit {
-                budget.force_exhausted();
-            }
-            return Err(error);
-        }
-    };
-    budget.charge(operation_pixels, output_pixels)?;
+    )?;
+    let output_pixels = planned_output_pixels(&root, &spec.template.output, options, is_cancelled)?;
+    budget.charge(0, output_pixels)?;
 
     let item_directory = staging.join(&item.id);
     fs::create_dir(&item_directory)
         .map_err(render_io("failed to create Variation Job item directory"))?;
     let output_label = output_directory.join(&item.id).display().to_string();
-    let outputs = match render_outputs(
+    let outputs = render_outputs(
         &root,
         &spec.template.output,
         &item_directory,
         &output_label,
         options,
         is_cancelled,
-    ) {
-        Ok(outputs) => outputs,
-        Err(error) => {
-            if error.code == ErrorCode::OutputLimit {
-                budget.force_exhausted();
-            }
-            return Err(error);
-        }
-    };
+    )?;
     if outputs.len() != plan.template.outputs.len() {
         return Err(TransformError::new(
             ErrorCode::Internal,
@@ -369,7 +358,7 @@ fn render_one_item(
 }
 
 /// Cumulative processed-pixel accounting with an exhaustion latch. The first
-/// charge that does not fit (or the first pixel-ceiling render failure) marks
+/// cumulative charge that does not fit marks
 /// the budget exhausted, so under `continue` the remaining items fail fast at
 /// the budget check instead of each re-rendering a root that cannot fit.
 struct ProcessedBudget {
@@ -395,11 +384,10 @@ impl ProcessedBudget {
         }
     }
 
-    fn force_exhausted(&mut self) {
-        self.exhausted = true;
-    }
-
     fn charge(&mut self, operation: u64, output: u64) -> TransformResult<()> {
+        if self.exhausted {
+            return Err(processed_limit_error(self.maximum));
+        }
         let total = self
             .used
             .checked_add(operation)
@@ -426,7 +414,7 @@ fn render_root(
     operation: &SpatialTemplateOperation,
     bindings: &[VariationBinding],
     options: VariationJobRenderOptions,
-    operation_budget: u64,
+    budget: &mut ProcessedBudget,
     is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<(DynamicImage, u64)> {
     match operation {
@@ -441,16 +429,16 @@ fn render_root(
                     "Variation Job asset disappeared after preflight",
                 )
             })?;
-            let rendered = render_raster_program_with_cancel(
+            let rendered = render_raster_program_with_budget(
                 source,
                 program,
                 RasterProgramRenderOptions {
                     quality: options.quality,
                     limits: options.limits,
-                    max_cumulative_pixels: operation_budget
-                        .min(worldbend_core::MAX_RASTER_PROGRAM_PIXELS),
+                    max_cumulative_pixels: worldbend_core::MAX_RASTER_PROGRAM_PIXELS,
                 },
                 is_cancelled,
+                &mut |pixels| budget.charge(pixels, 0),
             )?;
             Ok((
                 DynamicImage::ImageRgba8(rendered.image),
@@ -462,9 +450,7 @@ fn render_root(
                 .checked_mul(u64::from(spec.canvas.height))
                 .and_then(|pixels| pixels.checked_mul(spec.planes.len() as u64))
                 .ok_or_else(pixel_overflow)?;
-            if operation_pixels > operation_budget {
-                return Err(processed_limit_error(options.max_processed_pixels));
-            }
+            budget.charge(operation_pixels, 0)?;
             let mut sources = HashMap::with_capacity(bindings.len());
             for binding in bindings {
                 let source = decoded.get(&binding.asset_id).ok_or_else(|| {
@@ -492,11 +478,24 @@ fn render_root(
 fn planned_output_pixels(
     root: &DynamicImage,
     output: &SpatialTemplateOutput,
+    options: VariationJobRenderOptions,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<u64> {
     match output {
         SpatialTemplateOutput::Single { .. } => Ok(0),
         SpatialTemplateOutput::CanvasSet { spec } => {
-            let plan = resolve_canvas_set_for_image(root, spec)?;
+            let source = root.as_rgba8().ok_or_else(|| {
+                TransformError::new(ErrorCode::Internal, "Variation Job root was not RGBA8")
+            })?;
+            let plan = crate::canvas::resolve_canvas_set_for_rgba(source, spec, is_cancelled)?;
+            crate::canvas::validate_plan_limits(
+                &plan,
+                CanvasSetRenderOptions {
+                    quality: options.quality,
+                    limits: options.limits,
+                    max_cumulative_pixels: worldbend_core::MAX_CANVAS_SET_PIXELS,
+                },
+            )?;
             plan.variants.iter().try_fold(0_u64, |total, variant| {
                 let pixels = u64::from(variant.plan.output_size.width)
                     .checked_mul(u64::from(variant.plan.output_size.height))
@@ -596,7 +595,26 @@ fn decode_assets(
             }
             return Err(error);
         };
-        match decode_file_with_limits(&asset.path, options.limits, asset.source_sha256.as_deref()) {
+        let remaining = options.max_source_pixels - cumulative;
+        let decoded_asset = if remaining == 0 {
+            Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "Variation Job assets exceed the cumulative decoded-pixel limit",
+            ))
+        } else {
+            // The decoder checks dimensions before allocating pixels. Narrow
+            // its allowance by retained assets, rather than decoding a full
+            // over-budget raster and rejecting only after allocation.
+            decode_file_with_limits(
+                &asset.path,
+                RenderLimits {
+                    max_pixels: options.limits.max_pixels.min(remaining),
+                    ..options.limits
+                },
+                asset.source_sha256.as_deref(),
+            )
+        };
+        match decoded_asset {
             Ok((image, sha256, warnings)) => {
                 let pixels = u64::from(image.width())
                     .checked_mul(u64::from(image.height()))
@@ -627,7 +645,7 @@ fn decode_assets(
                 });
                 decoded.insert(asset_id.clone(), image);
             }
-            Err(error) if continue_on_item_failure => {
+            Err(error) if continue_on_item_failure && is_item_failure(error.code) => {
                 errors.insert(asset_id.clone(), error);
             }
             Err(error) => return Err(error),
@@ -712,6 +730,22 @@ fn check_cancelled(is_cancelled: &(dyn Fn() -> bool + Sync)) -> TransformResult<
         ));
     }
     Ok(())
+}
+
+fn is_item_failure(code: ErrorCode) -> bool {
+    !matches!(
+        code,
+        ErrorCode::Cancelled
+            | ErrorCode::Timeout
+            | ErrorCode::Memory
+            | ErrorCode::Capacity
+            | ErrorCode::Internal
+            | ErrorCode::Render
+            | ErrorCode::PathOutsideRoot
+            | ErrorCode::PathSymlink
+            | ErrorCode::DestinationExists
+            | ErrorCode::OutputCollision
+    )
 }
 
 fn pixel_overflow() -> TransformError {
@@ -1073,6 +1107,186 @@ mod tests {
     }
 
     #[test]
+    fn rendered_item_preserves_camel_case_wire_fields() {
+        let item = VariationJobItemOutcome::Rendered {
+            index: 0,
+            id: "first".into(),
+            bindings: vec![],
+            root_width: 4,
+            root_height: 3,
+            operation_pixels: 12,
+            outputs: vec![],
+        };
+        let value = serde_json::to_value(&item).unwrap();
+        assert_eq!(value["rootWidth"], 4);
+        assert_eq!(value["rootHeight"], 3);
+        assert_eq!(value["operationPixels"], 12);
+        assert!(value.get("root_width").is_none());
+        let schema = serde_json::to_value(schemars::schema_for!(VariationJobItemOutcome)).unwrap();
+        assert!(schema.to_string().contains("rootWidth"));
+        assert!(!schema.to_string().contains("root_width"));
+    }
+
+    #[test]
+    fn continue_cancellation_never_publishes_during_item_encoding() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = write_source(directory.path());
+        let output = directory.path().join("job");
+        let assets = HashMap::from([(
+            "asset-a".into(),
+            VariationFileAsset {
+                path: source,
+                source_sha256: None,
+            },
+        )]);
+        let mut job = spec(SpatialTemplateOutput::Single { id: "hero".into() });
+        job.failure_policy = VariationFailurePolicy::Continue;
+        // Cancellation becomes observable once the first item has begun encoding.
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+        let result = render_variation_job_files_with_cancel(
+            &assets,
+            &job,
+            &output,
+            VariationJobRenderOptions::default(),
+            false,
+            &|| {
+                if fs::read_dir(directory.path())
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .any(|entry| entry.path().join("sku-a/hero.png").exists())
+                {
+                    cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                cancelled.load(std::sync::atomic::Ordering::Relaxed)
+            },
+        );
+        assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
+        assert!(!output.exists());
+        assert!(
+            !fs::read_dir(directory.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+    }
+
+    #[test]
+    fn continue_item_output_limit_does_not_poison_smaller_asset() {
+        let directory = tempfile::tempdir().unwrap();
+        let large = directory.path().join("large.png");
+        let small = directory.path().join("small.png");
+        RgbaImage::from_pixel(4, 2, Rgba([18, 52, 86, 255]))
+            .save(&large)
+            .unwrap();
+        RgbaImage::from_pixel(2, 2, Rgba([18, 52, 86, 255]))
+            .save(&small)
+            .unwrap();
+        let mut job = spec(SpatialTemplateOutput::Single { id: "hero".into() });
+        job.failure_policy = VariationFailurePolicy::Continue;
+        job.items[1].bindings[0].asset_id = "asset-b".into();
+        let SpatialTemplateOperation::RasterProgram { program, .. } = &mut job.template.operation
+        else {
+            unreachable!()
+        };
+        let RasterProgramStage::Canvas { spec, .. } = &mut program.stages[0] else {
+            unreachable!()
+        };
+        spec.operation = CanvasOperation::Pad {
+            insets: worldbend_core::CanvasInsets {
+                top: 0,
+                bottom: 0,
+                left: 0,
+                right: 2,
+            },
+            background: worldbend_core::CanvasBackground::Transparent {},
+        };
+        let result = render_variation_job_files(
+            &HashMap::from([("asset-a".into(), large), ("asset-b".into(), small)]),
+            &job,
+            &directory.path().join("job"),
+            VariationJobRenderOptions {
+                limits: RenderLimits {
+                    max_width: 4,
+                    ..RenderLimits::default()
+                },
+                ..VariationJobRenderOptions::default()
+            },
+            false,
+        )
+        .unwrap();
+        assert!(
+            matches!(&result.items[0], VariationJobItemOutcome::Failed { error, .. } if error.code == ErrorCode::OutputLimit)
+        );
+        assert!(matches!(
+            &result.items[1],
+            VariationJobItemOutcome::Rendered { .. }
+        ));
+        assert_eq!(result.cumulative_processed_pixels, 8);
+    }
+
+    #[test]
+    fn continue_charges_work_before_a_later_stage_fails() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = write_source(directory.path());
+        let mut job = spec(SpatialTemplateOutput::Single { id: "hero".into() });
+        job.failure_policy = VariationFailurePolicy::Continue;
+        job.items = (0..8)
+            .map(|index| {
+                let mut item = job.items[0].clone();
+                item.id = format!("sku-{index}");
+                item
+            })
+            .collect();
+        let SpatialTemplateOperation::RasterProgram { program, .. } = &mut job.template.operation
+        else {
+            unreachable!()
+        };
+        program.stages.push(RasterProgramStage::Canvas {
+            id: "invalid-crop".into(),
+            spec: worldbend_core::CanvasSpec {
+                schema: worldbend_core::CANVAS_SCHEMA.into(),
+                version: CANVAS_VERSION.into(),
+                operation: CanvasOperation::Crop {
+                    rect: worldbend_core::PixelRect {
+                        x: 5,
+                        y: 0,
+                        width: 1,
+                        height: 1,
+                    },
+                },
+            },
+        });
+        let result = render_variation_job_files(
+            &HashMap::from([("asset-a".into(), source)]),
+            &job,
+            &directory.path().join("job"),
+            VariationJobRenderOptions {
+                max_processed_pixels: 64,
+                ..VariationJobRenderOptions::default()
+            },
+            false,
+        )
+        .unwrap();
+        assert_eq!(result.cumulative_processed_pixels, 64);
+        for (index, item) in result.items.iter().enumerate() {
+            let VariationJobItemOutcome::Failed { error, .. } = item else {
+                panic!("item should fail")
+            };
+            assert_eq!(
+                error.code,
+                if index < 4 {
+                    ErrorCode::CropBounds
+                } else {
+                    ErrorCode::OutputLimit
+                }
+            );
+        }
+    }
+
+    #[test]
     fn processed_budget_charge_overflow_latches_exhaustion() {
         let mut budget = ProcessedBudget::new(20);
         assert_eq!(budget.remaining(), Some(20));
@@ -1084,7 +1298,7 @@ mod tests {
         );
         assert_eq!(budget.remaining(), None);
         assert_eq!(budget.used, 16, "only successful charges are accounted");
-        budget.force_exhausted();
-        assert_eq!(budget.remaining(), None);
+        assert!(budget.charge(1, 0).is_err());
+        assert_eq!(budget.used, 16);
     }
 }

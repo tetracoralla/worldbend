@@ -852,6 +852,7 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
   nativeRecovery = undefined;
   nativeRecoverButton.hidden = true;
   canvasWorkspace.selectionLoading();
+  for (const workspace of Object.values(designerWorkspaces)) workspace.selectionLoading();
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
   cancelSourceRasterRequests(userMessage("selectionChanged"));
@@ -3046,6 +3047,12 @@ function surfaceWorkspaceCopy(): SurfaceWorkspaceCopy {
     brush: translate(activeLocale, "surfaceBrush"),
     radius: translate(activeLocale, "surfaceRadius"),
     strength: translate(activeLocale, "surfaceStrength"),
+    splitRequired: translate(activeLocale, "surfaceSplitRequired"),
+    pinDensity: translate(activeLocale, "surfacePinDensity"),
+    pinLimit: translate(activeLocale, "surfacePinLimit"),
+    strokeLimit: translate(activeLocale, "surfaceStrokeLimit"),
+    brushLimit: translate(activeLocale, "surfaceBrushLimit"),
+    pinLabel: translate(activeLocale, "surfacePinLabel"),
     templateName: translate(activeLocale, "templateName"),
     templateNamePlaceholder: translate(activeLocale, "templateNamePlaceholder"),
     saveTemplate: translate(activeLocale, "saveTemplate"),

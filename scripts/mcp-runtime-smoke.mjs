@@ -200,7 +200,7 @@ async function main() {
     await checkBoundedConcurrency(client);
     checkCliAdapter();
     console.log(
-      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, variation=${metrics.variationResponseBytes}B, media=${metrics.mediaResponseBytes}B, perception=${metrics.perceptionResponseBytes}B, psd=${metrics.psdResponseBytes}B, surface=${metrics.surfaceResponseBytes}B, motion=${metrics.motionResponseBytes}B, tiled=${metrics.tiledResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, extendedFamilyCancellations=${metrics.extendedFamilyCancellations}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms)`,
+      `Built CLI/MCP runtime smoke passed (catalogTools/list=${metrics.catalogToolsListBytes}B, directTools/list=${metrics.toolsListBytes}B, solve=${metrics.solveResponseBytes}B, canvas=${metrics.canvasResponseBytes}B, program=${metrics.programResponseBytes}B, variation=${metrics.variationResponseBytes}B, media=${metrics.mediaResponseBytes}B, perception=${metrics.perceptionResponseBytes}B, psd=${metrics.psdResponseBytes}B, surface=${metrics.surfaceResponseBytes}B, motion=${metrics.motionResponseBytes}B, tiled=${metrics.tiledResponseBytes}B, boundedSchemaError=${metrics.schemaErrorResponseBytes}B, maxRenderWorkers=${metrics.maxConcurrentRenderStages}, overloadRejections=${metrics.overloadRejections}, extendedFamilyCancellations=${metrics.extendedFamilyCancellations}, cancelCleanup=${metrics.cancelCleanupMs}ms, canvasCancelCleanup=${metrics.canvasCancelCleanupMs}ms, programCancelCleanup=${metrics.programCancelCleanupMs}ms, variationCancelCleanup=${metrics.variationCancelCleanupMs}ms)`,
     );
   } finally {
     if (catalogClient) await catalogClient.close();
@@ -952,6 +952,14 @@ async function checkProgressiveCatalog(activeClient) {
     }
   }
   metrics.variationResponseBytes = variationWritten.wireBytes;
+  for (const [index, item] of variationWritten.result.structuredContent.result.items.entries()) {
+    assert.equal(item.status, "rendered");
+    assert.equal(item.index, index);
+    assert(item.rootWidth > 0 && item.rootHeight > 0 && item.operationPixels > 0);
+    assert.equal(Object.hasOwn(item, "root_width"), false);
+  }
+  assert(JSON.stringify(variationDescription.result.structuredContent.result.outputSchema).includes("rootWidth"));
+  await checkContinueVariation(activeClient);
 
   const missingVariationAsset = await activeClient.callTool("worldbend.run", {
     operation: "variation_render",
@@ -1282,6 +1290,96 @@ async function checkProgressiveCatalog(activeClient) {
   assert.equal(timelineSeventeenWritten.result.structuredContent.ok, true);
   assert.equal(timelineSeventeenWritten.result.structuredContent.result.items.length, 17);
   assert.equal((await readdir(path.join(fixtureRoot, "out", "timeline-17"))).length, 17);
+}
+
+async function checkContinueVariation(activeClient) {
+  const continued = structuredClone(variationJobSpec);
+  continued.failurePolicy = "continue";
+  continued.items[1].bindings[0].assetId = "unavailable";
+  for (const [name, assets, expected] of [
+    ["missing", [{ id: "asset-a", source: "source.png" }], "E_SCHEMA"],
+    ["corrupt", [{ id: "asset-a", source: "source.png" }, { id: "unavailable", source: "source.svg" }], "E_UNSUPPORTED_MEDIA"],
+  ]) {
+    const outputDirectory = `out/continue-${name}`;
+    const response = await activeClient.callTool("worldbend.run", {
+      operation: "variation_render", arguments: { assets, spec: continued, outputDirectory },
+    });
+    assert.equal(response.result.structuredContent.ok, true);
+    const result = response.result.structuredContent.result;
+    assert.deepEqual(result.items.map(item => [item.index, item.id, item.status]), [[0, "sku-a", "rendered"], [1, "sku-b", "failed"]]);
+    assert.equal(result.items[1].error.code, expected);
+    assert.deepEqual(await readdir(path.join(fixtureRoot, outputDirectory)), ["sku-a"]);
+  }
+  for (const dryRun of [true, false]) {
+    const outputDirectory = `out/continue-empty-${dryRun}`;
+    const response = await activeClient.callTool("worldbend.run", {
+      operation: "variation_render", arguments: { assets: [], spec: continued, outputDirectory, dryRun },
+    });
+    assert.equal(response.result.structuredContent.ok, true, JSON.stringify(response.result.structuredContent));
+    assert.equal(response.result.structuredContent.result.dryRun, dryRun);
+    assert(response.result.structuredContent.result.items.every(item => item.status === "failed"));
+    assert.equal(await exists(path.join(fixtureRoot, outputDirectory)), !dryRun);
+    if (!dryRun) assert.deepEqual(await readdir(path.join(fixtureRoot, outputDirectory)), []);
+  }
+  const emptySpecPath = path.join(fixtureRoot, "continue-empty.json");
+  await writeFile(emptySpecPath, JSON.stringify(continued));
+  const emptyOutput = path.join(fixtureRoot, "out/continue-empty-cli");
+  const emptyCli = runCli(["variation-render", "--spec", emptySpecPath, "--output-directory", emptyOutput, "--json"]);
+  assert.equal(emptyCli.status, 0);
+  assert.equal(emptyCli.body.ok, true);
+  assert(emptyCli.body.result.items.every(item => item.status === "failed"));
+  assert.deepEqual(await readdir(emptyOutput), []);
+  continued.template.operation = {
+    kind: "rasterProgram", sourceSlot: "artwork", program: {
+      schema: "worldbend.raster-program", version: "0.1", stages: [
+        { kind: "canvas", id: "work", spec: { schema: "worldbend.canvas", version: "0.1", operation: { kind: "stretch", output: { width: 4, height: 4 } } } },
+        { kind: "canvas", id: "fail", spec: { schema: "worldbend.canvas", version: "0.1", operation: { kind: "crop", rect: { x: 5, y: 0, width: 1, height: 1 } } } },
+      ],
+    },
+  };
+  continued.items = Array.from({ length: 8 }, (_, i) => ({ id: `item-${i}`, bindings: [{ slotId: "artwork", assetId: "asset-a" }] }));
+  const response = await activeClient.callTool("worldbend.run", {
+    operation: "variation_render", arguments: { assets: [{ id: "asset-a", source: "source.png" }], spec: continued,
+      outputDirectory: "out/continue-budget", options: { maxProcessedPixels: 64 } },
+  });
+  assert.equal(response.result.structuredContent.ok, true);
+  const result = response.result.structuredContent.result;
+  assert.equal(result.cumulativeProcessedPixels, 64);
+  assert.deepEqual(result.items.map(item => item.error.code), Array(4).fill("E_CROP_BOUNDS").concat(Array(4).fill("E_OUTPUT_LIMIT")));
+  assert.deepEqual(await privateStagingDirectories(), []);
+
+  const slow = structuredClone(variationJobSpec);
+  slow.failurePolicy = "continue";
+  slow.template.operation = { kind: "rasterProgram", sourceSlot: "artwork", program: {
+    schema: "worldbend.raster-program", version: "0.1", stages: [
+      { id: "large", kind: "transform", spec: makePixelSpec(8000, 4000), canvas: "reference" },
+    ],
+  } };
+  const request = activeClient.beginRequest("tools/call", {
+    name: "worldbend.run", arguments: { operation: "variation_render", arguments: {
+      assets: [{ id: "asset-a", source: "source.png" }], spec: slow,
+      outputDirectory: "out/continue-cancelled", options: { quality: "high" },
+    } },
+  });
+  const outcomePromise = request.promise.then(
+    response => ({ kind: "response", response }), error => ({ kind: "error", error }),
+  );
+  // Wait for the worker's inner render directory, not just admission/staging.
+  await waitFor(async () => {
+    const outer = (await privateStagingDirectories()).find(name => name.startsWith(".worldbend-variation-stage-"));
+    return outer !== undefined && (await readdir(path.join(stagingRoot, outer)))
+      .some(name => name.startsWith(".worldbend-variation-"));
+  }, 2_000);
+  const cancelledAt = Date.now();
+  activeClient.notify("notifications/cancelled", { requestId: request.id, reason: "active continue variation cancellation" });
+  await waitFor(async () => (await privateStagingDirectories()).length === 0, 10_000);
+  metrics.variationCancelCleanupMs = Date.now() - cancelledAt;
+  assert(metrics.variationCancelCleanupMs < 1_500, `Continue cancellation cleanup took ${metrics.variationCancelCleanupMs}ms`);
+  const outcome = await Promise.race([outcomePromise,
+    new Promise(resolve => setTimeout(() => resolve({ kind: "noResponse" }), 100)),
+  ]);
+  if (outcome.kind === "response") assert.equal(outcome.response.result?.isError, true);
+  assert.equal(await exists(path.join(fixtureRoot, "out/continue-cancelled")), false);
 }
 
 async function checkEveryToolRejectsUnknownFields(activeClient) {

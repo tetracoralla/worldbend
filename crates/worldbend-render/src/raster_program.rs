@@ -94,14 +94,18 @@ pub fn render_raster_program_with_cancel(
     options: RasterProgramRenderOptions,
     is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> TransformResult<RenderedRasterProgram> {
-    render_raster_program_rgba(source.to_rgba8(), spec, options, is_cancelled)
+    render_raster_program_with_budget(source, spec, options, is_cancelled, &mut |_| Ok(()))
 }
 
-fn render_raster_program_rgba(
-    mut current: RgbaImage,
+/// Charge the caller's cumulative budget before each stage allocates or renders.
+/// Charges survive a later stage failure, so a containing job cannot repeat
+/// expensive failing prefixes without accounting for their work.
+pub(crate) fn render_raster_program_with_budget(
+    source: &DynamicImage,
     spec: &RasterProgramSpec,
     options: RasterProgramRenderOptions,
     is_cancelled: &(dyn Fn() -> bool + Sync),
+    charge: &mut dyn FnMut(u64) -> TransformResult<()>,
 ) -> TransformResult<RenderedRasterProgram> {
     validate_limits(options.limits)?;
     if options.max_cumulative_pixels == 0
@@ -113,6 +117,7 @@ fn render_raster_program_rgba(
         ));
     }
     let inspection = inspect_raster_program(spec)?;
+    let mut current = source.to_rgba8();
     let mut stages = Vec::with_capacity(spec.stages.len());
     let mut cumulative_pixels = 0_u64;
     let mut solve_ms = 0.0;
@@ -137,6 +142,7 @@ fn render_raster_program_rgba(
                 "maximum": options.max_cumulative_pixels,
             })));
         }
+        charge(pixel_count(planned_output))?;
 
         current = match stage {
             RasterProgramStage::Transform {

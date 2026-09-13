@@ -75,7 +75,7 @@ planning and results.
 
 The renderer validates the job, resource bindings, destination, response
 budget, configured raster limits, and cumulative item/output limits before
-publishing. It decodes a distinct bound asset at most once per item in v0.1,
+publishing. It decodes each distinct bound asset at most once per job in v0.1,
 executes the root through the existing native implementation, then renders any
 Canvas Set from the in-memory root result. It never asks an Agent to relay
 already-structured stages.
@@ -91,12 +91,22 @@ on disk. Job-level schema errors, unknown extra assets, and destination
 collisions still abort the whole job; a missing asset is a per-item decode
 failure under `continue` and a schema abort under `allOrNone`. A `continue`
 job where every item failed still publishes an empty final directory on a
-non-dry run, so a published destination always means the job ran. Cancellation
-stops remaining items; under `continue` already-rendered items publish.
+non-dry run, so a published destination always means the job ran. Cancellation,
+worker timeout, memory/capacity failure, filesystem publication failure, and
+internal/evidence failures abort without a final directory under both policies.
+`continue` applies to item-local media, geometry and raster-limit failures; it
+does not turn a cancelled job into successful publication. Agent path validation
+and private source staging remain job-level preflight; omitting an asset is
+supported, but an explicitly supplied invalid or unauthorized path aborts.
 Exhausting the cumulative rendered-output-pixel budget also stops remaining
 items with the budget error; an asset that would exceed the cumulative
 decoded-pixel budget is recorded as a failed decode for its items while later
-smaller assets may still decode. `dryRun` executes the same validation,
+smaller assets may still decode. Retained source pixels narrow the decoder's
+allowance before its next allocation. Processed pixels are charged before each
+root stage and output set starts; `cumulativeProcessedPixels` includes admitted
+work in items that later fail. Per-source or per-output dimension failures do
+not exhaust the job's shared budget. An actual non-fitting cumulative charge
+latches exhaustion so later items fail without repeating work. `dryRun` executes the same validation,
 decoding, rendering, encoding, hashing, result shaping, and destination
 preflight but omits the final rename.
 
@@ -114,7 +124,15 @@ The product ceilings are:
 Carriers may narrow these ceilings. Cancellation is checked between items,
 between root and output rendering, and inside the existing render loops.
 Results correlate every item and output with its IDs, relative path,
-dimensions, encoded bytes, and digest. Timings are observations, not an SLA.
+dimensions, encoded bytes, and digest. Rendered items retain `rootWidth`,
+`rootHeight` and `operationPixels` in camelCase, with `status: rendered`; failed
+items carry `status: failed` and their typed error. Timings are observations,
+not an SLA.
+
+The Agent controller treats the native worker result as a carrier boundary: it
+requires the returned plan to equal the requested plan, recomputes source pixel
+evidence and encoded-file digests, and enforces the request's narrower budgets
+before staging any publication.
 
 ## Carrier projections
 

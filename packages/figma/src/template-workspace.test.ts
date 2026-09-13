@@ -8,6 +8,22 @@ function deferred<T>() {
 }
 
 describe("Template workspace asynchronous state", () => {
+  it("invalidates old Use on source refresh without releasing a newer Use", () => {
+    const state = new TemplateWorkspaceAsyncState();
+    state.enter();
+    const old = state.beginUse();
+    state.sourceChanged();
+    expect(state.active).toBe(true);
+    expect(state.busy()).toBe(false);
+    const current = state.beginUse();
+    state.finishUse(old);
+    expect(state.acceptsUse(old)).toBe(false);
+    expect(state.acceptsUse(current)).toBe(true);
+    expect(state.busy()).toBe(true);
+    state.finishUse(current);
+    expect(state.busy()).toBe(false);
+  });
+
   it("invalidates an awaited Use when the workspace is left", async () => {
     const state = new TemplateWorkspaceAsyncState();
     const pending = deferred<void>();

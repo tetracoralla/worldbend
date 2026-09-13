@@ -129,7 +129,7 @@ pub fn resolve_canvas_set_for_image(
     resolve_canvas_set_for_rgba(&rgba, spec, &|| false)
 }
 
-fn resolve_canvas_set_for_rgba(
+pub(crate) fn resolve_canvas_set_for_rgba(
     source: &RgbaImage,
     spec: &CanvasSetSpec,
     is_cancelled: &(dyn Fn() -> bool + Sync),
@@ -274,7 +274,7 @@ pub fn render_canvas_set_file(
     Ok(result)
 }
 
-fn validate_plan_limits(
+pub(crate) fn validate_plan_limits(
     plan: &CanvasSetPlan,
     options: CanvasSetRenderOptions,
 ) -> TransformResult<()> {

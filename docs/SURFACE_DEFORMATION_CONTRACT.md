@@ -52,8 +52,17 @@ mapping, premultiplied-alpha filtering, configured limits, cancellation, dry
 run, and atomic PNG publication. CLI and compact Agent operations expose plan
 and render. Figma's Split Warp workspace authors the Bezier envelope, mesh
 density, interior pins, and explicit source-space brush samples, then stores
-the complete spec. Brush samples are the spec, not a reconstruction of host
-pointer history. It does not claim Liquify or Puppet Warp. Web, ComfyUI, and
+the complete spec. Adding a representable split preserves the cubic surface
+exactly; removing a split that its current curves still need is rejected instead
+of silently approximating the shape. A mesh-density change preserves pins at
+their exact source positions or asks the user to unpin them first. Controls and
+the brush footprint project through the core's matrices and resolved mesh.
+The workspace rejects a sixty-fifth pin with a visible recovery action instead
+of silently ignoring it.
+Brush authoring owns one pointer through its final release, uses the grab-start
+source mapping throughout the stroke, and keeps each stroke as one undoable
+edit. Escape restores the stroke's starting spec. Brush samples are the spec,
+not a reconstruction of host pointer history. It does not claim Liquify or Puppet Warp. Web, ComfyUI, and
 the conditional portable Capability do not gain this operation merely because
 it exists in the source superset.
 

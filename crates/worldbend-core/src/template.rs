@@ -139,7 +139,7 @@ pub enum VariationFailurePolicy {
     AllOrNone,
     /// Item-level render or decode failures are recorded in order; successful
     /// items still publish. Job-level schema, extra assets, and destination
-    /// collisions still abort the whole job.
+    /// collisions, cancellation and execution infrastructure failures abort the whole job.
     Continue,
 }
 

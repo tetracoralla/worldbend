@@ -38,7 +38,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   browser = await launchChrome(await findChrome(), ["--window-size=820,760"]);
-  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks"];
+  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "surface-authoring"];
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
@@ -132,7 +132,157 @@ async function runFixture() {
       return window.fixtureMessages.findLast(message => message.type === "apply-native").payload;
     };
     const scenario = new URL(location.href).searchParams.get("case");
-    if (scenario === "selection-entry") {
+    if (scenario === "surface-authoring") {
+      const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      get("#more-options").click(); get("#workspace-menu-surface").click();
+      const panel = "#surface-workspace";
+      await wait(() => !get(panel).hidden && document.querySelector(`${panel} .direct-point`), "Split Warp handles");
+      await frames();
+      const control = () => get(`${panel} .direct-point`);
+      const original = control().style.left;
+      key(control(), "ArrowRight", { shiftKey: true }); await frames();
+      check(control().style.left !== original, "Split Warp handle did not move");
+      const preview = get(`${panel} canvas`);
+      const before = preview.toDataURL();
+      const splits = get(`${panel} [data-role="patches"]`);
+      splits.value = "2x2"; splits.dispatchEvent(new Event("change", { bubbles: true })); await frames();
+      check(get(`${panel} [data-role="error"]`).hidden, "Exact split failed to plan");
+      check(preview.toDataURL() === before, "Adding splits changed the rendered cubic surface");
+      splits.value = "1x1"; splits.dispatchEvent(new Event("change", { bubbles: true })); await frames();
+      check(preview.toDataURL() === before, "Merging unchanged split curves changed the rendered surface");
+      const save = async () => {
+        const seen = window.fixtureMessages.length;
+        const field = get(`${panel} [data-role="template-name"]`); field.value = "Review fixture";
+        field.dispatchEvent(new Event("input", { bubbles: true })); get(`${panel} [data-role="save-template"]`).click();
+        await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "save-template"), "saved surface spec");
+        const request = window.fixtureMessages.findLast(m => m.type === "save-template");
+        send({ type: "template-library", templates: [], mutation: { kind: "save", workspace: "surface", requestId: request.requestId } });
+        return request.template.operation.spec;
+      };
+      get(`${panel} [data-role="tool-pin"]`).click(); await frames();
+      get(`${panel} [data-point-id="1,1"]`).click(); await frames();
+      check(get(`${panel} [data-point-id="1,1"]`).getAttribute("aria-pressed") === "true", "Pin is not keyboard-activatable or does not announce its state");
+      const density = get(`${panel} [data-role="subdivisions"]`);
+      density.value = "8"; density.dispatchEvent(new Event("change", { bubbles: true })); await frames();
+      check(density.value === "12" && !get(`${panel} [data-role="error"]`).hidden, "Density silently moved a nonrepresentable pin");
+      get(`${panel} [data-point-id="1,1"]`).click(); await frames();
+      get(`${panel} [data-point-id="6,6"]`).click(); await frames();
+      density.value = "8"; density.dispatchEvent(new Event("change", { bubbles: true })); await frames();
+      const pinned = await save();
+      check(pinned.anchors[0].column === 4 && pinned.anchors[0].row === 4, "Representable pin changed its source position");
+      get(`${panel} [data-role="tool-brush"]`).click(); await frames();
+      const box = preview.getBoundingClientRect(), x = box.left + box.width * .4, y = box.top + box.height * .4;
+      const pointer = (type, offset, buttons, pointerId = 11) => preview.dispatchEvent(new PointerEvent(type, {
+        clientX: x + offset, clientY: y, pointerId, button: 0, buttons, bubbles: true,
+      }));
+      pointer("pointerdown", 0, 1); pointer("pointermove", 6, 1); await frames();
+      key(get(`${panel} [data-role="tool-brush"]`), "Escape"); await frames();
+      check(!get(panel).hidden && (await save()).strokes.length === 0, "Escape did not cancel just the in-flight brush stroke");
+      get(`${panel} [data-role="tool-handles"]`).click(); get(`${panel} [data-role="tool-brush"]`).click();
+      check(!document.querySelector(`${panel} .direct-point-lattice path`), "Brush tool restored a stale footprint");
+      pointer("pointerdown", 0, 1);
+      const ownedFootprint = get(`${panel} .direct-point-lattice path`).getAttribute("d");
+      pointer("pointermove", 5, 1, 99);
+      check(get(`${panel} .direct-point-lattice path`).getAttribute("d") === ownedFootprint,
+        "Foreign pointer moved the active brush footprint");
+      pointer("pointerup", 8, 0); await frames();
+      const brushed = await save();
+      check(brushed.strokes.length === 1 && brushed.strokes[0].samples.length === 1 && brushed.strokes[0].samples[0].delta.x > 0,
+        "Brush lost the final pointerup position or accepted another pointer");
+      const edited = preview.toDataURL();
+      key(get(`${panel} [data-role="tool-brush"]`), "z", { metaKey: true }); await frames();
+      check((await save()).strokes.length === 0, "Brush Undo did not restore its starting surface");
+      key(get(`${panel} [data-role="tool-brush"]`), "z", { metaKey: true, shiftKey: true }); await frames();
+      check(preview.toDataURL() === edited, "Brush Redo changed pixels");
+      const seen = window.fixtureMessages.length;
+      get(`${panel} [data-role="apply"]`).click();
+      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "apply-designer"), "surface publication");
+      const published = window.fixtureMessages.findLast(m => m.type === "apply-designer").payload;
+      check(published.task.spec.strokes.length === 1 && published.bytes.length > 0, "Surface output lost authored brush data");
+      send({ type: "apply-designer-complete", generation, targetNodeId: "surface-result", operation: "apply" });
+      await frames();
+      const seenUndo = window.fixtureMessages.length;
+      pointer("pointerdown", 0, 1); pointer("pointerup", 5, 0); await frames();
+      key(get(`${panel} [data-role="tool-brush"]`), "z", { metaKey: true }); await frames();
+      check(!window.fixtureMessages.slice(seenUndo).some(m => m.type === "trigger-undo"), "New brush edit incorrectly routed Undo to the host");
+      check((await save()).strokes.length === 1, "Undo after publication did not retain the previous stroke");
+    } else if (scenario?.startsWith("designer-")) {
+      const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      for (const workspace of (scenario === "designer-publication" ? ["mesh", "surface", "mockup", "remap"] : ["mesh", "surface"])) {
+        const panel = `#${workspace}-workspace`;
+        get("#more-options").click(); get(`#workspace-menu-${workspace}`).click();
+        await wait(() => !get(panel).hidden && document.querySelector(`${panel} canvas`) && !get(`${panel} [data-role="apply"]`).disabled, `${workspace} ready`);
+        await frames();
+        const point = () => get(`${panel} .direct-point`);
+        if (scenario === "designer-history") {
+          const original = point().style.left;
+          const button = point(), box = button.getBoundingClientRect();
+          const x = box.left + box.width / 2, y = box.top + box.height / 2;
+          const pointer = (type, px, buttons) => button.dispatchEvent(new PointerEvent(type, {
+            clientX: px, clientY: y, pointerId: 7, buttons, bubbles: true,
+          }));
+          pointer("pointerdown", x, 1); pointer("pointermove", x + 8, 1);
+          await frames(); const moved = point().style.left;
+          check(moved !== original, `${workspace} pointer preview did not move`);
+          pointer("pointerup", x + 8, 0);
+          key(get(`${panel} [data-role="reset"]`), "z", { metaKey: true });
+          await wait(() => point().style.left === original, `${workspace} Undo committed drag`);
+          key(get(`${panel} [data-role="reset"]`), "z", { metaKey: true, shiftKey: true });
+          await wait(() => point().style.left === moved, `${workspace} Redo committed drag`);
+          get(`${panel} [data-role="back"]`).click();
+          get("#more-options").click(); get(`#workspace-menu-${workspace}`).click();
+          await frames(); check(point().style.left === moved, `${workspace} round trip discarded draft`);
+        } else if (scenario === "designer-refresh") {
+          const original = point().style.left;
+          key(point(), "ArrowRight", { shiftKey: true }); await frames();
+          const edited = point().style.left;
+          check(edited !== original, `${workspace} edit did not render`);
+          generation += 1;
+          send({ type: "selection-loading", generation, nodeIds: [payload.targetNodeId] });
+          check(get(`${panel} [data-role="apply"]`).disabled, `${workspace} allowed output during source refresh`);
+          send({ type: "source", generation, payload }); await frames();
+          await wait(() => !get(`${panel} [data-role="apply"]`).disabled, `${workspace} refresh complete`);
+          check(point().style.left === edited, `${workspace} pixel refresh discarded the draft`);
+          key(get(`${panel} [data-role="reset"]`), "z", { metaKey: true }); await frames();
+          check(point().style.left === original, `${workspace} refresh discarded Undo`);
+          key(get(`${panel} [data-role="reset"]`), "z", { metaKey: true, shiftKey: true }); await frames();
+          check(point().style.left === edited, `${workspace} refresh discarded Redo`);
+        } else if (scenario === "designer-publication") {
+          const encode = HTMLCanvasElement.prototype.toBlob;
+          let release;
+          HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
+            encode.call(this, blob => { release = () => callback(blob); }, ...args);
+          };
+          const seen = window.fixtureMessages.length;
+          get(`${panel} [data-role="apply"]`).click();
+          await wait(() => release, `${workspace} encoding output`);
+          // Back remains usable while encoding. A late output must not publish
+          // after the user has left, or get relabeled as a later selection.
+          get(`${panel} [data-role="back"]`).click();
+          await refresh({ ...payload, sourceNodeId: `next-${workspace}`, targetNodeId: undefined });
+          HTMLCanvasElement.prototype.toBlob = encode;
+          release(); await frames(); await delay();
+          check(!window.fixtureMessages.slice(seen).some(m => m.type === "apply-designer"),
+            `${workspace} published after leaving during encoding`);
+          continue;
+        } else {
+          get(`${panel} [data-role="back"]`).click();
+          const inset = { ...spec, destination: { space: "normalized", quad: {
+            tl: { x: .2, y: .1 }, tr: { x: .8, y: .1 }, br: { x: .8, y: .9 }, bl: { x: .2, y: .9 },
+          } } };
+          await refresh({ ...payload, spec: inset, sourceNodeId: `projected-${workspace}`, targetNodeId: undefined });
+          get("#more-options").click(); get(`#workspace-menu-${workspace}`).click();
+          await frames();
+          const canvasBox = get(`${panel} canvas`).getBoundingClientRect();
+          const handleBox = point().getBoundingClientRect();
+          const u = workspace === "mesh" ? .25 : 1 / 3;
+          const visibleX = (handleBox.left + handleBox.width / 2 - canvasBox.left) / canvasBox.width;
+          check(Math.abs(visibleX - (.2 + .6 * u)) < .005,
+            `${workspace} handle is detached from the projected artwork: ${visibleX}`);
+        }
+        get(`${panel} [data-role="back"]`).click();
+      }
+    } else if (scenario === "selection-entry") {
       const state = get("#selection-state");
       const visible = node => node.getBoundingClientRect().height > 0;
       generation++;

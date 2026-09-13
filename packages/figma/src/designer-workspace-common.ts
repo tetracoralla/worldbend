@@ -22,10 +22,20 @@ export function sameDesignerSelection(
     previous.sources.every((source, index) => source.sourceNodeId === next.sources[index]?.sourceNodeId);
 }
 
+/** Pixel refreshes retain a draft only while its source coordinate frame and
+ * stored operation are unchanged. A different saved task is external work. */
+export function canRetainDesignerDraft(previous: DesignerWorkspaceSource | undefined, next: DesignerWorkspaceSource): boolean {
+  return sameDesignerSelection(previous, next) && previous !== undefined &&
+    previous.sources.every((source, index) => source.renderWidth === next.sources[index]?.renderWidth &&
+      source.renderHeight === next.sources[index]?.renderHeight) &&
+    JSON.stringify(previous.task) === JSON.stringify(next.task);
+}
+
 export interface DesignerTaskWorkspace {
   enter(): void;
   leave(): void;
   setSource(source: DesignerWorkspaceSource): void;
+  selectionLoading(): void;
   clearSource(error?: string): void;
   updateLocale(): void;
   handleMainMessage(message: { type: string; generation?: number; message?: unknown }): boolean;

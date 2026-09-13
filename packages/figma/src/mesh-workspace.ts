@@ -1,3 +1,5 @@
+import { warpedFromSource } from "./surface-authoring";
+import { planeCoordinates } from "./plane-coordinates";
 import {
   TransformWebGLRenderer,
   buildWarpMesh,
@@ -20,6 +22,7 @@ import {
   fitPreviewCanvas,
   postDesignerResult,
   sameDesignerSelection,
+  canRetainDesignerDraft,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -72,7 +75,9 @@ export function createMeshWorkspace(input: {
   let baseline: MeshWarpSpecInput | undefined;
   let history: WorkspaceHistory<MeshWarpSpecInput> | undefined;
   let generation = 0;
+  let coordinates: ReturnType<typeof planeCoordinates> | undefined;
   let busy = false;
+  let refreshing = false;
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
@@ -145,24 +150,27 @@ export function createMeshWorkspace(input: {
   });
 
   async function render(refreshOverlay = true): Promise<void> {
-    if (!source || !spec) return;
+    if (!active || busy || !source || !spec) return;
     const first = source.sources[0];
     if (!first) return;
     const currentGeneration = ++generation;
     try {
       const plan = await planMeshWarp(spec);
       if (currentGeneration !== generation) return;
+      coordinates = planeCoordinates(plan.solve);
       // Preview draws at the shared capped axis; Apply re-plans and renders
       // the full requested resolution below.
       renderer.render(first.image, scalePreviewSolve(plan.solve), spec.mesh, "preview");
       fitPreviewCanvas(renderer.canvas, shell.preview);
       shell.showError();
       if (refreshOverlay) renderOverlay();
-      shell.apply.disabled = false;
+      shell.apply.disabled = busy || refreshing;
+      shell.applyNew.disabled = busy || refreshing;
     } catch (error) {
       if (currentGeneration !== generation) return;
       shell.showError(input.formatError(error));
       shell.apply.disabled = true;
+      shell.applyNew.disabled = true;
     }
   }
 
@@ -184,7 +192,7 @@ export function createMeshWorkspace(input: {
     moves: readonly { id: string; point: { x: number; y: number } }[],
     final: boolean,
   ): void {
-    if (!spec || moves.length === 0) return;
+    if (busy || !spec || moves.length === 0) return;
     const relocated = new Map(moves.map((move) => [Number(move.id), move.point]));
     const vertices = spec.mesh.vertices.map((candidate, index) => {
       const point = relocated.get(index);
@@ -196,7 +204,10 @@ export function createMeshWorkspace(input: {
         vertex.warped.x === previous.warped.x &&
         vertex.warped.y === previous.warped.y;
     });
-    if (unchanged) return;
+    if (unchanged) {
+      if (final) { moveFrames.flush(); history?.push(spec); }
+      return;
+    }
     spec = { ...spec, mesh: { ...spec.mesh, vertices } };
     phase = "ready";
     undoRouted = false;
@@ -214,6 +225,7 @@ export function createMeshWorkspace(input: {
     overlay = createDirectPointOverlay({
       host: shell.preview,
       canvas: renderer.canvas,
+      ...(coordinates ? { coordinates } : {}),
       selection: "multiple",
       onMove(id, point, final) {
         applyVertexMoves([{ id, point }], final);
@@ -233,32 +245,41 @@ export function createMeshWorkspace(input: {
   }
 
   async function apply(duplicate: boolean): Promise<void> {
-    if (!source || !spec || busy) return;
+    if (!active || !source || !spec || busy || refreshing) return;
+
+    overlay?.interrupt();
+    moveFrames.cancel();
+    const appliedSource = source;
+    const appliedSpec = spec;
+    const currentGeneration = ++generation;
+    const current = () => active && generation === currentGeneration && source === appliedSource && spec === appliedSpec;
     busy = true;
     phase = "applying";
-    // A queued preview frame must not redraw capped pixels over the full
-    // resolution output between render and encode.
-    moveFrames.cancel();
     shell.setBusy(true);
     shell.status.textContent = input.copy().applying;
     try {
-      const first = source.sources[0];
+      const first = appliedSource.sources[0];
       if (!first) throw new Error("No source is loaded");
-      const plan = await planMeshWarp(spec);
-      renderer.render(first.image, plan.solve, spec.mesh, "high");
+      const plan = await planMeshWarp(appliedSpec);
+      if (!current()) return;
+      renderer.render(first.image, plan.solve, appliedSpec.mesh, "high");
+      const bytes = await canvasPng(renderer.canvas);
+      if (!current()) return;
       postDesignerResult({
         post: input.post,
-        source,
-        task: { kind: "mesh", spec },
-        bytes: await canvasPng(renderer.canvas),
-        width: spec.targetSize?.width ?? first.renderWidth,
-        height: spec.targetSize?.height ?? first.renderHeight,
+        source: appliedSource,
+        task: { kind: "mesh", spec: appliedSpec },
+        bytes,
+        width: appliedSpec.targetSize?.width ?? first.renderWidth,
+        height: appliedSpec.targetSize?.height ?? first.renderHeight,
         duplicate,
       });
     } catch (error) {
+      if (!current()) return;
       busy = false;
       phase = "ready";
       shell.setBusy(false);
+      renderControls();
       shell.showError(input.formatError(error));
     }
   }
@@ -278,16 +299,22 @@ export function createMeshWorkspace(input: {
 
   async function seedFromPerspectiveIfNeeded(): Promise<void> {
     if (!source || nextTask(source, "mesh")) return;
-    if (history?.canUndo() || appliedResultPending) return;
+    if (history?.canUndo() || history?.canRedo() || appliedResultPending) return;
     const live = input.livePerspective?.();
     if (!live) return;
+    const seededSource = source;
+    const seededSpec = spec;
+    const seedGeneration = ++generation;
     try {
-      spec = await meshSpecFromPerspective(live);
+      const next = await meshSpecFromPerspective(live);
+      if (!active || generation !== seedGeneration || source !== seededSource || spec !== seededSpec) return;
+      spec = next;
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
       renderControls();
     } catch (error) {
+      if (!active || generation !== seedGeneration || source !== seededSource || spec !== seededSpec) return;
       shell.showError(input.formatError(error));
     }
   }
@@ -298,12 +325,29 @@ export function createMeshWorkspace(input: {
       shell.root.hidden = false;
       void seedAndRender();
     },
-    leave() { overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
+    leave() { overlay?.interrupt(); active = false; busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false); renderControls(); shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
+    selectionLoading() {
+      overlay?.interrupt();
+      refreshing = true; generation += 1; moveFrames.cancel();
+      busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false);
+      shell.apply.disabled = true; shell.applyNew.disabled = true;
+    },
     setSource(next) {
+      refreshing = false;
+      const retain = canRetainDesignerDraft(source, next) && spec !== undefined;
+
+      generation += 1;
+      moveFrames.cancel();
+      overlay?.interrupt();
       busy = false;
       shell.setBusy(false);
       if (!sameDesignerSelection(source, next)) appliedResultPending = false;
       source = next;
+      if (retain) {
+        renderControls();
+        if (active) void render();
+        return;
+      }
       const first = next.sources[0];
       if (!first) return;
       spec = nextTask(next, "mesh") ?? createMeshSpec(first.renderWidth, first.renderHeight);
@@ -314,7 +358,7 @@ export function createMeshWorkspace(input: {
       renderControls();
       if (active) void seedAndRender();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { refreshing = false; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     loadTemplate(next: MeshWarpSpecInput) {
       if (!source?.sources[0]) return false;
       spec = structuredClone(next);
@@ -360,7 +404,7 @@ export function createMeshWorkspace(input: {
       undoRouted = result.undoRouted;
       return result.handled;
     },
-    dispose() { moveFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
+    dispose() { generation += 1; active = false; moveFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }
 
@@ -428,7 +472,7 @@ function identityMesh(subdivisions: number): WarpMesh {
 
 /**
  * Rebuild a fixed-boundary mesh at a new regular density. Interior warped
- * positions are bilinear samples of the previous source grid so changing
+ * positions sample the actual triangular mesh consumed by the renderer so changing
  * 3×3 / 4×4 / 5×5 does not discard the current deformation.
  */
 export function resampleMesh(mesh: WarpMesh, subdivisions: number): WarpMesh {
@@ -436,8 +480,6 @@ export function resampleMesh(mesh: WarpMesh, subdivisions: number): WarpMesh {
   if (next === mesh.subdivisions && mesh.vertices.length === (next + 1) ** 2) {
     return mesh;
   }
-  const previous = Math.max(1, mesh.subdivisions);
-  const previousSide = previous + 1;
   const vertices = [];
   for (let y = 0; y <= next; y += 1) {
     for (let x = 0; x <= next; x += 1) {
@@ -445,43 +487,11 @@ export function resampleMesh(mesh: WarpMesh, subdivisions: number): WarpMesh {
       const boundary = x === 0 || y === 0 || x === next || y === next;
       vertices.push({
         source,
-        warped: boundary ? { ...source } : sampleWarped(mesh, previous, previousSide, source),
+        warped: boundary ? { ...source } : (warpedFromSource(mesh, source) ?? (() => { throw new Error("Mesh source grid is invalid"); })()),
       });
     }
   }
   return { subdivisions: next, vertices };
-}
-
-function sampleWarped(
-  mesh: WarpMesh,
-  subdivisions: number,
-  side: number,
-  point: { x: number; y: number },
-): { x: number; y: number } {
-  const x = point.x * subdivisions;
-  const y = point.y * subdivisions;
-  const x0 = Math.min(subdivisions - 1, Math.max(0, Math.floor(x)));
-  const y0 = Math.min(subdivisions - 1, Math.max(0, Math.floor(y)));
-  const tx = x - x0;
-  const ty = y - y0;
-  const at = (column: number, row: number) =>
-    mesh.vertices[row * side + column]?.warped ?? { x: column / subdivisions, y: row / subdivisions };
-  return lerpPoint(
-    lerpPoint(at(x0, y0), at(x0 + 1, y0), tx),
-    lerpPoint(at(x0, y0 + 1), at(x0 + 1, y0 + 1), tx),
-    ty,
-  );
-}
-
-function lerpPoint(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-  amount: number,
-): { x: number; y: number } {
-  return {
-    x: start.x + (end.x - start.x) * amount,
-    y: start.y + (end.y - start.y) * amount,
-  };
 }
 
 function nextTask(source: DesignerWorkspaceSource, kind: "mesh"): MeshWarpSpecInput | undefined {

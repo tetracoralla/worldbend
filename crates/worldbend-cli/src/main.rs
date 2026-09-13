@@ -449,8 +449,8 @@ enum Command {
     /// directory; failurePolicy continue records per-item failures in order.
     #[cfg(feature = "full")]
     VariationRender {
-        /// Repeat ASSET_ID=PATH once for every distinct assetId in the job.
-        #[arg(long, required = true)]
+        /// Repeat ASSET_ID=PATH for each asset. Under continue, omitted assets fail their items.
+        #[arg(long)]
         asset: Vec<String>,
         /// Path to a worldbend.variation-job JSON document.
         #[arg(long)]

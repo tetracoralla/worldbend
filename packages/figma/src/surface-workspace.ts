@@ -1,3 +1,6 @@
+import { resampleEnvelope } from "./surface-envelope";
+export { resampleEnvelope } from "./surface-envelope";
+import { planeCoordinates } from "./plane-coordinates";
 import {
   TransformWebGLRenderer,
   normalizedSpec,
@@ -15,9 +18,12 @@ import type { Phase } from "./editor-state";
 import { transformForMesh } from "./mesh-workspace";
 import {
   appendStrokeSample,
+  anchorsForSubdivisions,
   envelopePointRole,
+  MAX_SURFACE_ANCHORS,
   nextStrokeId,
   sourceUvFromWarped,
+  warpedFromSource,
   strokeSample,
   toggleInteriorAnchor,
 } from "./surface-authoring";
@@ -32,6 +38,7 @@ import {
   fitPreviewCanvas,
   postDesignerResult,
   sameDesignerSelection,
+  canRetainDesignerDraft,
   type DesignerTaskWorkspace,
   type DesignerWorkspaceCopy,
   type DesignerWorkspaceSource,
@@ -52,6 +59,12 @@ export interface SurfaceWorkspaceCopy extends DesignerWorkspaceCopy {
   saveTemplate: string;
   savingTemplate: string;
   templateSaved: string;
+  splitRequired: string;
+  pinDensity: string;
+  pinLimit: string;
+  strokeLimit: string;
+  brushLimit: string;
+  pinLabel: string;
 }
 
 export interface LivePerspectiveSurface {
@@ -116,23 +129,36 @@ export function createSurfaceWorkspace(input: {
   let baseline: SurfaceDeformationSpecInput | undefined;
   let history: WorkspaceHistory<SurfaceDeformationSpecInput> | undefined;
   let generation = 0;
+  let coordinates: ReturnType<typeof planeCoordinates> | undefined;
   let busy = false;
+  let refreshing = false;
   let active = false;
   let phase: Phase = "idle";
   let undoRouted = false;
   let appliedResultPending = false;
   let tool: SurfaceTool = "handles";
   let lastMesh: WarpMesh | undefined;
-  let activeStrokeId: string | undefined;
-  let lastStrokeUv: Point | undefined;
+  let brush: {
+    pointerId: number; id: string; origin: SurfaceDeformationSpecInput;
+    lastUv: Point; mesh: WarpMesh; coordinates: ReturnType<typeof planeCoordinates>;
+    applied: boolean; undoRouted: boolean;
+  } | undefined;
+  let brushLimitReached = false;
+  let brushHover: Point | undefined;
   let nextTemplateRequestId = 1;
   let pendingTemplateRequestId: number | undefined;
   let savingTemplate = false;
   const moveFrames = createFrameCoalescer(() => void render(false));
 
+  const latticeObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => {
+    if (active && spec) drawLattice(spec.envelope);
+  });
+  latticeObserver?.observe(shell.preview);
+  latticeObserver?.observe(renderer.canvas);
   shell.back.addEventListener("click", input.onBack);
   shell.reset.addEventListener("click", () => {
-    if (!baseline) return;
+    if (!baseline || busy) return;
+    finishBrush(); overlay?.interrupt(); brushLimitReached = false;
     spec = structuredClone(baseline);
     history?.push(spec);
     phase = "ready";
@@ -142,29 +168,30 @@ export function createSurfaceWorkspace(input: {
     void render();
   });
   patches.addEventListener("change", () => {
-    if (!spec) return;
+    if (!spec || busy || refreshing) return;
+    finishBrush(); overlay?.interrupt();
     const next = parsePatchValue(patches.value) ?? DEFAULT_SURFACE_PATCHES;
     const meshSubdivisions = compatibleSubdivisions(next.columns, next.rows, spec.meshSubdivisions ?? DEFAULT_SURFACE_SUBDIVISIONS);
-    spec = {
-      ...spec,
-      meshSubdivisions,
-      envelope: resampleEnvelope(spec.envelope, next.columns, next.rows),
-    };
-    history?.push(spec);
-    phase = "ready";
-    undoRouted = false;
-    appliedResultPending = false;
-    renderControls();
-    void render();
+    const anchors = anchorsForSubdivisions(spec.anchors ?? [], spec.meshSubdivisions ?? DEFAULT_SURFACE_SUBDIVISIONS, meshSubdivisions);
+    try {
+      if (!anchors) throw new Error(input.copy().pinDensity);
+      const envelope = resampleEnvelope(spec.envelope, next.columns, next.rows);
+      spec = { ...spec, meshSubdivisions, anchors, envelope };
+    } catch (error) {
+      renderControls();
+      shell.showError(anchors ? input.copy().splitRequired : input.formatError(error));
+      return;
+    }
+    commitEdit(); renderControls(); void render();
   });
   subdivisions.addEventListener("change", () => {
-    if (!spec) return;
-    spec = { ...spec, meshSubdivisions: Number(subdivisions.value) };
-    history?.push(spec);
-    phase = "ready";
-    undoRouted = false;
-    appliedResultPending = false;
-    void render();
+    if (!spec || busy || refreshing) return;
+    finishBrush(); overlay?.interrupt();
+    const next = Number(subdivisions.value);
+    const anchors = anchorsForSubdivisions(spec.anchors ?? [], spec.meshSubdivisions ?? DEFAULT_SURFACE_SUBDIVISIONS, next);
+    if (!anchors) { renderControls(); shell.showError(input.copy().pinDensity); return; }
+    spec = { ...spec, meshSubdivisions: next, anchors };
+    commitEdit(); renderControls(); void render();
   });
   shell.apply.addEventListener("click", () => void apply(false));
   shell.applyNew.addEventListener("click", () => void apply(true));
@@ -173,6 +200,7 @@ export function createSurfaceWorkspace(input: {
   toolBrush.addEventListener("click", () => setTool("brush"));
   for (const field of [radius, radiusNumber, strength, strengthNumber]) {
     field.addEventListener("input", () => {
+      if (!field.value || !field.validity.valid) return;
       if (field === radius || field === radiusNumber) {
         radius.value = field.value;
         radiusNumber.value = field.value;
@@ -180,54 +208,60 @@ export function createSurfaceWorkspace(input: {
         strength.value = field.value;
         strengthNumber.value = field.value;
       }
+      if (spec) drawLattice(spec.envelope);
     });
   }
   templateName.addEventListener("input", () => renderTemplateSave());
   saveTemplate.addEventListener("click", () => void saveCurrentTemplate());
   renderer.canvas.addEventListener("pointerdown", (event) => {
-    if (tool !== "brush" || !spec || !lastMesh) return;
+    if (event.button !== 0 || !active || busy || brush || tool !== "brush" || !spec || !lastMesh || !coordinates) return;
     event.preventDefault();
-    const uv = pointerSourceUv(event);
+    const uv = pointerSourceUv(event, lastMesh, coordinates);
     if (!uv) return;
     const id = nextStrokeId(spec.strokes ?? []);
-    if (!id) return;
-    activeStrokeId = id;
-    lastStrokeUv = uv;
-    const next = appendStrokeSample(spec.strokes ?? [], id, strokeSample(uv, undefined, Number(radius.value), Number(strength.value)));
-    if (!next) return;
-    spec = { ...spec, strokes: next };
-    try { renderer.canvas.setPointerCapture(event.pointerId); } catch { /* captureless brush */ }
-    void render(false);
+    if (!id) { shell.showError(input.copy().strokeLimit); return; }
+    brushLimitReached = false;
+    brushHover = uv;
+    brush = { pointerId: event.pointerId, id, origin: spec, lastUv: uv, mesh: lastMesh, coordinates,
+      applied: appliedResultPending, undoRouted };
+    drawLattice(spec.envelope);
+    try { renderer.canvas.setPointerCapture(event.pointerId); } catch { /* Window events still close the gesture. */ }
   });
-  renderer.canvas.addEventListener("pointermove", (event) => {
-    if (tool !== "brush" || !activeStrokeId || !spec) return;
-    if (event.buttons === 0) {
-      finishBrush();
-      return;
+  const brushMove = (event: PointerEvent) => {
+    if (active && tool === "brush" && lastMesh && coordinates && !busy
+      && (!brush || event.pointerId === brush.pointerId)) {
+      brushHover = pointerSourceUv(event, brush?.mesh ?? lastMesh, brush?.coordinates ?? coordinates);
+      if (spec) drawLattice(spec.envelope);
     }
-    const uv = pointerSourceUv(event);
-    if (!uv) return;
-    const next = appendStrokeSample(
-      spec.strokes ?? [],
-      activeStrokeId,
-      strokeSample(uv, lastStrokeUv, Number(radius.value), Number(strength.value)),
-    );
-    if (!next) return;
-    lastStrokeUv = uv;
-    spec = { ...spec, strokes: next };
-    moveFrames.request();
-  });
-  renderer.canvas.addEventListener("pointerup", finishBrush);
-  renderer.canvas.addEventListener("pointercancel", finishBrush);
+    if (!brush || event.pointerId !== brush.pointerId) return;
+    if (event.buttons === 0) { finishBrush(); return; }
+    appendBrush(event);
+  };
+  const brushUp = (event: PointerEvent) => {
+    if (!brush || event.pointerId !== brush.pointerId) return;
+    appendBrush(event); finishBrush();
+  };
+  const brushInterrupted = (event?: PointerEvent) => {
+    if (!event || brush?.pointerId === event.pointerId) finishBrush();
+  };
+  const brushBlur = () => finishBrush();
+  const brushHidden = () => { if (document.visibilityState === "hidden") finishBrush(); };
+  window.addEventListener("pointermove", brushMove);
+  window.addEventListener("pointerup", brushUp);
+  window.addEventListener("pointercancel", brushInterrupted);
+  window.addEventListener("blur", brushBlur);
+  document.addEventListener("visibilitychange", brushHidden);
+  renderer.canvas.addEventListener("lostpointercapture", brushInterrupted);
 
   async function render(refreshOverlay = true): Promise<void> {
-    if (!source || !spec) return;
+    if (!active || busy || !source || !spec) return;
     const first = source.sources[0];
     if (!first) return;
     const currentGeneration = ++generation;
     try {
       const plan = await planSurfaceDeformation(spec);
       if (currentGeneration !== generation) return;
+      coordinates = planeCoordinates(plan.meshWarp.solve);
       lastMesh = plan.meshWarp.spec.mesh;
       renderer.render(
         first.image,
@@ -236,13 +270,16 @@ export function createSurfaceWorkspace(input: {
         "preview",
       );
       fitPreviewCanvas(renderer.canvas, shell.preview);
-      shell.showError();
+      shell.showError(brushLimitReached ? input.copy().brushLimit : undefined);
       if (refreshOverlay) renderOverlay();
-      shell.apply.disabled = false;
+      else drawLattice(spec.envelope);
+      shell.apply.disabled = busy || refreshing;
+      shell.applyNew.disabled = busy || refreshing;
     } catch (error) {
       if (currentGeneration !== generation) return;
       shell.showError(input.formatError(error));
       shell.apply.disabled = true;
+      shell.applyNew.disabled = true;
     }
   }
 
@@ -268,6 +305,7 @@ export function createSurfaceWorkspace(input: {
     radiusField.hidden = tool !== "brush";
     strengthField.hidden = tool !== "brush";
     renderer.canvas.style.touchAction = tool === "brush" ? "none" : "";
+    renderer.canvas.style.cursor = tool === "brush" ? "crosshair" : "";
     renderTemplateSave();
     shell.applyNew.hidden = !source?.targetNodeId;
   }
@@ -276,14 +314,17 @@ export function createSurfaceWorkspace(input: {
     moves: readonly { id: string; point: { x: number; y: number } }[],
     final: boolean,
   ): void {
-    if (!spec || moves.length === 0) return;
+    if (busy || !spec || moves.length === 0) return;
     const relocated = new Map(moves.map((move) => [Number(move.id), move.point]));
     const points = spec.envelope.points.map((candidate, index) => relocated.get(index) ?? candidate);
     const unchanged = points.every((point, index) => {
       const previous = spec!.envelope.points[index];
       return previous !== undefined && point.x === previous.x && point.y === previous.y;
     });
-    if (unchanged) return;
+    if (unchanged) {
+      if (final) { moveFrames.flush(); history?.push(spec); }
+      return;
+    }
     spec = { ...spec, envelope: { ...spec.envelope, points: points as BezierEnvelope["points"] } };
     phase = "ready";
     undoRouted = false;
@@ -301,6 +342,7 @@ export function createSurfaceWorkspace(input: {
     overlay = createDirectPointOverlay({
       host: shell.preview,
       canvas: renderer.canvas,
+      ...(coordinates ? { coordinates } : {}),
       selection: tool === "handles" ? "multiple" : "single",
       bounds: tool === "handles" ? { min: CONTROL_MIN, max: CONTROL_MAX } : { min: 0, max: 1 },
       draggable: tool === "handles",
@@ -311,21 +353,26 @@ export function createSurfaceWorkspace(input: {
         if (tool === "handles") applyControlMoves(moves, final);
       },
       onActivate(id) {
-        if (tool !== "pin" || !spec) return false;
+        if (busy || tool !== "pin" || !spec) return false;
         const [column, row] = id.split(",").map(Number);
         if (column === undefined || row === undefined || !Number.isInteger(column) || !Number.isInteger(row)) return false;
+        const anchors = spec.anchors ?? [];
+        const pinned = anchors.some((anchor) => anchor.column === column && anchor.row === row);
+        if (!pinned && anchors.length >= MAX_SURFACE_ANCHORS) {
+          shell.showError(input.copy().pinLimit);
+          return true;
+        }
         spec = {
           ...spec,
           anchors: toggleInteriorAnchor(
-            spec.anchors ?? [],
+            anchors,
             column,
             row,
             spec.meshSubdivisions ?? DEFAULT_SURFACE_SUBDIVISIONS,
           ),
         };
-        history?.push(spec);
-        renderOverlay();
-        void render(false);
+        commitEdit();
+        void render();
         return true;
       },
     });
@@ -344,7 +391,7 @@ export function createSurfaceWorkspace(input: {
           x: vertex.warped.x,
           y: vertex.warped.y,
           tone: pinned.has(`${column},${row}`) ? "anchor" as const : "curve" as const,
-          label: copy.pointLabel.replace("{x}", String(column)).replace("{y}", String(row)),
+          label: copy.pinLabel.replace("{x}", String(column)).replace("{y}", String(row)),
         }];
       }));
     } else {
@@ -369,35 +416,47 @@ export function createSurfaceWorkspace(input: {
   }
 
   async function apply(duplicate: boolean): Promise<void> {
-    if (!source || !spec || busy) return;
+    if (!active || !source || !spec || busy || refreshing) return;
+    finishBrush();
+    overlay?.interrupt();
+    moveFrames.cancel();
+    const appliedSource = source;
+    const appliedSpec = spec;
+    const currentGeneration = ++generation;
+    const current = () => active && generation === currentGeneration && source === appliedSource && spec === appliedSpec;
     busy = true;
     phase = "applying";
-    moveFrames.cancel();
     shell.setBusy(true);
     shell.status.textContent = input.copy().applying;
     try {
-      const first = source.sources[0];
+      const first = appliedSource.sources[0];
       if (!first) throw new Error("No source is loaded");
-      const plan = await planSurfaceDeformation(spec);
+      const plan = await planSurfaceDeformation(appliedSpec);
+      if (!current()) return;
       renderer.render(first.image, plan.meshWarp.solve, plan.meshWarp.spec.mesh, "high");
+      const bytes = await canvasPng(renderer.canvas);
+      if (!current()) return;
       postDesignerResult({
         post: input.post,
-        source,
-        task: { kind: "surface", spec },
-        bytes: await canvasPng(renderer.canvas),
-        width: spec.targetSize?.width ?? first.renderWidth,
-        height: spec.targetSize?.height ?? first.renderHeight,
+        source: appliedSource,
+        task: { kind: "surface", spec: appliedSpec },
+        bytes,
+        width: appliedSpec.targetSize?.width ?? first.renderWidth,
+        height: appliedSpec.targetSize?.height ?? first.renderHeight,
         duplicate,
       });
     } catch (error) {
+      if (!current()) return;
       busy = false;
       phase = "ready";
       shell.setBusy(false);
+      renderControls();
       shell.showError(input.formatError(error));
     }
   }
 
   function restoreHistory(restored: SurfaceDeformationSpecInput): void {
+    brushLimitReached = false;
     spec = restored;
     renderControls();
     void render();
@@ -411,7 +470,7 @@ export function createSurfaceWorkspace(input: {
 
   async function seedFromPerspectiveIfNeeded(): Promise<void> {
     if (!source || nextTask(source)) return;
-    if (history?.canUndo() || appliedResultPending) return;
+    if (history?.canUndo() || history?.canRedo() || appliedResultPending) return;
     const live = input.livePerspective?.();
     if (!live) return;
     spec = surfaceSpecFromPerspective(live);
@@ -436,6 +495,7 @@ export function createSurfaceWorkspace(input: {
       phase = "ready";
       undoRouted = false;
       appliedResultPending = false;
+      brushLimitReached = false;
       renderControls();
       if (active) void render();
       return true;
@@ -448,12 +508,34 @@ export function createSurfaceWorkspace(input: {
       renderTemplateSave();
       if (error) shell.showError(error);
     },
-    leave() { finishBrush(); overlay?.interrupt(); active = false; shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
+    leave() { finishBrush(); overlay?.interrupt(); brushHover = undefined; active = false; busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false); renderControls(); shell.root.hidden = true; generation += 1; moveFrames.cancel(); },
+    selectionLoading() {
+      finishBrush(); overlay?.interrupt();
+      refreshing = true; generation += 1; moveFrames.cancel();
+      busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false);
+      shell.apply.disabled = true; shell.applyNew.disabled = true;
+    },
     setSource(next) {
+      refreshing = false;
+      const retain = canRetainDesignerDraft(source, next) && spec !== undefined;
+
+      finishBrush();
+      generation += 1;
+      moveFrames.cancel();
+      overlay?.interrupt();
       busy = false;
       shell.setBusy(false);
-      if (!sameDesignerSelection(source, next)) appliedResultPending = false;
+      if (!sameDesignerSelection(source, next)) {
+        appliedResultPending = false;
+        brushHover = undefined;
+      }
       source = next;
+      if (retain) {
+        renderControls();
+        if (active) void render();
+        return;
+      }
+      brushLimitReached = false;
       const first = next.sources[0];
       if (!first) return;
       spec = nextTask(next) ?? createSurfaceSpec(first.renderWidth, first.renderHeight);
@@ -464,7 +546,7 @@ export function createSurfaceWorkspace(input: {
       renderControls();
       if (active) void seedAndRender();
     },
-    clearSource(error) { overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { refreshing = false; finishBrush(); brushHover = undefined; brushLimitReached = false; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -475,6 +557,8 @@ export function createSurfaceWorkspace(input: {
       toolBrush.textContent = copy.brush;
       role<HTMLElement>(shell.inspector, "radius-label").textContent = copy.radius;
       role<HTMLElement>(shell.inspector, "strength-label").textContent = copy.strength;
+      radiusNumber.setAttribute("aria-label", copy.radius);
+      strengthNumber.setAttribute("aria-label", copy.strength);
       role<HTMLElement>(shell.inspector, "template-name-label").textContent = copy.templateName;
       templateName.placeholder = copy.templateNamePlaceholder;
       saveTemplate.textContent = copy.saveTemplate;
@@ -490,36 +574,69 @@ export function createSurfaceWorkspace(input: {
       return true;
     },
     handleKeydown(event) {
-      if (event.key === "Escape") { event.preventDefault(); input.onBack(); return true; }
+      if (event.key === "Escape") { event.preventDefault(); if (brush) finishBrush(true); else input.onBack(); return true; }
+      if (brush && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") finishBrush();
       const result = handleWorkspaceHistoryShortcut({ event, phase, appliedResultPending, undoRouted, history, post: input.post, restore: restoreHistory });
       undoRouted = result.undoRouted;
       return result.handled;
     },
-    dispose() { finishBrush(); moveFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
+    dispose() { generation += 1; active = false; finishBrush(); latticeObserver?.disconnect();
+      window.removeEventListener("pointermove", brushMove);
+      window.removeEventListener("pointerup", brushUp);
+      window.removeEventListener("pointercancel", brushInterrupted);
+      window.removeEventListener("blur", brushBlur);
+      document.removeEventListener("visibilitychange", brushHidden);
+      renderer.canvas.removeEventListener("lostpointercapture", brushInterrupted); moveFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 
   function setTool(next: SurfaceTool): void {
+    if (next !== tool) {
+      brushHover = undefined;
+      if (next !== "brush") brushLimitReached = false;
+    }
     tool = next;
     finishBrush();
     renderControls();
     renderOverlay();
   }
 
-  function finishBrush(): void {
-    if (!activeStrokeId) return;
-    activeStrokeId = undefined;
-    lastStrokeUv = undefined;
+  function commitEdit(): void {
     if (spec) history?.push(spec);
-    moveFrames.flush();
+    phase = "ready"; undoRouted = false; appliedResultPending = false;
   }
 
-  function pointerSourceUv(event: PointerEvent): Point | undefined {
-    if (!lastMesh) return undefined;
+  function appendBrush(event: PointerEvent): void {
+    if (!brush || !spec || busy || !active) return;
+    const uv = pointerSourceUv(event, brush.mesh, brush.coordinates);
+    if (!uv || Math.hypot(uv.x - brush.lastUv.x, uv.y - brush.lastUv.y) < 1e-6) return;
+    if (Number(strength.value) === 0) { brush.lastUv = uv; return; }
+    const next = appendStrokeSample(spec.strokes ?? [], brush.id,
+      strokeSample(uv, brush.lastUv, Number(radius.value), Number(strength.value)));
+    if (!next) { brushLimitReached = true; shell.showError(input.copy().brushLimit); return; }
+    brush.lastUv = uv;
+    spec = { ...spec, strokes: next };
+    phase = "ready"; undoRouted = false; appliedResultPending = false;
+    moveFrames.request();
+  }
+
+  function finishBrush(cancel = false): void {
+    if (!brush) return;
+    const completed = brush; brush = undefined;
+    if (cancel) {
+      spec = completed.origin; appliedResultPending = completed.applied; undoRouted = completed.undoRouted;
+      brushLimitReached = false; moveFrames.cancel(); void render(false);
+    } else if (spec !== completed.origin) {
+      commitEdit(); moveFrames.flush();
+    }
+    if (renderer.canvas.hasPointerCapture(completed.pointerId)) renderer.canvas.releasePointerCapture(completed.pointerId);
+  }
+
+  function pointerSourceUv(event: PointerEvent, mesh: WarpMesh, mapping: ReturnType<typeof planeCoordinates>): Point | undefined {
     const box = renderer.canvas.getBoundingClientRect();
-    return sourceUvFromWarped(lastMesh, {
+    return sourceUvFromWarped(mesh, mapping.unproject({
       x: (event.clientX - box.left) / Math.max(1, box.width),
       y: (event.clientY - box.top) / Math.max(1, box.height),
-    });
+    }));
   }
 
   function drawLattice(envelope: BezierEnvelope): void {
@@ -530,11 +647,36 @@ export function createSurfaceWorkspace(input: {
     lattice.setAttribute("height", String(hostBox.height));
     const left = canvasBox.left - hostBox.left;
     const top = canvasBox.top - hostBox.top;
+    if (tool === "brush") {
+      if (!brushHover || !lastMesh || !coordinates) return;
+      const mesh = brush?.mesh ?? lastMesh, mapping = brush?.coordinates ?? coordinates;
+      let path = "", connected = false;
+      for (let sample = 0; sample <= 48; sample += 1) {
+        const angle = sample / 48 * Math.PI * 2;
+        const warped = warpedFromSource(mesh, {
+          x: brushHover.x + Number(radius.value) * Math.cos(angle),
+          y: brushHover.y + Number(radius.value) * Math.sin(angle),
+        });
+        if (!warped) { connected = false; continue; }
+        const point = mapping.project(warped);
+        path += `${connected ? "L" : "M"}${left + point.x * canvasBox.width},${top + point.y * canvasBox.height} `;
+        connected = true;
+      }
+      for (const [color, width] of [["#0009", 3], ["#fff", 1]] as const) {
+        const ring = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        ring.setAttribute("d", path); ring.setAttribute("fill", "none");
+        ring.setAttribute("stroke", color); ring.setAttribute("stroke-width", String(width));
+        lattice.append(ring);
+      }
+      return;
+    }
     const columns = envelope.columns * 3 + 1;
     const rows = envelope.rows * 3 + 1;
     const at = (column: number, row: number) => envelope.points[row * columns + column];
     const add = (from: Point | undefined, to: Point | undefined) => {
       if (!from || !to) return;
+      from = coordinates?.project(from) ?? from;
+      to = coordinates?.project(to) ?? to;
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.setAttribute("x1", String(left + from.x * canvasBox.width));
       line.setAttribute("y1", String(top + from.y * canvasBox.height));
@@ -626,33 +768,6 @@ export function identityEnvelope(columns: number, rows: number): BezierEnvelope 
   return { columns, rows, points: points as BezierEnvelope["points"] };
 }
 
-/**
- * Rebuild a fixed-boundary Bezier lattice at a new patch density. Interior
- * controls are bilinear samples of the previous lattice so 1×1 → 2×2 does
- * not discard the current deformation.
- */
-export function resampleEnvelope(envelope: BezierEnvelope, columns: number, rows: number): BezierEnvelope {
-  if (envelope.columns === columns && envelope.rows === rows) return envelope;
-  const previousColumns = envelope.columns * 3 + 1;
-  const previousRows = envelope.rows * 3 + 1;
-  const next = identityEnvelope(columns, rows);
-  const nextColumns = columns * 3 + 1;
-  const nextRows = rows * 3 + 1;
-  const points = next.points.map((identity, index) => {
-    const column = index % nextColumns;
-    const row = Math.floor(index / nextColumns);
-    if (column === 0 || row === 0 || column + 1 === nextColumns || row + 1 === nextRows) return identity;
-    return clampControl(sampleEnvelope(
-      envelope,
-      previousColumns,
-      previousRows,
-      column / (nextColumns - 1),
-      row / (nextRows - 1),
-    ));
-  });
-  return { columns, rows, points: points as BezierEnvelope["points"] };
-}
-
 /** Authored 1–2 splits, plus the current lattice when an Agent task used 3×3/4×4. */
 export function patchChoicesFor(
   columns: number,
@@ -689,42 +804,6 @@ function fillSubdivisionOptions(
     select.append(option);
   }
   select.value = String(next);
-}
-
-function sampleEnvelope(
-  envelope: BezierEnvelope,
-  columns: number,
-  rows: number,
-  u: number,
-  v: number,
-): Point {
-  const x = u * (columns - 1);
-  const y = v * (rows - 1);
-  const x0 = Math.min(columns - 2, Math.max(0, Math.floor(x)));
-  const y0 = Math.min(rows - 2, Math.max(0, Math.floor(y)));
-  const tx = x - x0;
-  const ty = y - y0;
-  const at = (column: number, row: number) =>
-    envelope.points[row * columns + column] ?? { x: column / (columns - 1), y: row / (rows - 1) };
-  return lerpPoint(
-    lerpPoint(at(x0, y0), at(x0 + 1, y0), tx),
-    lerpPoint(at(x0, y0 + 1), at(x0 + 1, y0 + 1), tx),
-    ty,
-  );
-}
-
-function lerpPoint(start: Point, end: Point, amount: number): Point {
-  return {
-    x: start.x + (end.x - start.x) * amount,
-    y: start.y + (end.y - start.y) * amount,
-  };
-}
-
-function clampControl(point: Point): Point {
-  return {
-    x: Math.max(CONTROL_MIN, Math.min(CONTROL_MAX, point.x)),
-    y: Math.max(CONTROL_MIN, Math.min(CONTROL_MAX, point.y)),
-  };
 }
 
 function patchValue(columns: number, rows: number): string {
