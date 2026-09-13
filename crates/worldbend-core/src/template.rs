@@ -131,6 +131,18 @@ pub struct VariationJobItem {
     pub bindings: Vec<VariationBinding>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum VariationFailurePolicy {
+    /// Any item, decode, budget, or cancellation failure publishes nothing.
+    #[default]
+    AllOrNone,
+    /// Item-level render or decode failures are recorded in order; successful
+    /// items still publish. Job-level schema, extra assets, and destination
+    /// collisions still abort the whole job.
+    Continue,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct VariationJobSpec {
@@ -139,6 +151,8 @@ pub struct VariationJobSpec {
     #[schemars(schema_with = "spatial_template_version_schema")]
     pub version: String,
     pub template: SpatialTemplateSpec,
+    #[serde(default)]
+    pub failure_policy: VariationFailurePolicy,
     #[schemars(length(min = 1, max = 64))]
     pub items: Vec<VariationJobItem>,
 }
@@ -158,6 +172,7 @@ pub struct VariationJobPlan {
     #[schemars(schema_with = "spatial_template_version_schema")]
     pub version: String,
     pub template: SpatialTemplateInspection,
+    pub failure_policy: VariationFailurePolicy,
     #[schemars(length(min = 1, max = 64))]
     pub items: Vec<VariationJobItemPlan>,
     #[schemars(length(min = 1, max = 1024))]
@@ -344,6 +359,7 @@ pub fn plan_variation_job(spec: &VariationJobSpec) -> TransformResult<VariationJ
         schema: VARIATION_JOB_PLAN_SCHEMA.to_owned(),
         version: SPATIAL_TEMPLATE_VERSION.to_owned(),
         template,
+        failure_policy: spec.failure_policy,
         items,
         asset_ids,
         output_count,
@@ -465,6 +481,7 @@ mod tests {
             schema: VARIATION_JOB_SCHEMA.to_owned(),
             version: SPATIAL_TEMPLATE_VERSION.to_owned(),
             template,
+            failure_policy: VariationFailurePolicy::AllOrNone,
             items: vec![VariationJobItem {
                 id: "sku-1".to_owned(),
                 bindings: vec![VariationBinding {
@@ -647,5 +664,29 @@ mod tests {
         let value = operation.remove("sourceSlot").unwrap();
         operation.insert("source_slot".to_owned(), value);
         assert!(serde_json::from_value::<SpatialTemplateSpec>(snake_case).is_err());
+    }
+
+    #[test]
+    fn omitted_failure_policy_is_all_or_none_and_continue_is_echoed() {
+        let json = serde_json::json!({
+            "schema": VARIATION_JOB_SCHEMA,
+            "version": SPATIAL_TEMPLATE_VERSION,
+            "template": program_template(single_output()),
+            "items": [{
+                "id": "sku-1",
+                "bindings": [{ "slotId": "artwork", "assetId": "asset-a" }]
+            }]
+        });
+        let spec: VariationJobSpec = serde_json::from_value(json).unwrap();
+        assert_eq!(spec.failure_policy, VariationFailurePolicy::AllOrNone);
+        let plan = plan_variation_job(&spec).unwrap();
+        assert_eq!(plan.failure_policy, VariationFailurePolicy::AllOrNone);
+
+        let mut continued = spec;
+        continued.failure_policy = VariationFailurePolicy::Continue;
+        assert_eq!(
+            plan_variation_job(&continued).unwrap().failure_policy,
+            VariationFailurePolicy::Continue
+        );
     }
 }

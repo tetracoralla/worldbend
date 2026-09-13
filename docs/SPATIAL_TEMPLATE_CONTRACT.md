@@ -82,11 +82,23 @@ already-structured stages.
 
 The complete job renders into one private directory beside the requested final
 directory. Publication is one same-filesystem, no-replace directory rename.
-Version 0.1 is all-or-none: an invalid item, render failure, cancellation,
-timeout, memory breach, capacity rejection, response-budget failure, or
-destination collision publishes no final directory. `dryRun` executes the same
-validation, decoding, rendering, encoding, hashing, result shaping, and
-destination preflight but omits the final rename.
+`failurePolicy` defaults to `allOrNone`: an invalid item, render failure,
+cancellation, timeout, memory breach, capacity rejection, response-budget
+failure, or destination collision publishes no final directory. `continue`
+keeps item order and publishes successful item directories; failed items stay
+in the result as `status: failed` with the original error and do not appear
+on disk. Job-level schema errors, unknown extra assets, and destination
+collisions still abort the whole job; a missing asset is a per-item decode
+failure under `continue` and a schema abort under `allOrNone`. A `continue`
+job where every item failed still publishes an empty final directory on a
+non-dry run, so a published destination always means the job ran. Cancellation
+stops remaining items; under `continue` already-rendered items publish.
+Exhausting the cumulative rendered-output-pixel budget also stops remaining
+items with the budget error; an asset that would exceed the cumulative
+decoded-pixel budget is recorded as a failed decode for its items while later
+smaller assets may still decode. `dryRun` executes the same validation,
+decoding, rendering, encoding, hashing, result shaping, and destination
+preflight but omits the final rename.
 
 The product ceilings are:
 

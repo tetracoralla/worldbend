@@ -342,7 +342,10 @@ reproducible workload and threshold. It fails only on correctness or benchmark
 integrity. A faster core number cannot compensate for unbounded queue/resource
 growth, unsafe effects, worse tail latency, or higher Agent context cost.
 
-Worldbend exposes no generic public batch operation. Timeline is a specialized
+Worldbend exposes no generic public batch operation. Variation Job is the
+ordered multi-item production contract: item identity, correlation, cumulative
+budgets, cancellation, and either all-or-none or continue-on-item-failure
+publication. Timeline is a specialized
 ordered atomic sequence with its own item, order, source, cumulative budget,
 failure, cancellation, and publication contract. Before adding any other
 batch, define item/envelope bounds, correlation and order, failure and

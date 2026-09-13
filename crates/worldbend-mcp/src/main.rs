@@ -45,10 +45,11 @@ use worldbend_core::{
     RectifySpec, RemapPlan, RemapSpec, Size, SolveOutput, SpatialTemplateInspection,
     SpatialTemplateSpec, SurfaceDeformationPlan, SurfaceDeformationSpec, TimelinePlan,
     TimelineSpec, TransformError, TransformRecipe, TransformResult, TransformSpec,
-    VariationJobPlan, VariationJobSpec, bounded_text, compose_affine, emit_css_transform,
-    inspect_raster_program, inspect_spatial_template, inspect_spec, plan_mesh_warp, plan_mockup,
-    plan_mockup_extract, plan_motion, plan_remap, plan_surface_deformation, plan_timeline,
-    plan_variation_job, project_plane_pose, project_plane_strip, rectify_plane, solve_spec,
+    VariationFailurePolicy, VariationJobPlan, VariationJobSpec, bounded_text, compose_affine,
+    emit_css_transform, inspect_raster_program, inspect_spatial_template, inspect_spec,
+    plan_mesh_warp, plan_mockup, plan_mockup_extract, plan_motion, plan_remap,
+    plan_surface_deformation, plan_timeline, plan_variation_job, project_plane_pose,
+    project_plane_strip, rectify_plane, solve_spec,
 };
 use worldbend_interop::{
     MAX_PSD_SOURCE_BYTES, PsdSmartObjectRequest, PsdSmartObjectResponse,
@@ -1078,7 +1079,7 @@ impl OperationId {
                 "Validate an ordered Variation Job and canonicalize its slot-to-asset bindings without decoding pixels."
             }
             Self::VariationRender => {
-                "Render every item in one Variation Job and atomically publish the complete nested PNG directory."
+                "Render every item in one Variation Job and atomically publish the nested PNG directory. failurePolicy continue records per-item failures in order instead of aborting the whole job."
             }
             Self::CanvasRender => {
                 "Render one ordered explicit Canvas Set atomically, or replay its resolved plan."
@@ -1184,7 +1185,7 @@ impl OperationId {
                 "variation job batch replace source bindings assets plan reusable template"
             }
             Self::VariationRender => {
-                "variation job batch replace source bindings assets render atomic directory"
+                "variation job batch replace source bindings assets render atomic directory failure continue"
             }
             Self::CanvasRender => {
                 "canvas crop trim pad contain cover stretch multi output resize variants"
@@ -4975,7 +4976,20 @@ fn prepare_variation_render_request(
         .iter()
         .map(|asset| &asset.id)
         .collect::<HashSet<_>>();
-    if required != provided {
+    if provided.iter().any(|id| !required.contains(id)) {
+        let mut required = required.into_iter().cloned().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "Variation Job assets must not include unknown assetId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    // Under `continue` a missing asset is a per-item decode failure recorded
+    // by the renderer; only unknown extra assets abort the whole job.
+    if request.spec.failure_policy != VariationFailurePolicy::Continue && required != provided {
         let mut required = required.into_iter().cloned().collect::<Vec<_>>();
         let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
         required.sort_unstable();
@@ -5981,11 +5995,13 @@ async fn run_variation_worker(
     let staged_output_for_copy = staged_output.clone();
     let staging_cancellation = cancellation.clone();
     let maximum_directories = result.plan.items.len();
+    let allow_empty = result.plan.failure_policy == VariationFailurePolicy::Continue;
     let staged = tokio::task::spawn_blocking(move || {
         output.stage_one_level_tree_from_with_cancel(
             &staged_output_for_copy,
             maximum_directories,
             MCP_MAX_VARIATION_OUTPUTS,
+            allow_empty,
             &|| staging_cancellation.is_cancelled(),
         )
     })
@@ -6021,43 +6037,55 @@ fn normalize_variation_worker_result(
             "Variation Job worker result exceeds its correlated plan or Agent limits",
         ));
     }
-    if result.plan.asset_ids.len() != result.sources.len()
-        || result
-            .plan
-            .asset_ids
-            .iter()
-            .zip(&result.sources)
-            .any(|(planned, source)| {
-                planned != &source.asset_id
-                    || source.width == 0
-                    || source.height == 0
-                    || !valid_sha256(&source.source_sha256)
-            })
-    {
+    let known_assets = result
+        .plan
+        .asset_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
+    let mut distinct_sources = std::collections::HashSet::new();
+    if result.sources.iter().any(|source| {
+        !known_assets.contains(&source.asset_id)
+            || !distinct_sources.insert(&source.asset_id)
+            || source.width == 0
+            || source.height == 0
+            || !valid_sha256(&source.source_sha256)
+    }) {
         return Err(invalid_variation_worker_result(
             "Variation Job worker source result does not match its plan",
         ));
     }
+    let evidenced_assets = distinct_sources;
 
-    let expected_directories = result
-        .plan
-        .items
-        .iter()
-        .map(|item| item.id.clone())
-        .collect::<Vec<_>>();
+    let mut expected_directories = Vec::new();
     let mut encoded_bytes = 0_u64;
     for (planned, item) in result.plan.items.iter().zip(&mut result.items) {
-        if planned.id != item.id
-            || planned.bindings != item.bindings
-            || item.root_width == 0
-            || item.root_height == 0
-            || item.outputs.len() != result.plan.template.outputs.len()
+        if planned.id != item.id() || planned.bindings != item.bindings() {
+            return Err(invalid_variation_worker_result(
+                "Variation Job worker item does not match its ordered plan",
+            ));
+        }
+        let Some((root_width, root_height)) = item.rendered_size() else {
+            continue;
+        };
+        let item_id = item.id().to_owned();
+        let missing_evidence = item
+            .bindings()
+            .iter()
+            .any(|binding| !evidenced_assets.contains(&binding.asset_id));
+        let Some(outputs) = item.outputs_mut() else {
+            continue;
+        };
+        if missing_evidence
+            || root_width == 0
+            || root_height == 0
+            || outputs.len() != result.plan.template.outputs.len()
         {
             return Err(invalid_variation_worker_result(
                 "Variation Job worker item does not match its ordered plan",
             ));
         }
-        let item_directory = staged_output.join(&item.id);
+        expected_directories.push(item_id.clone());
+        let item_directory = staged_output.join(&item_id);
         let metadata = fs::symlink_metadata(&item_directory).map_err(|error| {
             invalid_variation_worker_result("Variation Job worker item directory is missing")
                 .with_details(json!({ "reason": error.to_string() }))
@@ -6067,8 +6095,9 @@ fn normalize_variation_worker_result(
                 "Variation Job worker item output is not a real directory",
             ));
         }
-        let mut expected_files = Vec::with_capacity(item.outputs.len());
-        for (planned_output, output) in result.plan.template.outputs.iter().zip(&mut item.outputs) {
+        let mut expected_files = Vec::with_capacity(outputs.len());
+        for (planned_output, output) in result.plan.template.outputs.iter().zip(outputs.iter_mut())
+        {
             if planned_output.id != output.id
                 || output.width == 0
                 || output.height == 0
@@ -6093,7 +6122,7 @@ fn normalize_variation_worker_result(
             })?;
             expected_files.push(planned_output.filename.clone());
             output.output =
-                variation_output_label(output_directory, &item.id, &planned_output.filename);
+                variation_output_label(output_directory, &item_id, &planned_output.filename);
         }
         let mut actual_files = read_entry_names(&item_directory)?;
         expected_files.sort_unstable();
@@ -6104,7 +6133,6 @@ fn normalize_variation_worker_result(
             ));
         }
     }
-    let mut expected_directories = expected_directories;
     let mut actual_directories = read_entry_names(staged_output)?;
     expected_directories.sort_unstable();
     actual_directories.sort_unstable();
@@ -7886,8 +7914,8 @@ mod tests {
         VARIATION_JOB_SCHEMA, VariationBinding, VariationJobItem, plan_canvas_set,
     };
     use worldbend_render::{
-        CanvasSetRenderedItem, TimelineRenderOptions, render_motion_files, render_timeline_files,
-        render_variation_job_files,
+        CanvasSetRenderedItem, TimelineRenderOptions, VariationJobItemOutcome, render_motion_files,
+        render_timeline_files, render_variation_job_files,
     };
 
     fn variation_spec(item_ids: &[&str]) -> VariationJobSpec {
@@ -7918,6 +7946,7 @@ mod tests {
                     id: "hero".to_owned(),
                 },
             },
+            failure_policy: worldbend_core::VariationFailurePolicy::AllOrNone,
             items: item_ids
                 .iter()
                 .map(|id| VariationJobItem {
@@ -8352,7 +8381,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            result.items[0].outputs[0].output,
+            result.items[0].outputs_mut().unwrap()[0].output,
             "outputs/job/sku-a/hero.png"
         );
 
@@ -8366,6 +8395,184 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn variation_prepare_allows_missing_assets_only_under_continue() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(root.path().join("asset.png"))
+            .unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let mut spec = variation_spec(&["sku-a", "sku-b"]);
+        spec.items[1].bindings[0].asset_id = "asset-b".to_owned();
+        let asset = |id: &str| VariationAssetInput {
+            id: id.to_owned(),
+            source: "asset.png".to_owned(),
+        };
+
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        prepare_variation_render_request(
+            &workspace,
+            VariationRenderRequest {
+                assets: vec![asset("asset-a")],
+                spec: spec.clone(),
+                output_directory: "outputs/job".to_owned(),
+                options: VariationJobRenderOptions::default(),
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::AllOrNone;
+        let missing = prepare_variation_render_request(
+            &workspace,
+            VariationRenderRequest {
+                assets: vec![asset("asset-a")],
+                spec: spec.clone(),
+                output_directory: "outputs/blocked".to_owned(),
+                options: VariationJobRenderOptions::default(),
+                dry_run: false,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(missing.code, ErrorCode::Schema);
+
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        let extra = prepare_variation_render_request(
+            &workspace,
+            VariationRenderRequest {
+                assets: vec![asset("asset-a"), asset("asset-c")],
+                spec,
+                output_directory: "outputs/blocked".to_owned(),
+                options: VariationJobRenderOptions::default(),
+                dry_run: false,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(extra.code, ErrorCode::Schema);
+    }
+
+    #[test]
+    fn variation_normalization_skips_failed_items_and_rejects_duplicate_sources() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("asset.png");
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+        let staged_output = directory.path().join("worker-result");
+        let mut spec = variation_spec(&["sku-a", "sku-b"]);
+        spec.items[1].bindings[0].asset_id = "asset-b".to_owned();
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        let assets = HashMap::from([("asset-a".to_owned(), source)]);
+        let mut result = render_variation_job_files(
+            &assets,
+            &spec,
+            &staged_output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        assert!(matches!(
+            result.items[1],
+            VariationJobItemOutcome::Failed { .. }
+        ));
+
+        normalize_variation_worker_result(
+            &mut result,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(
+            result.items[0].outputs_mut().unwrap()[0].output,
+            "outputs/job/sku-a/hero.png"
+        );
+        assert!(!staged_output.join("sku-b").exists());
+
+        result.sources.push(result.sources[0].clone());
+        let duplicate = normalize_variation_worker_result(
+            &mut result,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(duplicate.code, ErrorCode::Internal);
+
+        result.sources.clear();
+        let unevidenced = normalize_variation_worker_result(
+            &mut result,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(unevidenced.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn variation_normalization_and_staging_accept_an_empty_continue_publication() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let corrupt = root.path().join("corrupt.png");
+        fs::write(&corrupt, b"not a raster").unwrap();
+        let staged_output = root.path().join("worker-result");
+        let mut spec = variation_spec(&["sku-a", "sku-b"]);
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        let assets = HashMap::from([("asset-a".to_owned(), corrupt)]);
+        let mut result = render_variation_job_files(
+            &assets,
+            &spec,
+            &staged_output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        assert!(
+            result
+                .items
+                .iter()
+                .all(|item| matches!(item, VariationJobItemOutcome::Failed { .. }))
+        );
+        assert!(staged_output.is_dir());
+
+        normalize_variation_worker_result(
+            &mut result,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(result.status, VariationJobRenderStatus::Written);
+
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(
+                &staged_output,
+                result.plan.items.len(),
+                MCP_MAX_VARIATION_OUTPUTS,
+                true,
+                &|| false,
+            )
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert!(root.path().join("outputs/job").is_dir());
+        assert_eq!(
+            fs::read_dir(root.path().join("outputs/job"))
+                .unwrap()
+                .count(),
+            0
+        );
     }
 
     #[test]

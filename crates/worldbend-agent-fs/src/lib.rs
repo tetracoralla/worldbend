@@ -524,12 +524,16 @@ impl DirectoryOutputTarget {
     /// into hidden same-parent staging. This is the publication shape used by
     /// Variation Jobs: `<item-id>/<output-id>.png`. Both component kinds are
     /// restricted to the same stable ASCII identifier grammar as the core
-    /// contract, and links or deeper descendants are rejected.
+    /// contract, and links or deeper descendants are rejected. A continue
+    /// policy job where every item failed legitimately publishes an empty
+    /// tree, so `allow_empty` relaxes only the root emptiness guard; item
+    /// directories that do exist must still contain at least one PNG.
     pub fn stage_one_level_tree_from_with_cancel(
         self,
         source_directory: &Path,
         max_directories: usize,
         max_files: usize,
+        allow_empty: bool,
         is_cancelled: &(dyn Fn() -> bool + Sync),
     ) -> TransformResult<StagedDirectoryCommit> {
         if max_directories == 0 || max_files == 0 {
@@ -640,7 +644,7 @@ impl DirectoryOutputTarget {
                 sync_directory(&staged_item)
                     .map_err(render_io("failed to sync staged item directory"))?;
             }
-            if directory_count == 0 || file_count == 0 {
+            if !allow_empty && (directory_count == 0 || file_count == 0) {
                 return Err(TransformError::new(
                     ErrorCode::Render,
                     "tree-staged output must contain at least one item and PNG",
@@ -1363,7 +1367,7 @@ mod tests {
         workspace
             .prepare_output_directory("outputs/job")
             .unwrap()
-            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, &|| false)
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, false, &|| false)
             .unwrap()
             .commit()
             .unwrap();
@@ -1379,6 +1383,37 @@ mod tests {
     }
 
     #[test]
+    fn one_level_tree_staging_can_allow_an_empty_publication() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        let error = workspace
+            .prepare_output_directory("outputs/blocked")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, false, &|| false)
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Render);
+        assert!(!root.path().join("outputs/blocked").exists());
+
+        workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, true, &|| false)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert!(root.path().join("outputs/job").is_dir());
+        assert_eq!(
+            fs::read_dir(root.path().join("outputs/job"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
     fn one_level_tree_rejects_deeper_or_noncontract_entries_and_cleans_staging() {
         let root = tempfile::tempdir().unwrap();
         fs::create_dir(root.path().join("outputs")).unwrap();
@@ -1390,7 +1425,7 @@ mod tests {
         let error = workspace
             .prepare_output_directory("outputs/job")
             .unwrap()
-            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, &|| false)
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, false, &|| false)
             .unwrap_err();
 
         assert_eq!(error.code, ErrorCode::Render);

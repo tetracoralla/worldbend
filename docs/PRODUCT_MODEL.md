@@ -279,8 +279,10 @@ compatibility mode):
   directory: one `worldbend.run` call with operation `canvas_render`; the returned resolved plan can
   be replayed on a same-sized 8-bit control raster without re-running Trim;
 - one persisted Spatial Template can be inspected and rebound to an ordered
-  Variation Job; one `variation_render` call publishes all correlated outputs
-  atomically without an Agent relaying each transform;
+  Variation Job; one `variation_render` call publishes the job's correlated
+  outputs in one atomic directory transaction — all-or-none by default, or
+  with per-item failures recorded in order under `failurePolicy: continue` —
+  without an Agent relaying each transform;
 - `media_inspect` and `media_render` expose explicit input precision, ICC
   policy, output format, loss, and digest facts; `vector_render` preserves SVG
   source semantics where affine SVG or projective HTML can represent them;

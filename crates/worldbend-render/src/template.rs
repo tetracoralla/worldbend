@@ -18,7 +18,8 @@ use std::{
 };
 use worldbend_core::{
     ErrorCode, SpatialTemplateOperation, SpatialTemplateOutput, TransformError, TransformResult,
-    VariationBinding, VariationJobPlan, VariationJobSpec, plan_variation_job,
+    VariationBinding, VariationFailurePolicy, VariationJobPlan, VariationJobSpec,
+    plan_variation_job,
 };
 
 const MAX_EXACT_JSON_INTEGER: u64 = 9_007_199_254_740_991;
@@ -83,16 +84,56 @@ pub struct VariationSourceEvidence {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct VariationRenderedItem {
-    pub index: u32,
-    pub id: String,
-    pub bindings: Vec<VariationBinding>,
-    pub root_width: u32,
-    pub root_height: u32,
-    #[schemars(schema_with = "json_safe_u64_schema")]
-    pub operation_pixels: u64,
-    pub outputs: Vec<CanvasSetRenderedItem>,
+#[serde(tag = "status", rename_all = "camelCase", deny_unknown_fields)]
+pub enum VariationJobItemOutcome {
+    Rendered {
+        index: u32,
+        id: String,
+        bindings: Vec<VariationBinding>,
+        root_width: u32,
+        root_height: u32,
+        #[schemars(schema_with = "json_safe_u64_schema")]
+        operation_pixels: u64,
+        outputs: Vec<CanvasSetRenderedItem>,
+    },
+    Failed {
+        index: u32,
+        id: String,
+        bindings: Vec<VariationBinding>,
+        error: TransformError,
+    },
+}
+
+impl VariationJobItemOutcome {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Rendered { id, .. } | Self::Failed { id, .. } => id,
+        }
+    }
+
+    pub fn bindings(&self) -> &[VariationBinding] {
+        match self {
+            Self::Rendered { bindings, .. } | Self::Failed { bindings, .. } => bindings,
+        }
+    }
+
+    pub fn outputs_mut(&mut self) -> Option<&mut Vec<CanvasSetRenderedItem>> {
+        match self {
+            Self::Rendered { outputs, .. } => Some(outputs),
+            Self::Failed { .. } => None,
+        }
+    }
+
+    pub fn rendered_size(&self) -> Option<(u32, u32)> {
+        match self {
+            Self::Rendered {
+                root_width,
+                root_height,
+                ..
+            } => Some((*root_width, *root_height)),
+            Self::Failed { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -103,7 +144,7 @@ pub struct VariationJobFileRenderResult {
     pub output_directory: String,
     pub plan: VariationJobPlan,
     pub sources: Vec<VariationSourceEvidence>,
-    pub items: Vec<VariationRenderedItem>,
+    pub items: Vec<VariationJobItemOutcome>,
     #[schemars(schema_with = "json_safe_u64_schema")]
     pub cumulative_source_pixels: u64,
     #[schemars(schema_with = "json_safe_u64_schema")]
@@ -149,7 +190,6 @@ pub fn render_variation_job_files_with_cancel(
 ) -> TransformResult<VariationJobFileRenderResult> {
     validate_options(options)?;
     let plan = plan_variation_job(spec)?;
-    validate_assets(assets, &plan)?;
     preflight_output_directory(output_directory)?;
     check_cancelled(is_cancelled)?;
 
@@ -164,82 +204,221 @@ pub fn render_variation_job_files_with_cancel(
             "failed to create Variation Job staging directory",
         ))?;
 
-    let (decoded, source_evidence, cumulative_source_pixels) =
-        decode_assets(assets, &plan, options, is_cancelled)?;
+    let continue_on_item_failure = spec.failure_policy == VariationFailurePolicy::Continue;
+    validate_assets(assets, &plan, continue_on_item_failure)?;
+    let (decoded, source_evidence, cumulative_source_pixels, decode_errors) = decode_assets(
+        assets,
+        &plan,
+        options,
+        is_cancelled,
+        continue_on_item_failure,
+    )?;
     let mut items = Vec::with_capacity(plan.items.len());
-    let mut cumulative_processed_pixels = 0_u64;
+    let mut budget = ProcessedBudget::new(options.max_processed_pixels);
+    let mut rendered_count = 0_usize;
 
     for (index, item) in plan.items.iter().enumerate() {
-        check_cancelled(is_cancelled)?;
-        let operation_budget = options
-            .max_processed_pixels
-            .checked_sub(cumulative_processed_pixels)
-            .filter(|remaining| *remaining > 0)
-            .ok_or_else(|| processed_limit_error(options.max_processed_pixels))?;
-        let (root, operation_pixels) = render_root(
+        let index = u32::try_from(index).map_err(|_| {
+            TransformError::new(ErrorCode::Internal, "Variation Job index overflowed")
+        })?;
+        match render_one_item(
+            index,
+            item,
             &decoded,
-            &spec.template.operation,
-            &item.bindings,
+            &decode_errors,
+            spec,
+            &plan,
+            staging.path(),
+            output_directory,
             options,
-            operation_budget,
+            &mut budget,
             is_cancelled,
-        )?;
-        let output_pixels = planned_output_pixels(&root, &spec.template.output)?;
-        cumulative_processed_pixels = add_pixels(
-            cumulative_processed_pixels,
-            operation_pixels,
-            output_pixels,
-            options.max_processed_pixels,
-        )?;
-
-        let item_directory = staging.path().join(&item.id);
-        fs::create_dir(&item_directory)
-            .map_err(render_io("failed to create Variation Job item directory"))?;
-        let output_label = output_directory.join(&item.id).display().to_string();
-        let outputs = render_outputs(
-            &root,
-            &spec.template.output,
-            &item_directory,
-            &output_label,
-            options,
-            is_cancelled,
-        )?;
-        if outputs.len() != plan.template.outputs.len() {
-            return Err(TransformError::new(
-                ErrorCode::Internal,
-                "Variation Job renderer returned the wrong output count",
-            ));
+        ) {
+            Ok(rendered) => {
+                rendered_count += 1;
+                items.push(rendered);
+            }
+            Err(error) if continue_on_item_failure => {
+                let _ = fs::remove_dir_all(staging.path().join(&item.id));
+                items.push(VariationJobItemOutcome::Failed {
+                    index,
+                    id: item.id.clone(),
+                    bindings: item.bindings.clone(),
+                    error,
+                });
+            }
+            Err(error) => return Err(error),
         }
-        items.push(VariationRenderedItem {
-            index: u32::try_from(index).map_err(|_| {
-                TransformError::new(ErrorCode::Internal, "Variation Job index overflowed")
-            })?,
-            id: item.id.clone(),
-            bindings: item.bindings.clone(),
-            root_width: root.width(),
-            root_height: root.height(),
-            operation_pixels,
-            outputs,
-        });
     }
 
-    check_cancelled(is_cancelled)?;
     let mut result = VariationJobFileRenderResult {
         status: VariationJobRenderStatus::Ready,
-        dry_run: true,
+        dry_run,
         output_directory: output_directory.display().to_string(),
         plan,
         sources: source_evidence,
         items,
         cumulative_source_pixels,
-        cumulative_processed_pixels,
+        cumulative_processed_pixels: budget.used,
     };
-    if !dry_run {
+    // Publication stays one no-replace rename in every policy; a continue job
+    // with zero successful items publishes an empty directory so downstream
+    // controllers can stage and commit it like any other result.
+    if !dry_run && (rendered_count > 0 || continue_on_item_failure) {
         publish_directory_noreplace(staging.path(), output_directory)?;
         result.status = VariationJobRenderStatus::Written;
-        result.dry_run = false;
     }
     Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_one_item(
+    index: u32,
+    item: &worldbend_core::VariationJobItemPlan,
+    decoded: &HashMap<String, DynamicImage>,
+    decode_errors: &HashMap<String, TransformError>,
+    spec: &VariationJobSpec,
+    plan: &VariationJobPlan,
+    staging: &Path,
+    output_directory: &Path,
+    options: VariationJobRenderOptions,
+    budget: &mut ProcessedBudget,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<VariationJobItemOutcome> {
+    check_cancelled(is_cancelled)?;
+    for binding in &item.bindings {
+        if let Some(error) = decode_errors.get(&binding.asset_id) {
+            return Err(error.clone());
+        }
+        if !decoded.contains_key(&binding.asset_id) {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "Variation Job item is missing a decoded asset",
+            )
+            .with_details(json!({ "itemId": item.id, "assetId": binding.asset_id })));
+        }
+    }
+    let operation_budget = budget
+        .remaining()
+        .ok_or_else(|| processed_limit_error(options.max_processed_pixels))?;
+    let (root, operation_pixels) = match render_root(
+        decoded,
+        &spec.template.operation,
+        &item.bindings,
+        options,
+        operation_budget,
+        is_cancelled,
+    ) {
+        Ok(rendered) => rendered,
+        // Every item shares one template, so a pixel-ceiling failure inside an
+        // item render is systematic: latch the budget so remaining items fail
+        // fast instead of each repeating the same doomed render.
+        Err(error) => {
+            if error.code == ErrorCode::OutputLimit {
+                budget.force_exhausted();
+            }
+            return Err(error);
+        }
+    };
+    let output_pixels = match planned_output_pixels(&root, &spec.template.output) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            if error.code == ErrorCode::OutputLimit {
+                budget.force_exhausted();
+            }
+            return Err(error);
+        }
+    };
+    budget.charge(operation_pixels, output_pixels)?;
+
+    let item_directory = staging.join(&item.id);
+    fs::create_dir(&item_directory)
+        .map_err(render_io("failed to create Variation Job item directory"))?;
+    let output_label = output_directory.join(&item.id).display().to_string();
+    let outputs = match render_outputs(
+        &root,
+        &spec.template.output,
+        &item_directory,
+        &output_label,
+        options,
+        is_cancelled,
+    ) {
+        Ok(outputs) => outputs,
+        Err(error) => {
+            if error.code == ErrorCode::OutputLimit {
+                budget.force_exhausted();
+            }
+            return Err(error);
+        }
+    };
+    if outputs.len() != plan.template.outputs.len() {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "Variation Job renderer returned the wrong output count",
+        ));
+    }
+    Ok(VariationJobItemOutcome::Rendered {
+        index,
+        id: item.id.clone(),
+        bindings: item.bindings.clone(),
+        root_width: root.width(),
+        root_height: root.height(),
+        operation_pixels,
+        outputs,
+    })
+}
+
+/// Cumulative processed-pixel accounting with an exhaustion latch. The first
+/// charge that does not fit (or the first pixel-ceiling render failure) marks
+/// the budget exhausted, so under `continue` the remaining items fail fast at
+/// the budget check instead of each re-rendering a root that cannot fit.
+struct ProcessedBudget {
+    used: u64,
+    maximum: u64,
+    exhausted: bool,
+}
+
+impl ProcessedBudget {
+    fn new(maximum: u64) -> Self {
+        Self {
+            used: 0,
+            maximum,
+            exhausted: false,
+        }
+    }
+
+    fn remaining(&self) -> Option<u64> {
+        if self.exhausted {
+            None
+        } else {
+            Some(self.maximum - self.used).filter(|remaining| *remaining > 0)
+        }
+    }
+
+    fn force_exhausted(&mut self) {
+        self.exhausted = true;
+    }
+
+    fn charge(&mut self, operation: u64, output: u64) -> TransformResult<()> {
+        let total = self
+            .used
+            .checked_add(operation)
+            .and_then(|value| value.checked_add(output));
+        match total {
+            Some(total) if total <= self.maximum => {
+                self.used = total;
+                Ok(())
+            }
+            Some(total) => {
+                self.exhausted = true;
+                Err(processed_limit_error_with_actual(self.maximum, total))
+            }
+            None => {
+                self.exhausted = true;
+                Err(pixel_overflow())
+            }
+        }
+    }
 }
 
 fn render_root(
@@ -385,57 +564,97 @@ fn render_outputs(
     }
 }
 
+type DecodedAssetSet = (
+    HashMap<String, DynamicImage>,
+    Vec<VariationSourceEvidence>,
+    u64,
+    HashMap<String, TransformError>,
+);
+
 fn decode_assets(
     assets: &HashMap<String, VariationFileAsset>,
     plan: &VariationJobPlan,
     options: VariationJobRenderOptions,
     is_cancelled: &(dyn Fn() -> bool + Sync),
-) -> TransformResult<(
-    HashMap<String, DynamicImage>,
-    Vec<VariationSourceEvidence>,
-    u64,
-)> {
+    continue_on_item_failure: bool,
+) -> TransformResult<DecodedAssetSet> {
     let mut decoded = HashMap::with_capacity(plan.asset_ids.len());
     let mut evidence = Vec::with_capacity(plan.asset_ids.len());
+    let mut errors = HashMap::new();
     let mut cumulative = 0_u64;
     for asset_id in &plan.asset_ids {
         check_cancelled(is_cancelled)?;
-        let asset = assets.get(asset_id).expect("asset set validated");
-        let (image, sha256, warnings) =
-            decode_file_with_limits(&asset.path, options.limits, asset.source_sha256.as_deref())?;
-        let pixels = u64::from(image.width())
-            .checked_mul(u64::from(image.height()))
-            .ok_or_else(pixel_overflow)?;
-        cumulative = cumulative.checked_add(pixels).ok_or_else(pixel_overflow)?;
-        if cumulative > options.max_source_pixels {
-            return Err(TransformError::new(
-                ErrorCode::OutputLimit,
-                "Variation Job assets exceed the cumulative decoded-pixel limit",
+        let Some(asset) = assets.get(asset_id) else {
+            let error = TransformError::new(
+                ErrorCode::Schema,
+                "Variation Job item is missing a planned asset",
             )
-            .with_details(json!({
-                "pixels": cumulative,
-                "maximum": options.max_source_pixels,
-            })));
+            .with_details(json!({ "assetId": asset_id }));
+            if continue_on_item_failure {
+                errors.insert(asset_id.clone(), error);
+                continue;
+            }
+            return Err(error);
+        };
+        match decode_file_with_limits(&asset.path, options.limits, asset.source_sha256.as_deref()) {
+            Ok((image, sha256, warnings)) => {
+                let pixels = u64::from(image.width())
+                    .checked_mul(u64::from(image.height()))
+                    .ok_or_else(pixel_overflow)?;
+                let next = cumulative.checked_add(pixels).ok_or_else(pixel_overflow)?;
+                if next > options.max_source_pixels {
+                    let error = TransformError::new(
+                        ErrorCode::OutputLimit,
+                        "Variation Job assets exceed the cumulative decoded-pixel limit",
+                    )
+                    .with_details(json!({
+                        "pixels": next,
+                        "maximum": options.max_source_pixels,
+                    }));
+                    if continue_on_item_failure {
+                        errors.insert(asset_id.clone(), error);
+                        continue;
+                    }
+                    return Err(error);
+                }
+                cumulative = next;
+                evidence.push(VariationSourceEvidence {
+                    asset_id: asset_id.clone(),
+                    source_sha256: sha256,
+                    width: image.width(),
+                    height: image.height(),
+                    warnings,
+                });
+                decoded.insert(asset_id.clone(), image);
+            }
+            Err(error) if continue_on_item_failure => {
+                errors.insert(asset_id.clone(), error);
+            }
+            Err(error) => return Err(error),
         }
-        evidence.push(VariationSourceEvidence {
-            asset_id: asset_id.clone(),
-            source_sha256: sha256,
-            width: image.width(),
-            height: image.height(),
-            warnings,
-        });
-        decoded.insert(asset_id.clone(), image);
     }
-    Ok((decoded, evidence, cumulative))
+    Ok((decoded, evidence, cumulative, errors))
 }
 
 fn validate_assets(
     assets: &HashMap<String, VariationFileAsset>,
     plan: &VariationJobPlan,
+    continue_on_item_failure: bool,
 ) -> TransformResult<()> {
     let required = plan.asset_ids.iter().collect::<HashSet<_>>();
     let provided = assets.keys().collect::<HashSet<_>>();
-    if required == provided {
+    if provided.iter().any(|id| !required.contains(id)) {
+        let mut required = required.into_iter().cloned().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "Variation Job assets must not include unknown assetId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    if continue_on_item_failure || required == provided {
         return Ok(());
     }
     let mut required = required.into_iter().cloned().collect::<Vec<_>>();
@@ -468,17 +687,6 @@ fn validate_options(options: VariationJobRenderOptions) -> TransformResult<()> {
         })));
     }
     Ok(())
-}
-
-fn add_pixels(current: u64, operation: u64, output: u64, maximum: u64) -> TransformResult<u64> {
-    let total = current
-        .checked_add(operation)
-        .and_then(|value| value.checked_add(output))
-        .ok_or_else(pixel_overflow)?;
-    if total > maximum {
-        return Err(processed_limit_error_with_actual(maximum, total));
-    }
-    Ok(total)
 }
 
 fn binding_for<'a>(
@@ -605,6 +813,7 @@ mod tests {
                 },
                 output,
             },
+            failure_policy: VariationFailurePolicy::AllOrNone,
             items: ["sku-a", "sku-b"]
                 .into_iter()
                 .map(|id| VariationJobItem {
@@ -638,7 +847,10 @@ mod tests {
         assert_eq!(result.status, VariationJobRenderStatus::Written);
         assert!(!result.dry_run);
         assert_eq!(result.items.len(), 2);
-        assert_eq!(result.items[0].outputs[0].width, 4);
+        let VariationJobItemOutcome::Rendered { outputs, .. } = &result.items[0] else {
+            panic!("expected rendered item");
+        };
+        assert_eq!(outputs[0].width, 4);
         assert!(output.join("sku-a/hero.png").is_file());
         assert!(output.join("sku-b/hero.png").is_file());
     }
@@ -680,7 +892,10 @@ mod tests {
         assert_eq!(result.status, VariationJobRenderStatus::Ready);
         assert!(result.dry_run);
         assert_eq!(result.plan.output_count, 4);
-        assert_eq!(result.items[0].outputs[1].id, "wide");
+        let VariationJobItemOutcome::Rendered { outputs, .. } = &result.items[0] else {
+            panic!("expected rendered item");
+        };
+        assert_eq!(outputs[1].id, "wide");
         assert!(!output.exists());
     }
 
@@ -721,5 +936,155 @@ mod tests {
         .unwrap_err();
         assert_eq!(cancelled.code, ErrorCode::Cancelled);
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn continue_publishes_successes_and_records_item_failures() {
+        let directory = tempfile::tempdir().unwrap();
+        let good = write_source(directory.path());
+        let output = directory.path().join("job");
+        let mut spec = spec(SpatialTemplateOutput::Single {
+            id: "hero".to_owned(),
+        });
+        spec.failure_policy = VariationFailurePolicy::Continue;
+        spec.items[1].bindings[0].asset_id = "asset-b".to_owned();
+        let assets = HashMap::from([("asset-a".to_owned(), good)]);
+        let result = render_variation_job_files(
+            &assets,
+            &spec,
+            &output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, VariationJobRenderStatus::Written);
+        assert!(output.join("sku-a/hero.png").is_file());
+        assert!(!output.join("sku-b").exists());
+        assert!(matches!(
+            result.items[0],
+            VariationJobItemOutcome::Rendered { .. }
+        ));
+        let VariationJobItemOutcome::Failed { id, error, .. } = &result.items[1] else {
+            panic!("expected failed item");
+        };
+        assert_eq!(id, "sku-b");
+        assert_eq!(error.code, ErrorCode::Schema);
+
+        spec.failure_policy = VariationFailurePolicy::AllOrNone;
+        let blocked = directory.path().join("blocked");
+        let error = render_variation_job_files(
+            &assets,
+            &spec,
+            &blocked,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Schema);
+        assert!(!blocked.exists());
+    }
+
+    #[test]
+    fn continue_with_zero_successful_items_publishes_an_empty_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("job");
+        let mut spec = spec(SpatialTemplateOutput::Single {
+            id: "hero".to_owned(),
+        });
+        spec.failure_policy = VariationFailurePolicy::Continue;
+        let corrupt = directory.path().join("corrupt.png");
+        fs::write(&corrupt, b"not a raster").unwrap();
+        let assets = HashMap::from([("asset-a".to_owned(), corrupt)]);
+        let result = render_variation_job_files(
+            &assets,
+            &spec,
+            &output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, VariationJobRenderStatus::Written);
+        assert!(!result.dry_run);
+        assert!(output.is_dir());
+        assert_eq!(fs::read_dir(&output).unwrap().count(), 0);
+        assert!(
+            result
+                .items
+                .iter()
+                .all(|item| matches!(item, VariationJobItemOutcome::Failed { .. }))
+        );
+
+        let blocked = directory.path().join("blocked");
+        spec.failure_policy = VariationFailurePolicy::AllOrNone;
+        let error = render_variation_job_files(
+            &assets,
+            &spec,
+            &blocked,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::UnsupportedMedia);
+        assert!(!blocked.exists());
+    }
+
+    #[test]
+    fn processed_budget_exhaustion_fails_remaining_items_without_rendering() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = write_source(directory.path());
+        let output = directory.path().join("job");
+        let mut spec = spec(SpatialTemplateOutput::Single {
+            id: "hero".to_owned(),
+        });
+        spec.failure_policy = VariationFailurePolicy::Continue;
+        let assets = HashMap::from([("asset-a".to_owned(), source)]);
+        // Measure one item's exact processed-pixel cost with a dry run, then
+        // cap the budget at exactly one item.
+        let probe = render_variation_job_files(
+            &assets,
+            &spec,
+            &directory.path().join("probe"),
+            VariationJobRenderOptions::default(),
+            true,
+        )
+        .unwrap();
+        let per_item = probe.cumulative_processed_pixels / 2;
+        assert!(per_item > 0);
+        let options = VariationJobRenderOptions {
+            max_processed_pixels: per_item,
+            ..VariationJobRenderOptions::default()
+        };
+        let result = render_variation_job_files(&assets, &spec, &output, options, false).unwrap();
+
+        assert!(matches!(
+            result.items[0],
+            VariationJobItemOutcome::Rendered { .. }
+        ));
+        let VariationJobItemOutcome::Failed { id, error, .. } = &result.items[1] else {
+            panic!("expected failed item");
+        };
+        assert_eq!(id, "sku-b");
+        assert_eq!(error.code, ErrorCode::OutputLimit);
+        assert_eq!(result.cumulative_processed_pixels, per_item);
+        assert!(output.join("sku-a/hero.png").is_file());
+        assert!(!output.join("sku-b").exists());
+    }
+
+    #[test]
+    fn processed_budget_charge_overflow_latches_exhaustion() {
+        let mut budget = ProcessedBudget::new(20);
+        assert_eq!(budget.remaining(), Some(20));
+        budget.charge(16, 0).unwrap();
+        assert_eq!(budget.remaining(), Some(4));
+        assert_eq!(
+            budget.charge(16, 0).unwrap_err().code,
+            ErrorCode::OutputLimit
+        );
+        assert_eq!(budget.remaining(), None);
+        assert_eq!(budget.used, 16, "only successful charges are accounted");
+        budget.force_exhausted();
+        assert_eq!(budget.remaining(), None);
     }
 }

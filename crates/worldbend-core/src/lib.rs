@@ -114,8 +114,9 @@ pub use template::{
     SPATIAL_TEMPLATE_VERSION, SpatialTemplateInspection, SpatialTemplateOperation,
     SpatialTemplateOperationKind, SpatialTemplateOutput, SpatialTemplateOutputKind,
     SpatialTemplateOutputSummary, SpatialTemplateSpec, VARIATION_JOB_PLAN_SCHEMA,
-    VARIATION_JOB_SCHEMA, VariationBinding, VariationJobItem, VariationJobItemPlan,
-    VariationJobPlan, VariationJobSpec, inspect_spatial_template, plan_variation_job,
+    VARIATION_JOB_SCHEMA, VariationBinding, VariationFailurePolicy, VariationJobItem,
+    VariationJobItemPlan, VariationJobPlan, VariationJobSpec, inspect_spatial_template,
+    plan_variation_job,
 };
 #[cfg(feature = "timeline")]
 pub use timeline::{

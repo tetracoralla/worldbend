@@ -184,6 +184,7 @@ export type ErrorCode =
   | "E_TIMEOUT"
   | "E_MEMORY"
   | "E_INTERNAL";
+export type VariationFailurePolicy = "allOrNone" | "continue";
 
 /**
  * One mechanically generated schema surface for the Web/WASM carrier. The
@@ -1458,6 +1459,7 @@ export interface VariationJobPlan {
    * @maxItems 1024
    */
   assetIds: [string, ...string[]];
+  failurePolicy: VariationFailurePolicy;
   /**
    * @minItems 1
    * @maxItems 64
@@ -1477,6 +1479,7 @@ export interface VariationBinding {
   slotId: string;
 }
 export interface VariationJobSpec {
+  failurePolicy?: "allOrNone" | "continue";
   /**
    * @minItems 1
    * @maxItems 64

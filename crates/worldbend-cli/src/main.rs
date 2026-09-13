@@ -445,7 +445,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Render an ordered Variation Job and atomically publish its complete output directory.
+    /// Render an ordered Variation Job and atomically publish its output
+    /// directory; failurePolicy continue records per-item failures in order.
     #[cfg(feature = "full")]
     VariationRender {
         /// Repeat ASSET_ID=PATH once for every distinct assetId in the job.
