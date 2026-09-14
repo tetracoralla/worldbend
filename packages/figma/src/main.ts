@@ -163,8 +163,13 @@ figma.on("selectionchange", handleSelectionChange);
 figma.on("currentpagechange", handleCurrentPageChange);
 figma.on("close", handlePluginClose);
 observedPage.on("nodechange", handleNodeChange);
-// A draft from an abnormal exit is garbage, never a reusable result.
-sweepStaleSceneDrafts(figma.currentPage);
+// A draft from an abnormal exit is garbage, never a reusable result. Clean the
+// already-loaded page synchronously, then load other pages individually in the
+// background. The manifest uses dynamic-page access, so reading an unloaded
+// page's children would otherwise make the plugin fail at startup. Per-page
+// loading also keeps the editor usable while large documents are inspected.
+sweepStaleSceneDrafts(observedPage);
+void sweepOtherPageSceneDrafts(observedPage.id);
 figma.ui.onmessage = (message: unknown) => {
   if (!isUiToMainMessage(message)) {
     post({
@@ -264,6 +269,19 @@ figma.ui.onmessage = (message: unknown) => {
   if (message.type === "apply-canvas") void applyCanvasSet(message.payload);
   if (message.type === "apply-designer") void applyDesignerResult(message.payload);
 };
+
+async function sweepOtherPageSceneDrafts(startupPageId: string): Promise<void> {
+  for (const page of figma.root.children) {
+    if (page.id === startupPageId) continue;
+    try {
+      await page.loadAsync();
+      sweepStaleSceneDrafts(page);
+    } catch {
+      // Residue cleanup is a best-effort recovery path. An inaccessible page
+      // must not prevent the user from working on the current loaded page.
+    }
+  }
+}
 
 async function initializeUi(nextSystemLocales: string[]): Promise<void> {
   if (uiInitialized) return;

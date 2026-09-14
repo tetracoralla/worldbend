@@ -36,9 +36,10 @@ export function forgetSceneDraftNodeId(id: string): void {
 
 /** Remove previews left behind by an abnormal exit; they are never reused. */
 export function sweepStaleSceneDrafts(page: PageNode): void {
-  // Same removal as a live clear: an uncommitted delete merges into the
-  // user's next undo step and can resurrect the leftover with Cmd+Z.
-  clearSceneDraft(page);
+  // A background page sweep can overlap a page switch and the first live
+  // frame on that page. Preserve every node created by this plugin run so an
+  // old cleanup job cannot delete the user's current feedback.
+  if (removeMarkedDraftNodes(page, false)) figma.commitUndo();
 }
 
 /**
@@ -50,15 +51,19 @@ export function sweepStaleSceneDrafts(page: PageNode): void {
  * it never trades history cleanliness for the user's document data.
  */
 export function clearSceneDraft(page: PageNode): void {
+  if (removeMarkedDraftNodes(page, true)) figma.commitUndo();
+}
+
+function removeMarkedDraftNodes(page: PageNode, includeLive: boolean): boolean {
   let removed = false;
   for (const node of [...page.children]) {
-    if (isSceneDraftNode(node)) {
+    if (isSceneDraftNode(node) && (includeLive || !draftNodeIds.has(node.id))) {
       draftNodeIds.add(node.id);
       node.remove();
       removed = true;
     }
   }
-  if (removed) figma.commitUndo();
+  return removed;
 }
 
 /**
@@ -73,24 +78,31 @@ export function updateSceneDraft(
   sourceName: string,
 ): void {
   if (payload.bytes.byteLength < 1) return;
-  const existing = page.children.find(isSceneDraftNode);
-  const image = figma.createImage(payload.bytes);
-  const node = existing?.type === "RECTANGLE" ? existing : undefined;
-  if (!node) {
-    if (existing) {
-      draftNodeIds.add(existing.id);
-      existing.remove();
+  try {
+    const existing = page.children.find(isSceneDraftNode);
+    const image = figma.createImage(payload.bytes);
+    const node = existing?.type === "RECTANGLE" ? existing : undefined;
+    if (!node) {
+      if (existing) {
+        draftNodeIds.add(existing.id);
+        existing.remove();
+      }
+      figma.commitUndo();
+      const created = figma.createRectangle();
+      created.setPluginData(DRAFT_MARKER, "1");
+      created.locked = true;
+      draftNodeIds.add(created.id);
+      paintDraft(created, payload, sourceName, image.hash);
+      return;
     }
-    figma.commitUndo();
-    const created = figma.createRectangle();
-    created.setPluginData(DRAFT_MARKER, "1");
-    created.locked = true;
-    draftNodeIds.add(created.id);
-    paintDraft(created, payload, sourceName, image.hash);
-    return;
+    draftNodeIds.add(node.id);
+    paintDraft(node, payload, sourceName, image.hash);
+  } catch {
+    // The host rejected this preview frame (for example an extreme placement
+    // size). Drop the partial node without a commit so a failed create never
+    // enters history; the panel preview remains the feedback surface.
+    removeMarkedDraftNodes(page, true);
   }
-  draftNodeIds.add(node.id);
-  paintDraft(node, payload, sourceName, image.hash);
 }
 
 function paintDraft(

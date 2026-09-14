@@ -125,18 +125,31 @@ describe("scene draft node lifecycle", () => {
 
   it("sweeps stale drafts from abnormal exits and never touches artwork", () => {
     const { page, figma } = host();
-    updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    const staleDraft = rectangle("stale-draft");
+    staleDraft.parent = page;
+    staleDraft.setPluginData("sceneDraft", "1");
+    page.children.push(staleDraft);
     const artwork = rectangle("art");
     artwork.parent = page;
     page.children.push(artwork);
-    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
     sweepStaleSceneDrafts(page);
     expect(page.children).toEqual([artwork]);
     expect(artwork.removed).toBe(false);
     expect(figma.triggerUndo).not.toHaveBeenCalled();
-    expect(figma.commitUndo).toHaveBeenCalledTimes(2);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
     sweepStaleSceneDrafts(page);
-    expect(figma.commitUndo).toHaveBeenCalledTimes(2);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a late stale sweep remove this run's live preview", () => {
+    const { page, figma } = host();
+    updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    const draft = page.children[0];
+
+    sweepStaleSceneDrafts(page);
+
+    expect(page.children).toEqual([draft]);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
   });
 
   it("ignores empty payloads instead of writing a broken draft", () => {
@@ -144,5 +157,24 @@ describe("scene draft node lifecycle", () => {
     updateSceneDraft(page, { ...payload(0, { x: 0, y: 0, width: 10, height: 10 }), bytes: new Uint8Array() }, "Poster");
     expect(page.children).toHaveLength(0);
     expect(figma.createRectangle).not.toHaveBeenCalled();
+  });
+
+  it("drops a partially painted node when the host rejects the frame, without a history boundary", () => {
+    const { page, figma } = host();
+    // Simulate the host rejecting an extreme placement size during paint.
+    figma.createRectangle.mockImplementationOnce(() => {
+      const node = rectangle("node-rejected");
+      node.parent = page;
+      node.resize = () => {
+        throw new Error("resize is not supported");
+      };
+      page.children.push(node);
+      return node;
+    });
+    const extreme = payload(1, { x: 0, y: 0, width: Number.MAX_SAFE_INTEGER, height: 10 });
+    expect(() => updateSceneDraft(page, extreme, "Poster")).not.toThrow();
+    expect(page.children).toHaveLength(0);
+    // Only the pre-create boundary ran; the failed create never entered history.
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
   });
 });

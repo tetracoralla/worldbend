@@ -80,7 +80,7 @@ function host() {
   const source = frame(); source.name = "Editable source";
   page.selection = [source];
   const api = {
-    currentPage: page, fileKey: "granted-file", mixed: Symbol("mixed"),
+    currentPage: page, root: { children: [page] }, fileKey: "granted-file", mixed: Symbol("mixed"),
     on: (name: string, fn: (...args: any[]) => void) => handlers.set(name, fn),
     showUI: vi.fn(), commitUndo: vi.fn(), triggerUndo: vi.fn(), notify: vi.fn(),
     clientStorage: { getAsync: vi.fn(async () => undefined) },

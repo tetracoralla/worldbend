@@ -145,6 +145,7 @@ function setup(
   Object.assign(page, { children: target ? [source, target] : [source] });
   const figmaMock = {
     currentPage: page,
+    root: { children: [page] },
     mixed: Symbol("mixed"),
     clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
     showUI: vi.fn(),

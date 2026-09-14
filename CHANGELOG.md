@@ -3,6 +3,25 @@
 All notable changes to Worldbend are documented here. Versioning begins with
 the first Figma Community release.
 
+## 0.4.0 - 2026-09-14
+
+### Live canvas working preview
+
+- While editing in Transform, Distort, Warp or Composition, the working result
+  now appears in place on the Figma canvas as a locked image plainly named
+  `Worldbend Working Preview`. It starts only after the first real edit,
+  follows every further change, and is removed by Apply, returning exactly to
+  the loaded result, cancel, selection loss, workspace or mode change, and
+  plugin close. It is editing feedback, never a saved result, and cleaning it
+  up never touches artwork.
+- A rejected publication no longer loses canvas feedback. After a final
+  encoding or host write failure the same editable draft returns with its
+  preview restored automatically and the publication error still visible.
+- Known host limitation: removing the preview can leave one empty Undo step,
+  and a later host Undo can briefly bring the removed preview back. Keep
+  editing or delete it; the next plugin run sweeps any residue from every
+  page of the document.
+
 ## 0.3.1 - 2026-09-11
 
 ### Transform reliability

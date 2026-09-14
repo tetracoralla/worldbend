@@ -45,6 +45,7 @@ function setup(selectionCount: number) {
   const figmaMock = {
     mixed: Symbol("mixed"),
     currentPage: page,
+    root: { children: [page] },
     clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn(async () => undefined) },
     showUI: vi.fn(), on: vi.fn(), commitUndo: vi.fn(), notify: vi.fn(),
     viewport: { scrollAndZoomIntoView: vi.fn() },

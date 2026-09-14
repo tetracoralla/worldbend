@@ -67,6 +67,7 @@ describe("Figma selection generations", () => {
     const getAsync = vi.fn(async () => undefined);
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: { getAsync, setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -102,6 +103,7 @@ describe("Figma selection generations", () => {
       off: vi.fn(), children: [] };
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: {
         getAsync: vi.fn(async () => ({ version: 1, locale: "en" })),
         setAsync: vi.fn(),
@@ -138,6 +140,7 @@ describe("Figma selection generations", () => {
     const setAsync = vi.fn(async () => undefined);
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: {
         getAsync: vi.fn(async () => ({ version: 1, locale: "system" })),
         setAsync,
@@ -195,6 +198,7 @@ describe("Figma selection generations", () => {
 
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       showUI: vi.fn(),
       on: vi.fn((type: string, handler: () => void) => handlers.set(type, handler)),
       ui: {
@@ -259,6 +263,7 @@ describe("Figma selection generations", () => {
     page.selection = [source];
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -300,6 +305,7 @@ describe("Figma selection generations", () => {
     page.selection = [source];
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -359,6 +365,7 @@ describe("Figma selection generations", () => {
     page.selection = [source];
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -450,6 +457,7 @@ describe("Figma selection generations", () => {
     const posts: unknown[] = [];
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       mixed: Symbol("mixed"),
       showUI: vi.fn(),
       on: vi.fn(),
@@ -563,6 +571,7 @@ describe("Figma selection generations", () => {
     Object.assign(page, { children: [source, target] });
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       mixed: Symbol("mixed"),
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
@@ -663,6 +672,7 @@ describe("Figma selection generations", () => {
     page.selection = [source, target];
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       mixed: Symbol("mixed"),
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
@@ -761,6 +771,7 @@ describe("Figma selection generations", () => {
     page.selection = [source, target];
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       mixed: Symbol("mixed"),
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
@@ -822,6 +833,7 @@ describe("Figma selection generations", () => {
       off: vi.fn(), children: [] };
     const figmaMock = {
       currentPage: page,
+      root: { children: [page] },
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
       showUI: vi.fn(),
       on: vi.fn(),
@@ -842,5 +854,51 @@ describe("Figma selection generations", () => {
     figmaMock.ui.onmessage?.({ type: "trigger-undo" });
 
     expect(figmaMock.triggerUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("sweeps a stale working preview left on a page that is not current", async () => {
+    let otherPageLoaded = false;
+    const artwork = { id: "artwork", getPluginData: vi.fn(() => "") };
+    const staleDraft = { id: "stale-draft", getPluginData: vi.fn(() => "1"), remove: vi.fn() };
+    const otherPage = {
+      id: "other-page",
+      type: "PAGE",
+      on: vi.fn(),
+      off: vi.fn(),
+      loadAsync: vi.fn(async () => { otherPageLoaded = true; }),
+      get children() {
+        if (!otherPageLoaded) throw new Error("Page contents must be loaded first");
+        return [artwork, staleDraft];
+      },
+    };
+    const page = {
+      id: "current-page",
+      type: "PAGE",
+      selection: [] as unknown[],
+      on: vi.fn(),
+      off: vi.fn(), children: [] };
+    const commitUndo = vi.fn();
+    const figmaMock = {
+      currentPage: page,
+      root: { children: [page, otherPage] },
+      clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
+      showUI: vi.fn(),
+      on: vi.fn(),
+      commitUndo,
+      ui: {
+        on: vi.fn(),
+        onmessage: undefined as ((message: unknown) => void) | undefined,
+        postMessage: vi.fn(),
+      },
+    };
+    vi.stubGlobal("figma", figmaMock);
+    vi.stubGlobal("__html__", "");
+
+    await import("./main");
+
+    await vi.waitFor(() => expect(staleDraft.remove).toHaveBeenCalledTimes(1));
+    expect(otherPage.loadAsync).toHaveBeenCalledTimes(1);
+    expect(artwork.getPluginData).toHaveBeenCalled();
+    expect(commitUndo).toHaveBeenCalledTimes(1);
   });
 });
