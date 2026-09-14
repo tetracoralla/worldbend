@@ -15,44 +15,57 @@ export function isSceneDraftNode(node: BaseNode): boolean {
   return node.getPluginData(DRAFT_MARKER) === "1";
 }
 
-let draftNodeId: string | undefined;
+// Figma batches nodechange delivery, so a DELETE can arrive after a draft was
+// cleared and a later one was created. Keep every draft id from this plugin run
+// instead of only the current id; otherwise an older DELETE can masquerade as
+// source deletion and reload the active editing session.
+const draftNodeIds = new Set<string>();
 
 /**
  * Identity check that also covers a nodechange reporting an already-removed
  * draft, where only the id survives.
  */
 export function isSceneDraftNodeId(id: string): boolean {
-  return id === draftNodeId;
+  return draftNodeIds.has(id);
+}
+
+/** Release a removed draft id after its host DELETE notification arrives. */
+export function forgetSceneDraftNodeId(id: string): void {
+  draftNodeIds.delete(id);
 }
 
 /** Remove drafts left behind by an abnormal exit; they are never reused. */
 export function sweepStaleSceneDrafts(page: PageNode): void {
-  for (const node of [...page.children]) {
-    if (isSceneDraftNode(node)) node.remove();
-  }
+  // Same removal as a live clear: an uncommitted delete merges into the
+  // user's next undo step and can resurrect the leftover with Cmd+Z.
+  clearSceneDraft(page);
 }
 
 /**
- * Remove the live draft and close its undo episode. One boundary after
- * removal keeps the whole draft lifetime inside a single host undo step;
- * updates themselves never commit.
+ * Remove the live draft without replaying host history.
+ *
+ * Figma exposes no draft-only scene layer. Using triggerUndo here is unsafe:
+ * an artwork edit made after the draft boundary can sit above the draft and
+ * would be undone first. Direct removal can leave a no-op host Undo item, but
+ * it never trades history cleanliness for the user's document data.
  */
 export function clearSceneDraft(page: PageNode): void {
   let removed = false;
   for (const node of [...page.children]) {
     if (isSceneDraftNode(node)) {
+      draftNodeIds.add(node.id);
       node.remove();
       removed = true;
     }
   }
-  draftNodeId = undefined;
   if (removed) figma.commitUndo();
 }
 
 /**
- * Maintain the single locked canvas draft. The pre-create commit snapshots
- * the document before the draft exists; subsequent fill swaps merge into the
- * same pending undo step so dragging never produces per-frame history.
+ * Maintain the single locked canvas draft in one host transaction. Commit the
+ * user's pending artwork changes before creating it, so direct cleanup cannot
+ * merge with or roll back those changes. Frame updates never add history
+ * entries of their own.
  */
 export function updateSceneDraft(
   page: PageNode,
@@ -64,17 +77,19 @@ export function updateSceneDraft(
   const image = figma.createImage(payload.bytes);
   const node = existing?.type === "RECTANGLE" ? existing : undefined;
   if (!node) {
-    if (existing) existing.remove();
+    if (existing) {
+      draftNodeIds.add(existing.id);
+      existing.remove();
+    }
+    figma.commitUndo();
     const created = figma.createRectangle();
     created.setPluginData(DRAFT_MARKER, "1");
     created.locked = true;
-    figma.commitUndo();
-    page.appendChild(created);
-    draftNodeId = created.id;
+    draftNodeIds.add(created.id);
     paintDraft(created, payload, sourceName, image.hash);
     return;
   }
-  draftNodeId = node.id;
+  draftNodeIds.add(node.id);
   paintDraft(node, payload, sourceName, image.hash);
 }
 

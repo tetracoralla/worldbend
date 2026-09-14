@@ -38,13 +38,13 @@ Standing rules:
 | MCP relative-path authority under an explicit granted root; preflight, overwrite authority, output limits, dry-run parity; CLI paths stay deliberate human arguments | hard | Agent safety boundary; escapes rejected with stable codes | — | — |
 | One transform model in `worldbend-core`; adapters add no second model | identity | Architecture contract; prevents divergent semantics across carriers | Healthy | — |
 | Human Figma UI free of Agent metadata, tool names and schemas | identity | Task-native human surface | Healthy | — |
-| Editable results require the companion Worldbend Perspective effect | external process | Figma Community review; first submission rejected, labeled resubmission prepared 2026-09-10 | Track the submission outcome | Approval or a redesigned distribution route for the effect |
+| Editable results require the companion Worldbend Perspective effect | deferral | Figma Community review; first submission rejected, labeled resubmission prepared 2026-09-10 | 2026-09-14: still awaiting the external review outcome | Approval or a redesigned distribution route for the effect |
 | ComfyUI adapter ships as source only; no registry release | deferral | Distribution effort versus unknown demand | 2026-09-14 public release kept it source-only | Real user demand after the public release |
 | Capability projection remains narrower than the product contract | identity (while experimental) | Conditional experimental status; must not imply independent substitutability | Healthy while marked experimental | Graduating the projection from experimental, with its own compatibility work |
 
 ## Open re-derivations
 
-### Scene-context live preview — fired 2026-09-14, implemented, pending real-host verification
+### Scene-context live preview — fired 2026-09-14, host-history blocker confirmed
 
 The deferral rested on an unspoken extension of the explicit-publication
 principle: "nothing renders on the document until Apply." That conflated
@@ -56,11 +56,22 @@ in-context draft is not a boundary violation but an obligation of the
 surface in the user's document, and the adjusting loop must show the target
 scene, not only the isolated source.
 
-Implemented 2026-09-14 as the live scene draft (see the Figma contract
+Implemented as a candidate on 2026-09-14 (see the Figma contract
 section): one locked draft image node per editing session in the
 Transform/Distort/Warp family and in Composition, publication-parity
-rendering, coalesced bounded updates, single-undo-episode cleanup, stale
-sweep on next run. Remaining before closing: real Figma-host verification
-(undo interleaving, close-cleanup behavior, drag-frame rate on large
-artwork) and the still-unrun check of whether Free Transformer's advertised
-"Live Preview while dragging" is on-canvas or in-panel.
+rendering, coalesced bounded updates, synchronous marked-node cleanup, and a
+stale sweep on next run. Free Transform's author describes its current Live Preview
+as appearing [on the canvas while dragging](https://www.reddit.com/r/FigmaDesign/comments/1vjz61m/im_a_designer_not_a_developer_i_taught_myself/),
+so that competitor question is now resolved.
+
+Real Figma Desktop verification on 2026-09-14 passed keyboard manipulation,
+invalid-state recovery, synchronous close cleanup, and stale-draft removal, but
+failed the strict document-history condition. Direct marked-node removal is
+data-safe but leaves one no-op Undo item. Rolling the draft back with
+`triggerUndo` is not safe: host artwork edits may be newer than the draft and
+can be undone first; repeated runs also failed to establish a fresh draft
+reliably. The candidate therefore remains **FAIL for release / blocked on a
+host-supported transient canvas carrier or proven safe transaction erasure**.
+The reviewed runtime disables both draft requests and host draft writes while
+retaining synchronous cleanup for stale nodes from earlier development builds.
+Large-artwork drag-frame rate also remains unmeasured.

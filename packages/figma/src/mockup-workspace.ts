@@ -28,6 +28,7 @@ import {
 } from "./designer-workspace-common";
 import type { MainToUiMessage, Placement, UiToMainMessage } from "./messages";
 import { createSceneDraftClient } from "./scene-draft-client";
+import { LIVE_SCENE_DRAFT_ENABLED } from "./scene-draft-policy";
 import {
   normalizeTemplateName,
   spatialTemplateFromMockup,
@@ -123,8 +124,8 @@ export function createMockupWorkspace(input: {
   // rebuild would destroy the focused button after a single keyboard press.
   const previewFrames = createFrameCoalescer(() => void render("preview", false));
 
-  // Live canvas draft: the panel composite shown in the document while the
-  // layout is being edited. Feedback only — publication stays explicit.
+  // Dormant document-node carrier for the panel composite. The host policy
+  // keeps requests off until a history-neutral Figma surface is proven.
   const sceneDraft = createSceneDraftClient({
     intervalMs: 250,
     render: async () => {
@@ -141,6 +142,9 @@ export function createMockupWorkspace(input: {
     send: (frame) => {
       if (!source) return;
       input.post({ type: "scene-draft", generation: source.selectionGeneration, ...frame });
+    },
+    clear: () => {
+      if (source) input.post({ type: "scene-draft-clear", generation: source.selectionGeneration });
     },
   });
   function clearSceneDraftFeedback(): void {
@@ -314,13 +318,16 @@ export function createMockupWorkspace(input: {
       shell.showError();
       shell.apply.disabled = busy || refreshing; shell.applyNew.disabled = busy || refreshing;
       if (refreshOverlay && quality === "preview") renderOverlay();
-      if (quality === "preview" && phase === "ready" && !busy && !refreshing) sceneDraft.request();
+      if (LIVE_SCENE_DRAFT_ENABLED && quality === "preview" && phase === "ready" && !busy && !refreshing) {
+        sceneDraft.request();
+      }
       return true;
     } catch (error) {
       if (currentGeneration !== generation) return false;
       previewPlan = undefined;
       previewGeometryKey = "";
       planeLayers.length = 0;
+      clearSceneDraftFeedback();
       shell.showError(input.formatError(error));
       shell.apply.disabled = true; shell.applyNew.disabled = true;
       return false;
@@ -591,7 +598,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (error) shell.showError(error);
     },
-    dispose() { publicationEpoch += 1; generation += 1; active = false; sceneDraft.cancel(); previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
+    dispose() { publicationEpoch += 1; generation += 1; active = false; clearSceneDraftFeedback(); previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }
 

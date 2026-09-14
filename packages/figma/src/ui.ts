@@ -100,6 +100,7 @@ import {
 } from "./i18n";
 import { createWarpPicker } from "./warp-picker";
 import { createSceneDraftClient } from "./scene-draft-client";
+import { LIVE_SCENE_DRAFT_ENABLED } from "./scene-draft-policy";
 import { parseWarpControls, warpAmountPercent, WARP_PRESETS } from "./warp-controls";
 import { sliderProgress } from "./slider-domain";
 import {
@@ -375,9 +376,9 @@ const distortEndFrames = createFrameCoalescer(() => {
   viewport?.revealAllCorners({ animate: true });
 });
 
-// Live canvas draft for the perspective family: the publication-parity render
-// shown in the document while editing. Feedback only — Apply stays the only
-// write path, and the panel preview remains the numeric truth.
+// Dormant document-node carrier for a publication-parity scene draft. The host
+// policy keeps requests off after real Figma history testing; retaining the
+// bounded client preserves the candidate without silently enabling writes.
 const sceneDraft = createSceneDraftClient({
   intervalMs: 200,
   render: async () => {
@@ -393,14 +394,17 @@ const sceneDraft = createSceneDraftClient({
   send: (frame) => {
     post({ type: "scene-draft", generation: activeGeneration, ...frame });
   },
+  clear: () => {
+    post({ type: "scene-draft-clear", generation: activeGeneration });
+  },
 });
 function clearSceneDraftFeedback(): void {
   sceneDraft.cancel();
   post({ type: "scene-draft-clear", generation: activeGeneration });
 }
-// Figma offers no main-thread close hook; pagehide is the best-effort way to
-// clear the canvas draft when the plugin window closes. The guaranteed
-// backstop is the next-run stale-draft sweep in the main thread.
+// Ask the main thread to clear early when the iframe unloads. Figma's main-
+// thread `close` event is the synchronous guarantee; the next-run stale-draft
+// sweep remains the abnormal-exit backstop.
 addEventListener("pagehide", () => {
   post({ type: "scene-draft-clear", generation: activeGeneration });
 });
@@ -1125,6 +1129,7 @@ async function loadSource(generation: number, payload: SourcePayload): Promise<v
 
 function showSelectionError(generation: number, message: UserMessage): void {
   if (generation !== activeGeneration) return;
+  clearSceneDraftFeedback();
   // A task cannot remain active after its source contract has failed. Return
   // to the base workspace first so the user gets one usable recovery surface
   // rather than a disabled task containing a second copy of the same error.
@@ -1231,6 +1236,7 @@ async function restoreLoadedState(discardHistory: boolean): Promise<void> {
     if (valid) setStatus(userMessage("perspectiveReset"));
   } catch (error) {
     phase = "ready";
+    clearSceneDraftFeedback();
     showError(error);
   }
   renderState();
@@ -1429,6 +1435,7 @@ async function updateWarpPreview(
   } catch {
     transformInputsValid = false;
     warpAmountInput.setAttribute("aria-invalid", "true");
+    clearSceneDraftFeedback();
     showError(userMessage("invalidWarp"));
     renderState();
     return false;
@@ -1467,6 +1474,7 @@ async function updateWarpPreview(
     composeInFlight = false;
     continuousPreviewInFlight = false;
     transformInputsValid = false;
+    clearSceneDraftFeedback();
     showError(error);
     renderState();
     return false;
@@ -1564,6 +1572,7 @@ async function updateTransformPreview(
       composeInFlight = false;
       transformInputsValid = false;
       deferredHistoryCommit.clear();
+      clearSceneDraftFeedback();
       showError(error);
       renderState();
       return false;
@@ -1628,6 +1637,7 @@ async function updateTransformPreview(
     continuousPreviewInFlight = false;
     transformInputsValid = false;
     deferredHistoryCommit.clear();
+    clearSceneDraftFeedback();
     showError(error);
     renderState();
     return false;
@@ -1650,6 +1660,7 @@ function requestTransformControlPreview(final: boolean): void {
   } catch (error) {
     transformInputsValid = false;
     deferredHistoryCommit.clear();
+    clearSceneDraftFeedback();
     showError(error);
     renderState();
   }
@@ -1836,6 +1847,7 @@ async function finalizeDistortEdit(): Promise<boolean> {
     activeFrame = cloneFrame(base);
     transformInputsValid = false;
     distortFrameDirty = true;
+    clearSceneDraftFeedback();
     showError(error);
     renderState();
     return false;
@@ -2303,7 +2315,7 @@ function renderZoomLevel(scale: number): void {
 /** Keep tight transformed outputs registered to the loaded Figma layer. */
 function syncViewportScene(): void {
   if (!viewport || !editor || !initialFrame || !activeFrame) return;
-  sceneDraft.request();
+  if (LIVE_SCENE_DRAFT_ENABLED) sceneDraft.request();
   const display = editor.getTargetDisplaySize();
   const displayScaleX = display.width / activeFrame.renderWidth;
   const displayScaleY = display.height / activeFrame.renderHeight;

@@ -142,7 +142,12 @@ reversible, leave no document-history disturbance behind, and be cleaned up
 on apply, cancel, selection loss, workspace switch and plugin close. The
 draft never becomes the result except through the explicit publication path;
 the panel preview remains the numeric truth while the canvas draft provides
-scene context.
+scene context. The 2026-09-14 Figma Desktop host review showed that ordinary
+document nodes cannot yet satisfy the no-history-disturbance condition: an
+interleaved artwork edit makes cleanup independently undoable and can resurrect
+the draft. The reviewed runtime therefore keeps that carrier disabled and uses
+the panel preview until a transient host surface or history-neutral transaction
+is demonstrated.
 
 ## Current productized finish line
 

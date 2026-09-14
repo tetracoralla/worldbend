@@ -19,14 +19,71 @@ const epoch = new Date(0);
 // deterministic builds working under sanitized PATH environments.
 const BSDTAR = "/usr/bin/bsdtar";
 const GZIP = "/usr/bin/gzip";
-const USTAR_MAX_PATH = 255;
+const USTAR_NAME_BYTES = 100;
+const USTAR_PREFIX_BYTES = 155;
+
+function stablePathCompare(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function assertPortableArchiveMember(member) {
+  if (
+    member.length === 0
+    || path.isAbsolute(member)
+    || /^[A-Za-z]:/u.test(member)
+    || member.includes("\\")
+    || /[\x00-\x1f\x7f]/u.test(member)
+    || member.split("/").some((part) => part === "" || part === "." || part === "..")
+  ) {
+    throw new Error(`Unsafe archive member ${JSON.stringify(member)}`);
+  }
+
+  if (Buffer.byteLength(member) <= USTAR_NAME_BYTES) return;
+  for (let index = member.lastIndexOf("/"); index >= 0; index = member.lastIndexOf("/", index - 1)) {
+    const prefix = member.slice(0, index);
+    const name = member.slice(index + 1);
+    if (
+      Buffer.byteLength(prefix) <= USTAR_PREFIX_BYTES
+      && Buffer.byteLength(name) <= USTAR_NAME_BYTES
+    ) return;
+  }
+  throw new Error(
+    `Archive member cannot be represented by ustar (${USTAR_PREFIX_BYTES}-byte prefix, ${USTAR_NAME_BYTES}-byte name): ${member}`,
+  );
+}
+
+export function assertExactArchiveMembers(actualMembers, expectedMembers) {
+  const seen = new Set();
+  for (const member of actualMembers) {
+    assertPortableArchiveMember(member);
+    if (seen.has(member)) throw new Error(`Archive contains duplicate member ${member}`);
+    seen.add(member);
+  }
+  const actual = [...actualMembers].sort(stablePathCompare);
+  const expected = [...expectedMembers].sort(stablePathCompare);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error("Archive members differ from the sealed component inventory");
+  }
+}
+
+export function assertRegularArchiveListing(verboseEntries, expectedCount) {
+  if (verboseEntries.length !== expectedCount) {
+    throw new Error("Verbose archive inventory differs from the sealed member count");
+  }
+  for (const entry of verboseEntries) {
+    // bsdtar's verbose listing begins each entry with the archive mode. A
+    // regular file starts with '-', while links, directories and device nodes
+    // have distinct leading characters. Reject them before extraction.
+    if (!entry.startsWith("-")) throw new Error(`Archive member is not a regular file: ${entry}`);
+  }
+}
 
 export async function normalizeRegularTree(root) {
   const metadata = await lstat(root);
   if (metadata.isSymbolicLink()) throw new Error(`Cannot package symlink ${root}`);
   if (metadata.isDirectory()) {
     for (const entry of (await readdir(root, { withFileTypes: true }))
-      .sort((left, right) => left.name.localeCompare(right.name))) {
+      .sort((left, right) => stablePathCompare(left.name, right.name))) {
       await normalizeRegularTree(path.join(root, entry.name));
     }
     await chmod(root, 0o755);
@@ -40,23 +97,11 @@ export async function normalizeRegularTree(root) {
 
 export async function createDeterministicTarGz({ sourceDirectory, relativeFiles, archive, scratchDirectory }) {
   const sourceRoot = path.resolve(sourceDirectory);
-  const members = [...new Set(relativeFiles)].sort();
+  const members = [...new Set(relativeFiles)].sort(stablePathCompare);
   if (members.length !== relativeFiles.length) throw new Error("Archive file list contains duplicates");
 
   for (const member of members) {
-    if (
-      member.length === 0
-      || path.isAbsolute(member)
-      || member.includes("\\")
-      || member.split("/").some((part) => part === "" || part === "." || part === "..")
-    ) {
-      throw new Error(`Unsafe archive member ${member}`);
-    }
-    // ustar carries at most 100 name + 155 prefix characters; bsdtar would
-    // reject longer members anyway, with a less actionable message.
-    if (member.length > USTAR_MAX_PATH) {
-      throw new Error(`Archive member exceeds the ustar ${USTAR_MAX_PATH}-character path limit: ${member}`);
-    }
+    assertPortableArchiveMember(member);
     const absolute = path.resolve(sourceRoot, member);
     if (absolute !== sourceRoot && !absolute.startsWith(`${sourceRoot}${path.sep}`)) {
       throw new Error(`Archive member escapes source root: ${member}`);

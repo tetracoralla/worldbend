@@ -500,7 +500,7 @@ environment and method rather than quoting a prior anchor number.
 
 The DMG checks are a separate distribution lane. Require a clean source record
 for a public candidate, the exact mounted four-file inventory, complete
-component file and legal digests, macOS arm64 binaries, the declared ad-hoc and
+component file and legal digests, a safe exact archive-member inventory, macOS arm64 binaries, the declared ad-hoc and
 unnotarized trust boundary, packaged MCP smoke, and an Agent Host standalone
 component preview. A passing DMG mount does not establish an installed Agent
 Host environment, and a staged plugin does not establish the downloadable

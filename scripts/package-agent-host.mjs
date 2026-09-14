@@ -157,7 +157,7 @@ async function inventory(directory, pluginRoot) {
   const files = [];
   async function visit(current, prefix = "") {
     for (const entry of (await readdir(current, { withFileTypes: true }))
-      .sort((left, right) => left.name.localeCompare(right.name))) {
+      .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)) {
       assertNoPluginStagingResidue(entry.name);
       const name = prefix ? `${prefix}/${entry.name}` : entry.name;
       const absolute = path.join(current, entry.name);
@@ -180,7 +180,7 @@ async function inventory(directory, pluginRoot) {
     }
   }
   await visit(directory);
-  return files.sort((left, right) => left.path.localeCompare(right.path));
+  return files.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 }
 
 function hash(data) {

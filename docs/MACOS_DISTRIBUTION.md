@@ -38,9 +38,11 @@ pnpm verify:macos-dmg -- /absolute/path/to/worldbend-<version>-macos-arm64.dmg
 ```
 
 The verifier checks the outer digest and disk-image structure, mounts it
-read-only, checks the exact four-file payload, verifies every component file
-against `component.json`, confirms the native architecture and ad-hoc signature,
-and exercises the packaged MCP server through its real compact catalog.
+read-only, checks the exact four-file payload, binds the separately published
+component asset to the mounted copy, preflights the archive member paths before
+extraction, verifies every component file against `component.json`, confirms
+the architecture and ad-hoc signature of every packaged native executable, and
+exercises the packaged MCP server through its real compact catalog.
 
 The Agent Host component archive is byte-reproducible for unchanged inputs:
 file order, modes, timestamps, ownership, and gzip metadata are normalized.

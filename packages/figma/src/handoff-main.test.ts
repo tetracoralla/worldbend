@@ -231,45 +231,44 @@ describe("designer and Agent handoff", () => {
     );
   });
 
-  it("keeps the live canvas draft as locked feedback outside selection and publication", async () => {
+  it("keeps the document-node live draft disabled after the host-history failure", async () => {
     vi.useFakeTimers(); const h = host();
     await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
     await vi.advanceTimersByTimeAsync(0);
-    const { payload, generation } = h.posts.findLast(p => p.type === "source");
-    const draft = () => h.page.children.find((node: any) => node.getPluginData?.("sceneDraft") === "1");
-    const sceneDraft = (bytes: number, placement: { x: number; y: number; width: number; height: number }) =>
-      h.api.ui.onmessage?.({ type: "scene-draft", generation, bytes: new Uint8Array([bytes]),
-        renderWidth: 100, renderHeight: 80, placement });
-    sceneDraft(1, { x: 5, y: 6, width: 50, height: 40 });
-    await vi.advanceTimersByTimeAsync(0);
-    const first = draft();
-    expect(first).toBeDefined();
-    expect(first!.type).toBe("RECTANGLE");
-    expect(first!.locked).toBe(true);
-    expect(first!.name).toBe("Editable source · Worldbend draft");
-    expect(first).toMatchObject({ x: 5, y: 6, width: 50, height: 40 });
+    const { generation } = h.posts.findLast(p => p.type === "source");
+    h.api.ui.onmessage?.({ type: "scene-draft", generation, bytes: new Uint8Array([1]),
+      renderWidth: 100, renderHeight: 80,
+      placement: { x: 5, y: 6, width: 50, height: 40 } });
+
+    expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
+    expect(h.api.createRectangle).not.toHaveBeenCalled();
+    expect(h.api.commitUndo).not.toHaveBeenCalled();
+  });
+
+  it("commits leftover draft removal during the plugin-start sweep", async () => {
+    vi.useFakeTimers(); const h = host();
+    const leftover = h.api.createRectangle();
+    leftover.setPluginData("sceneDraft", "1");
+    await import("./main");
+    expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
+    expect(h.page.children).toContain(h.source);
     expect(h.api.commitUndo).toHaveBeenCalledTimes(1);
-    // Updates reuse the node: no accumulation, no per-frame undo steps.
-    sceneDraft(2, { x: 7, y: 8, width: 60, height: 30 });
+    expect(h.api.triggerUndo).not.toHaveBeenCalled();
+  });
+
+  it("removes a legacy live canvas draft synchronously when the host closes the plugin", async () => {
+    vi.useFakeTimers(); const h = host();
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
     await vi.advanceTimersByTimeAsync(0);
-    expect(draft()).toBe(first);
+    const legacyDraft = h.api.createRectangle();
+    legacyDraft.setPluginData("sceneDraft", "1");
+    expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(true);
+
+    h.handlers.get("close")?.();
+
+    expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
     expect(h.api.commitUndo).toHaveBeenCalledTimes(1);
-    // Publication clears the draft before any write.
-    h.api.ui.onmessage?.({ type: "apply", payload: {
-      generation, sourceNodeId: payload.sourceNodeId, spec,
-      bytes: new Uint8Array([9]), renderWidth: 520, renderHeight: 606,
-      placement: { x: 0, y: 0, width: 520, height: 606 },
-    } });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(draft()).toBeUndefined();
-    expect(h.posts.at(-1)).toMatchObject({ type: "apply-complete" });
-    // A stale-generation draft message clears instead of writing.
-    h.api.ui.onmessage?.({ type: "scene-draft", generation: generation + 99,
-      bytes: new Uint8Array([4]), renderWidth: 10, renderHeight: 8,
-      placement: { x: 0, y: 0, width: 10, height: 8 } });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(draft()).toBeUndefined();
-    expect(h.api.createRectangle).toHaveBeenCalledTimes(2); // draft + published result only
+    expect(h.api.triggerUndo).not.toHaveBeenCalled();
   });
 
   it("rejects a tagged result with missing transform data instead of applying perspective to its pixels again", async () => {

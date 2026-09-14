@@ -134,37 +134,30 @@ async function runFixture() {
     const scenario = new URL(location.href).searchParams.get("case");
     if (scenario === "scene-draft") {
       const drafts = () => window.fixtureMessages.filter(m => m.type === "scene-draft");
-      const clears = () => window.fixtureMessages.filter(m => m.type === "scene-draft-clear");
-      await wait(() => drafts().length >= 1, "initial perspective scene draft");
-      const first = drafts()[0];
-      check(first.bytes.length > 8 && first.renderWidth >= 1 && first.renderHeight >= 1 &&
-        first.placement.width > 0 && first.placement.height > 0, "Scene draft frame is incomplete");
-      const png = await createImageBitmap(new Blob([first.bytes], { type: "image/png" }));
-      check(png.width === first.renderWidth && png.height === first.renderHeight,
-        "Scene draft PNG disagrees with its dimensions");
-      png.close();
-      check(first.bytes.length <= 4 * 1024 * 1024, "Scene draft frame exceeds its bounded size");
-      // A numeric edit refreshes the in-document draft. A fresh selection
-      // opens in Distort; switch to Transform for its numeric fields.
+      const settle = () => new Promise(resolve => setTimeout(resolve, 400));
+      await settle();
+      check(drafts().length === 0, "Disabled perspective carrier emitted an initial document draft");
+      // Editing remains live in-panel while the rejected document-node carrier
+      // stays silent.
       get("#mode-transform").click();
       await wait(() => !get("#scale-x").disabled, "transform controls enabled");
-      const seen = window.fixtureMessages.length;
       get("#scale-x").value = "1.5";
       get("#scale-x").dispatchEvent(new Event("input", { bubbles: true }));
-      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "scene-draft"),
-        "edited scene draft");
-      // Correct mode is not part of the draft family: entering it clears.
-      get("#mode-rectify").click();
-      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "scene-draft-clear"),
-        "Correct clears the canvas draft");
-      // Back in the family, editing resumes the draft.
+      await settle();
+      check(drafts().length === 0, "Transform edit emitted a disabled document draft");
       get("#mode-warp").click(); await ready();
-      const warpSeen = window.fixtureMessages.length;
       get("#warp-preset").value = "arc";
       get("#warp-preset").dispatchEvent(new Event("change", { bubbles: true }));
-      await wait(() => window.fixtureMessages.slice(warpSeen).some(m => m.type === "scene-draft"),
-        "Warp resumes the canvas draft");
-      // The composition draft anchors on the backdrop scene.
+      await ready();
+      get("#warp-amount").value = "200";
+      get("#warp-amount").dispatchEvent(new Event("change", { bubbles: true }));
+      await wait(() => get("#apply").disabled, "invalid Warp disables publication");
+      get("#warp-amount").value = "40";
+      get("#warp-amount").dispatchEvent(new Event("change", { bubbles: true }));
+      await ready();
+      await settle();
+      check(drafts().length === 0, "Warp recovery emitted a disabled document draft");
+      // Composition uses the same host policy.
       generation++;
       send({ type: "selection-loading", generation, nodeIds: ["art", "backdrop"] });
       const art = { ...payload, sourceName: "Poster artwork" };
@@ -173,18 +166,12 @@ async function runFixture() {
       await wait(() => !get("#workspace-menu-mockup").disabled, "scene selection");
       get("#more-options").click(); get("#workspace-menu-mockup").click();
       await wait(() => get("#mockup-workspace").querySelectorAll('[data-role="planes"] button').length === 2, "scene layers");
-      const clearBefore = clears().length;
       get("#mockup-workspace").querySelectorAll('[data-role="planes"] button')[1].click();
       get("#mockup-workspace").querySelector('[data-role="backdrop"]').click();
       await wait(() => get("#mockup-workspace").querySelector('[data-role="width"]').value === "600", "backdrop layout");
-      await wait(() => drafts().some(m => m.placement.width === 600 && m.placement.height === 400),
-        "composition scene draft");
-      const composite = drafts().findLast(m => m.placement.width === 600 && m.placement.height === 400);
-      check(composite.placement.x === 800 && composite.placement.y === 200,
-        "Composition draft lost its backdrop anchoring");
-      // Leaving the workspace clears the draft.
+      await settle();
+      check(drafts().length === 0, "Composition emitted a disabled document draft");
       get("#workspace-tab-perspective").click();
-      await wait(() => clears().length > clearBefore, "workspace exit clears the draft");
       check(window.fixtureErrors.length === 0, `fixture errors: ${window.fixtureErrors.join("; ")}`);
     } else if (scenario === "designer-experience") {
       get("#mode-warp").click();

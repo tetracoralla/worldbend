@@ -533,6 +533,10 @@ one sealed Agent Host component archive, `README.txt`, `SHA256SUMS.txt`, and
 and descriptor digests, source revision and dirty state, and the explicit
 absence of Developer ID signing and notarization. The separately published
 release record binds the exact DMG bytes to the same component identity.
+Verification also binds the separately distributed component archive to the
+copy mounted from the DMG, rejects unsafe or undeclared tar members before
+extraction, and checks every packaged native executable against the declared
+macOS arm64 and ad-hoc-signature boundary.
 Unchanged component inputs must reproduce the same tar.gz bytes; DMG container
 metadata is verified by exact digest and mounted-content comparison rather than
 claimed byte reproducibility. Agent Host alone owns installation, activation,
@@ -573,22 +577,29 @@ frame and saved task retain local drafts and history. A refresh or workspace
 exit invalidates pending publication, including asynchronous image encoding.
 Entering and returning cannot mutate Perspective semantic state.
 
-The live scene draft is editing feedback, not publication. While a
-perspective-family edit (Transform, Distort, Warp) is active, the plugin
-maintains at most one canvas draft node: a locked, plainly named image
+A contract-complete live scene draft is editing feedback, not publication.
+While a perspective-family edit (Transform, Distort, Warp) is active, the
+candidate maintains at most one canvas draft node: a locked, plainly named image
 rectangle at the current output placement, marked with private plugin data
 and carrying no stored operation, binding or reusable-result identity. It is
 never selectable as a source or result, never survives apply, cancel,
 selection loss, workspace or mode switch, or an error surface replacing the
-edit. Plugin close clears the draft best-effort from the UI's pagehide;
-the guaranteed backstop is a stale-draft sweep on the next plugin run, and a
-swept draft is never reused. Draft updates are coalesced and bounded; they
-never create per-frame host undo steps, and removal plus one host undo
-boundary restores the pre-draft document. The canvas draft is context
-feedback; the panel preview remains the numeric truth, and the draft is off
-whenever its update cannot be produced honestly.
+edit. Plugin close clears the draft synchronously through Figma's main-thread
+close event; UI pagehide requests an earlier clear, and a stale-draft sweep on
+the next plugin run remains the abnormal-exit backstop. A swept draft is never
+reused. Draft updates are coalesced and bounded. The implementation commits any
+pending artwork edits before creating the draft. Frame updates do not commit,
+and cleanup removes only marked draft nodes without replaying host Undo. Real
+Figma Desktop verification on 2026-09-14 found that this safe cleanup can leave
+one no-op host Undo item. `triggerUndo` is forbidden for draft cleanup because
+an artwork edit made while the plugin is open can sit above the draft and be
+undone first. Therefore the live canvas draft remains a development candidate,
+not a contract-complete release, until a host-supported transient carrier or a
+safe history-erasure mechanism is demonstrated. The reviewed runtime therefore
+does not request or apply document-node draft frames; the in-panel preview
+remains the editing feedback and numeric truth.
 
- The self-contained Figma release may still inline those
+The self-contained Figma release may still inline those
 modules into one HTML file; package inlining does not authorize a single
 ever-growing control surface or persistent capability copy.
 

@@ -47,7 +47,15 @@ import {
 } from "./stored-operation";
 import type { StoredDesignerTask } from "./stored-designer-task";
 import { placementBeside } from "./result-placement";
-import { clearSceneDraft, isSceneDraftNodeId, isSceneDraftNode, sweepStaleSceneDrafts, updateSceneDraft } from "./scene-draft";
+import {
+  clearSceneDraft,
+  forgetSceneDraftNodeId,
+  isSceneDraftNode,
+  isSceneDraftNodeId,
+  sweepStaleSceneDrafts,
+  updateSceneDraft,
+} from "./scene-draft";
+import { LIVE_SCENE_DRAFT_ENABLED } from "./scene-draft-policy";
 import {
   MAX_SAVED_SPATIAL_TEMPLATES,
   TEMPLATE_LIBRARY_STORAGE_KEY,
@@ -153,6 +161,7 @@ const SOURCE_EXPORT_TIMEOUT_MS = 10_000;
 
 figma.on("selectionchange", handleSelectionChange);
 figma.on("currentpagechange", handleCurrentPageChange);
+figma.on("close", handlePluginClose);
 observedPage.on("nodechange", handleNodeChange);
 // A draft from an abnormal exit is garbage, never a reusable result.
 sweepStaleSceneDrafts(figma.currentPage);
@@ -186,15 +195,13 @@ figma.ui.onmessage = (message: unknown) => {
     return;
   }
   if (message.type === "scene-draft") {
-    if (applying || message.generation !== selectionGeneration) {
-      clearSceneDraft(figma.currentPage);
-    } else {
+    if (LIVE_SCENE_DRAFT_ENABLED && !applying && message.generation === selectionGeneration) {
       updateSceneDraft(figma.currentPage, message, preparedSelection?.payload.sourceName ?? "Worldbend");
     }
     return;
   }
   if (message.type === "scene-draft-clear") {
-    clearSceneDraft(figma.currentPage);
+    if (message.generation === selectionGeneration) clearSceneDraft(figma.currentPage);
     return;
   }
   if (message.type === "restore-native") {
@@ -1271,13 +1278,29 @@ function handleCurrentPageChange(): void {
   observedPage.off("nodechange", handleNodeChange);
   observedPage = figma.currentPage;
   observedPage.on("nodechange", handleNodeChange);
+  sweepStaleSceneDrafts(observedPage);
   scheduleLoadSelection();
+}
+
+function handlePluginClose(): void {
+  // Figma invokes this synchronously while document APIs are still available.
+  // Keep shutdown work minimal: the live draft is the only canvas resource
+  // owned by the editing session.
+  clearSceneDraft(observedPage);
+  if (figma.currentPage.id !== observedPage.id) clearSceneDraft(figma.currentPage);
 }
 
 function handleNodeChange(event: NodeChangeEvent): void {
   observeNativeUndo?.();
+  const relevantChanges = event.nodeChanges.filter((change) => {
+    if (!isSceneDraftNodeId(change.id)) return true;
+    // Keep the id until Figma delivers DELETE so batched draft changes remain
+    // recognizable, then release it to keep a long editing session bounded.
+    if (change.type === "DELETE") forgetSceneDraftNodeId(change.id);
+    return false;
+  });
   if (publishing || (!preparedSelection && !loadingSelection)) return;
-  if (event.nodeChanges.some((change) => nodeChangeTouchesPreparedSelection(change))) {
+  if (relevantChanges.some((change) => nodeChangeTouchesPreparedSelection(change))) {
     scheduleLoadSelection();
   }
 }
@@ -1288,8 +1311,6 @@ function nodeChangeTouchesPreparedSelection(change: NodeChange): boolean {
     loadingSelection?.observedNodeIds.has(change.id) || loadingSelection?.ancestorNodeIds.has(change.id)) {
     return true;
   }
-  // Plugin-owned draft removal must never masquerade as source deletion.
-  if (isSceneDraftNodeId(change.id)) return false;
   // Removed nodes no longer expose ancestry. Deletion is uncommon, and a
   // conservative refresh is preferable to applying pixels from stale content.
   if (change.type === "DELETE") return true;

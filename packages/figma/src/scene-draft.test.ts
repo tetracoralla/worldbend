@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearSceneDraft,
+  forgetSceneDraftNodeId,
   isSceneDraftNode,
+  isSceneDraftNodeId,
   sweepStaleSceneDrafts,
   updateSceneDraft,
 } from "./scene-draft";
@@ -34,9 +36,11 @@ function rectangle(id: string) {
 }
 
 function host() {
+  const events: string[] = [];
   const page: any = {
     id: "page",
     type: "PAGE",
+    selection: [] as ReturnType<typeof rectangle>[],
     children: [] as ReturnType<typeof rectangle>[],
     appendChild: vi.fn(function (this: { children: unknown[] }, node: unknown) {
       this.children.push(node);
@@ -44,17 +48,22 @@ function host() {
   };
   const created: ReturnType<typeof rectangle>[] = [];
   const figma = {
-    commitUndo: vi.fn(),
+    commitUndo: vi.fn(() => events.push("commit")),
+    triggerUndo: vi.fn(() => events.push("undo")),
     createImage: vi.fn((bytes: Uint8Array) => ({ hash: `hash-${bytes[0]}` })),
     createRectangle: vi.fn(() => {
+      events.push("create");
       const node = rectangle(`node-${created.length + 1}`);
       node.parent = page;
       created.push(node);
+      // Match the real Figma API: createRectangle is parented under the
+      // current page immediately.
+      page.children.push(node);
       return node;
     }),
   };
   vi.stubGlobal("figma", figma);
-  return { page, figma, created };
+  return { page, figma, created, events };
 }
 
 afterEach(() => {
@@ -71,7 +80,7 @@ const payload = (bytes: number, placement: { x: number; y: number; width: number
 
 describe("scene draft node lifecycle", () => {
   it("maintains one locked, marked node reused across updates without undo commits", () => {
-    const { page, figma } = host();
+    const { page, figma, events } = host();
     updateSceneDraft(page, payload(1, { x: 5, y: 6, width: 50, height: 40 }), "Poster");
     const draft = page.children[0]!;
     expect(isSceneDraftNode(draft)).toBe(true);
@@ -81,6 +90,7 @@ describe("scene draft node lifecycle", () => {
     expect(draft.fills).toEqual([{ type: "IMAGE", imageHash: "hash-1", scaleMode: "FILL" }]);
     // One pre-create boundary only: updates never produce per-frame history.
     expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+    expect(events.slice(0, 2)).toEqual(["commit", "create"]);
 
     updateSceneDraft(page, payload(2, { x: 7, y: 8, width: 60, height: 30 }), "Poster");
     expect(page.children).toHaveLength(1);
@@ -91,27 +101,42 @@ describe("scene draft node lifecycle", () => {
     expect(figma.createRectangle).toHaveBeenCalledTimes(1);
   });
 
-  it("clear removes the draft and closes its undo episode exactly once", () => {
+  it("clear removes only marked drafts and never replays host history", () => {
     const { page, figma } = host();
     updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    const selected = rectangle("selected");
+    selected.parent = page;
+    page.children.push(selected);
+    page.selection = [selected];
     expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+    const id = page.children[0]!.id;
     clearSceneDraft(page);
-    expect(page).toHaveProperty("children.length", 0);
+    expect(page.children).toEqual([selected]);
+    expect(isSceneDraftNodeId(id)).toBe(true);
+    forgetSceneDraftNodeId(id);
+    expect(isSceneDraftNodeId(id)).toBe(false);
+    expect(figma.triggerUndo).not.toHaveBeenCalled();
+    expect(page.selection).toEqual([selected]);
     expect(figma.commitUndo).toHaveBeenCalledTimes(2);
-    // Clearing with no draft commits nothing.
+    // Clearing with no draft creates no additional host boundary.
     clearSceneDraft(page);
     expect(figma.commitUndo).toHaveBeenCalledTimes(2);
   });
 
   it("sweeps stale drafts from abnormal exits and never touches artwork", () => {
-    const { page } = host();
+    const { page, figma } = host();
     updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
     const artwork = rectangle("art");
     artwork.parent = page;
     page.children.push(artwork);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
     sweepStaleSceneDrafts(page);
     expect(page.children).toEqual([artwork]);
     expect(artwork.removed).toBe(false);
+    expect(figma.triggerUndo).not.toHaveBeenCalled();
+    expect(figma.commitUndo).toHaveBeenCalledTimes(2);
+    sweepStaleSceneDrafts(page);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(2);
   });
 
   it("ignores empty payloads instead of writing a broken draft", () => {
