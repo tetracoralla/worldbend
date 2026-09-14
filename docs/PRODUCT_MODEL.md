@@ -134,6 +134,16 @@ it a button, node, or tool in every carrier. The current Figma Perspective
 workspace is a compatibility baseline; later tasks enter independent
 workspaces rather than extending its operation bar indefinitely.
 
+Editing feedback and publication are different acts. Publication — Apply,
+Update, template output — stays explicit, deliberate and authority-checked.
+Feedback during editing, including a live in-context draft of the working
+result on the Figma canvas, is not publication: it must be WYSIWYG, perfectly
+reversible, leave no document-history disturbance behind, and be cleaned up
+on apply, cancel, selection loss, workspace switch and plugin close. The
+draft never becomes the result except through the explicit publication path;
+the panel preview remains the numeric truth while the canvas draft provides
+scene context.
+
 ## Current productized finish line
 
 The current implementation campaign is complete when this repository contains

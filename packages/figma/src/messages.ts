@@ -134,6 +134,15 @@ export type UiToMainMessage =
   | { type: "ready"; systemLocales: string[] }
   | { type: "set-locale"; preference: LocalePreference }
   | {
+      type: "scene-draft";
+      generation: number;
+      bytes: Uint8Array;
+      renderWidth: number;
+      renderHeight: number;
+      placement: Placement;
+    }
+  | { type: "scene-draft-clear"; generation: number }
+  | {
       type: "save-template";
       workspace: "canvas" | "mockup" | "mesh" | "surface";
       requestId: number;
@@ -239,6 +248,21 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
     );
   }
   if (value["type"] === "trigger-undo") return Object.keys(value).length === 1;
+  if (value["type"] === "scene-draft") {
+    return (
+      hasExactKeys(value, ["type", "generation", "bytes", "renderWidth", "renderHeight", "placement"]) &&
+      isRequestId(value["generation"]) &&
+      value["bytes"] instanceof Uint8Array &&
+      value["bytes"].byteLength >= 1 &&
+      value["bytes"].byteLength <= 32 * 1024 * 1024 &&
+      isFigmaImageAxis(value["renderWidth"]) &&
+      isFigmaImageAxis(value["renderHeight"]) &&
+      isPlacement(value["placement"])
+    );
+  }
+  if (value["type"] === "scene-draft-clear") {
+    return hasExactKeys(value, ["type", "generation"]) && isRequestId(value["generation"]);
+  }
   if (value["type"] === "request-source-raster") {
     const allowed = new Set([
       "type",

@@ -63,8 +63,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const getAsync = vi.fn(async () => undefined);
     const figmaMock = {
       currentPage: page,
@@ -72,6 +71,7 @@ describe("Figma selection generations", () => {
       showUI: vi.fn(),
       on: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -99,8 +99,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const figmaMock = {
       currentPage: page,
       clientStorage: {
@@ -110,6 +109,7 @@ describe("Figma selection generations", () => {
       showUI: vi.fn(),
       on: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -132,8 +132,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("source", pending, page);
     page.selection = [source];
     const setAsync = vi.fn(async () => undefined);
@@ -146,6 +145,7 @@ describe("Figma selection generations", () => {
       showUI: vi.fn(),
       on: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -179,6 +179,7 @@ describe("Figma selection generations", () => {
     const page = {
       type: "PAGE",
       selection: [] as unknown[],
+      children: [] as unknown[],
       on: vi.fn((type: string, handler: (event: unknown) => void) => {
         pageHandlers.set(type, handler);
       }),
@@ -197,6 +198,7 @@ describe("Figma selection generations", () => {
       showUI: vi.fn(),
       on: vi.fn((type: string, handler: () => void) => handlers.set(type, handler)),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -252,8 +254,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("stalled", pending, page);
     page.selection = [source];
     const figmaMock = {
@@ -262,6 +263,7 @@ describe("Figma selection generations", () => {
       showUI: vi.fn(),
       on: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -293,8 +295,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("source", initialBytes, page);
     page.selection = [source];
     const figmaMock = {
@@ -304,6 +305,7 @@ describe("Figma selection generations", () => {
       on: vi.fn(),
       getNodeByIdAsync: vi.fn(async (id: string) => (id === source.id ? source : null)),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -352,8 +354,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("source", initialBytes, page);
     page.selection = [source];
     const figmaMock = {
@@ -363,6 +364,7 @@ describe("Figma selection generations", () => {
       on: vi.fn(),
       getNodeByIdAsync: vi.fn(async (id: string) => (id === source.id ? source : null)),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -409,6 +411,7 @@ describe("Figma selection generations", () => {
     const page = {
       type: "PAGE",
       selection: [] as unknown[],
+      children: [] as unknown[],
       on: vi.fn((type: string, handler: (event: unknown) => void) => {
         pageHandlers.set(type, handler);
       }),
@@ -421,6 +424,7 @@ describe("Figma selection generations", () => {
       id: "hidden",
       type: "RECTANGLE",
       visible: false,
+      getPluginData: vi.fn(() => ""),
       absoluteBoundingBox: { x: 150, y: 0, width: 100, height: 80 },
     };
     Object.assign(page, { children: [source, hidden] });
@@ -459,6 +463,7 @@ describe("Figma selection generations", () => {
       viewport: { scrollAndZoomIntoView: vi.fn(() => operations.push("scroll")) },
       notify: vi.fn(() => operations.push("notify")),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -509,8 +514,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("source", pending, page);
     const target = {
       id: "target",
@@ -572,6 +576,7 @@ describe("Figma selection generations", () => {
       viewport: { scrollAndZoomIntoView: vi.fn() },
       notify: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -619,8 +624,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("source", pending, page);
     const sharedData = new Map<string, string>();
     sharedData.set("worldbend:transform", JSON.stringify(identitySpec()));
@@ -672,6 +676,7 @@ describe("Figma selection generations", () => {
       viewport: { scrollAndZoomIntoView: vi.fn() },
       notify: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -717,8 +722,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const source = sourceNode("source", pending, page);
     const frame = {
       id: "frame",
@@ -770,6 +774,7 @@ describe("Figma selection generations", () => {
       viewport: { scrollAndZoomIntoView: vi.fn() },
       notify: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn((message: unknown) => posts.push(message)),
       },
@@ -814,8 +819,7 @@ describe("Figma selection generations", () => {
       type: "PAGE",
       selection: [] as unknown[],
       on: vi.fn(),
-      off: vi.fn(),
-    };
+      off: vi.fn(), children: [] };
     const figmaMock = {
       currentPage: page,
       clientStorage: { getAsync: vi.fn(async () => undefined), setAsync: vi.fn() },
@@ -823,6 +827,7 @@ describe("Figma selection generations", () => {
       on: vi.fn(),
       triggerUndo: vi.fn(),
       ui: {
+        on: vi.fn(),
         onmessage: undefined as ((message: unknown) => void) | undefined,
         postMessage: vi.fn(),
       },

@@ -1,0 +1,123 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  clearSceneDraft,
+  isSceneDraftNode,
+  sweepStaleSceneDrafts,
+  updateSceneDraft,
+} from "./scene-draft";
+
+function rectangle(id: string) {
+  const pluginData = new Map<string, string>();
+  const node: any = {
+    id,
+    type: "RECTANGLE",
+    name: "",
+    locked: false,
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    fills: [] as unknown[],
+    removed: false,
+    resize(width: number, height: number) {
+      this.width = width;
+      this.height = height;
+    },
+    remove() {
+      this.removed = true;
+      this.parent.children = this.parent.children.filter((node: unknown) => node !== this);
+    },
+    setPluginData: vi.fn((key: string, value: string) => pluginData.set(key, value)),
+    getPluginData: vi.fn((key: string) => pluginData.get(key) ?? ""),
+  };
+  return node;
+}
+
+function host() {
+  const page: any = {
+    id: "page",
+    type: "PAGE",
+    children: [] as ReturnType<typeof rectangle>[],
+    appendChild: vi.fn(function (this: { children: unknown[] }, node: unknown) {
+      this.children.push(node);
+    }),
+  };
+  const created: ReturnType<typeof rectangle>[] = [];
+  const figma = {
+    commitUndo: vi.fn(),
+    createImage: vi.fn((bytes: Uint8Array) => ({ hash: `hash-${bytes[0]}` })),
+    createRectangle: vi.fn(() => {
+      const node = rectangle(`node-${created.length + 1}`);
+      node.parent = page;
+      created.push(node);
+      return node;
+    }),
+  };
+  vi.stubGlobal("figma", figma);
+  return { page, figma, created };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const payload = (bytes: number, placement: { x: number; y: number; width: number; height: number }) => ({
+  generation: 1,
+  bytes: new Uint8Array([bytes]),
+  renderWidth: 100,
+  renderHeight: 80,
+  placement,
+});
+
+describe("scene draft node lifecycle", () => {
+  it("maintains one locked, marked node reused across updates without undo commits", () => {
+    const { page, figma } = host();
+    updateSceneDraft(page, payload(1, { x: 5, y: 6, width: 50, height: 40 }), "Poster");
+    const draft = page.children[0]!;
+    expect(isSceneDraftNode(draft)).toBe(true);
+    expect(draft.locked).toBe(true);
+    expect(draft.name).toBe("Poster · Worldbend draft");
+    expect(draft).toMatchObject({ x: 5, y: 6, width: 50, height: 40 });
+    expect(draft.fills).toEqual([{ type: "IMAGE", imageHash: "hash-1", scaleMode: "FILL" }]);
+    // One pre-create boundary only: updates never produce per-frame history.
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+
+    updateSceneDraft(page, payload(2, { x: 7, y: 8, width: 60, height: 30 }), "Poster");
+    expect(page.children).toHaveLength(1);
+    expect(page.children[0]).toBe(draft);
+    expect(draft).toMatchObject({ x: 7, y: 8, width: 60, height: 30 });
+    expect(draft.fills).toEqual([{ type: "IMAGE", imageHash: "hash-2", scaleMode: "FILL" }]);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+    expect(figma.createRectangle).toHaveBeenCalledTimes(1);
+  });
+
+  it("clear removes the draft and closes its undo episode exactly once", () => {
+    const { page, figma } = host();
+    updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+    clearSceneDraft(page);
+    expect(page).toHaveProperty("children.length", 0);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(2);
+    // Clearing with no draft commits nothing.
+    clearSceneDraft(page);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(2);
+  });
+
+  it("sweeps stale drafts from abnormal exits and never touches artwork", () => {
+    const { page } = host();
+    updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    const artwork = rectangle("art");
+    artwork.parent = page;
+    page.children.push(artwork);
+    sweepStaleSceneDrafts(page);
+    expect(page.children).toEqual([artwork]);
+    expect(artwork.removed).toBe(false);
+  });
+
+  it("ignores empty payloads instead of writing a broken draft", () => {
+    const { page, figma } = host();
+    updateSceneDraft(page, { ...payload(0, { x: 0, y: 0, width: 10, height: 10 }), bytes: new Uint8Array() }, "Poster");
+    expect(page.children).toHaveLength(0);
+    expect(figma.createRectangle).not.toHaveBeenCalled();
+  });
+});

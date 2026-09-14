@@ -26,7 +26,8 @@ import {
   type DesignerWorkspaceSource,
   type LoadedDesignerSource,
 } from "./designer-workspace-common";
-import type { MainToUiMessage, UiToMainMessage } from "./messages";
+import type { MainToUiMessage, Placement, UiToMainMessage } from "./messages";
+import { createSceneDraftClient } from "./scene-draft-client";
 import {
   normalizeTemplateName,
   spatialTemplateFromMockup,
@@ -121,6 +122,53 @@ export function createMockupWorkspace(input: {
   // the moved point is already positioned by the overlay itself, and a
   // rebuild would destroy the focused button after a single keyboard press.
   const previewFrames = createFrameCoalescer(() => void render("preview", false));
+
+  // Live canvas draft: the panel composite shown in the document while the
+  // layout is being edited. Feedback only — publication stays explicit.
+  const sceneDraft = createSceneDraftClient({
+    intervalMs: 250,
+    render: async () => {
+      if (!spec || !source || busy || refreshing || phase !== "ready" || !canvas.width || !canvas.height) return undefined;
+      const placement = mockupDraftPlacement();
+      if (!placement) return undefined;
+      return {
+        bytes: await canvasPng(canvas),
+        renderWidth: canvas.width,
+        renderHeight: canvas.height,
+        placement,
+      };
+    },
+    send: (frame) => {
+      if (!source) return;
+      input.post({ type: "scene-draft", generation: source.selectionGeneration, ...frame });
+    },
+  });
+  function clearSceneDraftFeedback(): void {
+    sceneDraft.cancel();
+    if (source) input.post({ type: "scene-draft-clear", generation: source.selectionGeneration });
+  }
+  function mockupDraftPlacement(): Placement | undefined {
+    if (!source || !spec) return undefined;
+    if (source.targetPlacement) return { ...source.targetPlacement };
+    // With no stored target, anchor the composite at its lead plane (the
+    // backdrop after Use as backdrop) so the draft covers the real scene,
+    // fitted to the composite's aspect inside that document box.
+    const leadSourceId = spec.planes[0]?.sourceId;
+    const lead = (leadSourceId ? sourceForPlane(source.sources, leadSourceId) : undefined) ?? source.sources[0];
+    if (!lead) return undefined;
+    const fit = Math.min(
+      lead.placement.width / spec.canvas.width,
+      lead.placement.height / spec.canvas.height,
+    );
+    const width = spec.canvas.width * fit;
+    const height = spec.canvas.height * fit;
+    return {
+      x: lead.placement.x + (lead.placement.width - width) / 2,
+      y: lead.placement.y + (lead.placement.height - height) / 2,
+      width,
+      height,
+    };
+  }
 
   shell.back.addEventListener("click", input.onBack);
   backdrop.addEventListener("click", () => {
@@ -266,6 +314,7 @@ export function createMockupWorkspace(input: {
       shell.showError();
       shell.apply.disabled = busy || refreshing; shell.applyNew.disabled = busy || refreshing;
       if (refreshOverlay && quality === "preview") renderOverlay();
+      if (quality === "preview" && phase === "ready" && !busy && !refreshing) sceneDraft.request();
       return true;
     } catch (error) {
       if (currentGeneration !== generation) return false;
@@ -357,6 +406,7 @@ export function createMockupWorkspace(input: {
   async function apply(duplicate: boolean): Promise<void> {
     if (!active || !source || !spec || busy || refreshing) return;
     overlay?.interrupt();
+    clearSceneDraftFeedback();
     previewFrames.cancel();
     const appliedSource = source;
     const appliedSpec = spec;
@@ -447,9 +497,10 @@ export function createMockupWorkspace(input: {
 
   return {
     enter() { active = true; shell.root.hidden = false; void render(); overlay?.refresh(); },
-    leave() { overlay?.interrupt(); publicationEpoch += 1; active = false; busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false); shell.root.hidden = true; generation += 1; previewFrames.cancel(); previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; },
+    leave() { overlay?.interrupt(); clearSceneDraftFeedback(); publicationEpoch += 1; active = false; busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false); shell.root.hidden = true; generation += 1; previewFrames.cancel(); previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; },
     selectionLoading() {
       overlay?.interrupt();
+      clearSceneDraftFeedback();
       refreshing = true; publicationEpoch += 1; generation += 1; previewFrames.cancel();
       busy = false; phase = source ? "ready" : "idle"; shell.setBusy(false);
       shell.apply.disabled = true; shell.applyNew.disabled = true;
@@ -486,7 +537,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (active) void render();
     },
-    clearSource(error) { refreshing = false; publicationEpoch += 1; generation += 1; previewFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; shell.showError(error); shell.apply.disabled = true; shell.applyNew.disabled = true; renderTemplateSave(); },
+    clearSource(error) { refreshing = false; clearSceneDraftFeedback(); publicationEpoch += 1; generation += 1; previewFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; savingTemplate = false; pendingTemplateRequestId = undefined; templateFeedback = "none"; copyFeedback = "none"; shell.status.textContent = ""; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; previewPlan = undefined; previewGeometryKey = ""; planeLayers.length = 0; shell.showError(error); shell.apply.disabled = true; shell.applyNew.disabled = true; renderTemplateSave(); },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -540,7 +591,7 @@ export function createMockupWorkspace(input: {
       renderTemplateSave();
       if (error) shell.showError(error);
     },
-    dispose() { publicationEpoch += 1; generation += 1; active = false; previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
+    dispose() { publicationEpoch += 1; generation += 1; active = false; sceneDraft.cancel(); previewFrames.cancel(); overlay?.dispose(); renderer.dispose(); },
   };
 }
 

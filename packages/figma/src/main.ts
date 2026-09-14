@@ -47,6 +47,7 @@ import {
 } from "./stored-operation";
 import type { StoredDesignerTask } from "./stored-designer-task";
 import { placementBeside } from "./result-placement";
+import { clearSceneDraft, isSceneDraftNodeId, isSceneDraftNode, sweepStaleSceneDrafts, updateSceneDraft } from "./scene-draft";
 import {
   MAX_SAVED_SPATIAL_TEMPLATES,
   TEMPLATE_LIBRARY_STORAGE_KEY,
@@ -153,6 +154,8 @@ const SOURCE_EXPORT_TIMEOUT_MS = 10_000;
 figma.on("selectionchange", handleSelectionChange);
 figma.on("currentpagechange", handleCurrentPageChange);
 observedPage.on("nodechange", handleNodeChange);
+// A draft from an abnormal exit is garbage, never a reusable result.
+sweepStaleSceneDrafts(figma.currentPage);
 figma.ui.onmessage = (message: unknown) => {
   if (!isUiToMainMessage(message)) {
     post({
@@ -180,6 +183,18 @@ figma.ui.onmessage = (message: unknown) => {
   }
   if (message.type === "trigger-undo") {
     void undoInHost();
+    return;
+  }
+  if (message.type === "scene-draft") {
+    if (applying || message.generation !== selectionGeneration) {
+      clearSceneDraft(figma.currentPage);
+    } else {
+      updateSceneDraft(figma.currentPage, message, preparedSelection?.payload.sourceName ?? "Worldbend");
+    }
+    return;
+  }
+  if (message.type === "scene-draft-clear") {
+    clearSceneDraft(figma.currentPage);
     return;
   }
   if (message.type === "restore-native") {
@@ -451,6 +466,7 @@ async function undoInHost(): Promise<void> {
     return;
   }
   applying = true;
+  clearSceneDraft(figma.currentPage);
   try {
     const publicationUndo = nativePublicationUndoFor(result);
     publishing = true;
@@ -528,6 +544,7 @@ async function restoreNativeSelection(request: Extract<UiToMainMessage, { type: 
   }
   const node = selected?.type === "FRAME" ? selected : undefined;
   applying = true;
+  clearSceneDraft(figma.currentPage);
   try {
     const check = () => {
       if (request.generation !== selectionGeneration ||
@@ -550,8 +567,12 @@ type SelectionPreview = {
 };
 
 async function selectionPayload(selection: readonly SceneNode[]): Promise<SelectionPreview> {
-  if (selection.length === 0) throw userError("selectOneSource");
-  if (selection.length > 9) throw userError("selectOneOrPair");
+  // The locked draft is plugin-owned feedback; if it ever reaches a
+  // selection event it is ignored rather than treated as artwork.
+  const draftFiltered = selection.filter((node) => !isSceneDraftNode(node));
+  if (draftFiltered.length === 0) throw userError("selectOneSource");
+  if (draftFiltered.length > 9) throw userError("selectOneOrPair");
+  selection = draftFiltered;
   const candidates = selection.map((node) => ({ node, stored: readStoredOperation(node) }));
   if (candidates.some((candidate) => candidate.stored.status === "invalid")) {
     throw userError("invalidReusablePlane");
@@ -784,6 +805,7 @@ async function applyNativeResult(payload: NativeApplyPayload): Promise<void> {
     return;
   }
   applying = true;
+  clearSceneDraft(figma.currentPage);
   try {
     const prepared = requirePreparedSelection(payload);
     const [source, renderer, target] = await Promise.all([
@@ -830,6 +852,7 @@ async function applyResult(
     return;
   }
   applying = true;
+  clearSceneDraft(figma.currentPage);
   try {
     const prepared = requirePreparedSelection(payload);
     const source = await figma.getNodeByIdAsync(payload.sourceNodeId);
@@ -937,6 +960,7 @@ async function applyCanvasSet(
     return;
   }
   applying = true;
+  clearSceneDraft(figma.currentPage);
   try {
     const prepared = requirePreparedSelection(payload);
     const source = await figma.getNodeByIdAsync(payload.sourceNodeId);
@@ -1030,6 +1054,7 @@ async function applyDesignerResult(
     return;
   }
   applying = true;
+  clearSceneDraft(figma.currentPage);
   try {
     const prepared = requirePreparedDesignerSelection(payload);
     const actualIds = currentEditingSelection().map((node) => node.id);
@@ -1173,7 +1198,8 @@ function pagePlacements(
 ): SourcePayload["placement"][] {
   // Hidden layers still own bounds but are invisible on canvas; they must
   // not push results around. Masks keep their bounds: they shape content.
-  const placements = selectionPlacements(page.children.filter((node) => node.visible));
+  // The plugin's own draft is transient feedback, not an obstacle.
+  const placements = selectionPlacements(page.children.filter((node) => node.visible && !isSceneDraftNode(node)));
   return placements.length > 0 ? placements : preparedPlacements(prepared);
 }
 
@@ -1241,6 +1267,7 @@ function rememberSelectionIdentity(): boolean {
 
 function handleCurrentPageChange(): void {
   observeNativeUndo?.();
+  clearSceneDraft(observedPage);
   observedPage.off("nodechange", handleNodeChange);
   observedPage = figma.currentPage;
   observedPage.on("nodechange", handleNodeChange);
@@ -1261,6 +1288,8 @@ function nodeChangeTouchesPreparedSelection(change: NodeChange): boolean {
     loadingSelection?.observedNodeIds.has(change.id) || loadingSelection?.ancestorNodeIds.has(change.id)) {
     return true;
   }
+  // Plugin-owned draft removal must never masquerade as source deletion.
+  if (isSceneDraftNodeId(change.id)) return false;
   // Removed nodes no longer expose ancestry. Deletion is uncommon, and a
   // conservative refresh is preferable to applying pixels from stale content.
   if (change.type === "DELETE") return true;

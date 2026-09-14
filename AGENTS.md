@@ -61,9 +61,12 @@ instead of enforcing it by default.
   surface, transport digests, closed errors, and real-boundary conformance must
   agree; it must not silently accept product-only fields or imply independent
   substitutability.
-- The Figma surface is local and task-native. Keep implementation metadata,
-  tool names, schemas, and Agent workflow out of the human UI. Figma raster
-  outputs must respect the current 4096 px per-axis image limit.
+- The Figma surface is local and task-native. Publication is explicit;
+  feedback during editing is not publication — an in-context live draft must
+  be WYSIWYG, perfectly reversible, disturb no document history, and never
+  survive its session. Keep implementation metadata, tool names, schemas, and
+  Agent workflow out of the human UI. Figma raster outputs must respect the
+  current 4096 px per-axis image limit.
 - Preserve the complete dirty worktree. Do not commit, push, publish, deploy,
   or discard changes unless the owner explicitly asks.
 - Report development regression, runtime Agent flow, runtime human flow, and

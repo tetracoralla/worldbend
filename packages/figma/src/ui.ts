@@ -99,6 +99,7 @@ import {
   type UserMessage,
 } from "./i18n";
 import { createWarpPicker } from "./warp-picker";
+import { createSceneDraftClient } from "./scene-draft-client";
 import { parseWarpControls, warpAmountPercent, WARP_PRESETS } from "./warp-controls";
 import { sliderProgress } from "./slider-domain";
 import {
@@ -374,6 +375,36 @@ const distortEndFrames = createFrameCoalescer(() => {
   viewport?.revealAllCorners({ animate: true });
 });
 
+// Live canvas draft for the perspective family: the publication-parity render
+// shown in the document while editing. Feedback only — Apply stays the only
+// write path, and the panel preview remains the numeric truth.
+const sceneDraft = createSceneDraftClient({
+  intervalMs: 200,
+  render: async () => {
+    if (!editor || !activeFrame || phase !== "ready" || refreshInFlight || composeInFlight) return undefined;
+    if (editorMode !== "transform" && editorMode !== "distort" && editorMode !== "warp") return undefined;
+    const placement = activeFrame.placement;
+    const scale = Math.min(1, 1024 / Math.max(placement.width, placement.height, 1));
+    const width = Math.max(1, Math.round(placement.width * scale));
+    const height = Math.max(1, Math.round(placement.height * scale));
+    const bytes = await editor.exportPng(width, height, activeFrame.spec);
+    return { bytes, renderWidth: width, renderHeight: height, placement };
+  },
+  send: (frame) => {
+    post({ type: "scene-draft", generation: activeGeneration, ...frame });
+  },
+});
+function clearSceneDraftFeedback(): void {
+  sceneDraft.cancel();
+  post({ type: "scene-draft-clear", generation: activeGeneration });
+}
+// Figma offers no main-thread close hook; pagehide is the best-effort way to
+// clear the canvas draft when the plugin window closes. The guaranteed
+// backstop is the next-run stale-draft sweep in the main thread.
+addEventListener("pagehide", () => {
+  post({ type: "scene-draft-clear", generation: activeGeneration });
+});
+
 const transformControls: TransformControls = createTransformControls({
   scaleX: control("scale-x"),
   scaleY: control("scale-y"),
@@ -510,6 +541,7 @@ const taskRoots = {
 } as const;
 productWorkspace = createProductWorkspaceRouter({
   onChange(previous, next) {
+    if (previous === "perspective") clearSceneDraftFeedback();
     if (previous === "canvas") canvasWorkspace.leave();
     if (previous === "mesh" || previous === "surface" || previous === "mockup" || previous === "remap" || previous === "templates") designerWorkspaces[previous].leave();
     if (previous !== "perspective") taskRoots[previous].hidden = true;
@@ -860,6 +892,7 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
   distortEndFrames.cancel();
   cancelSourceRasterRequests(userMessage("selectionChanged"));
   appliedTransformMemory.cancelPending();
+  sceneDraft.cancel();
   activeGeneration = generation;
   composeGeneration += 1;
   composeInFlight = false;
@@ -873,6 +906,8 @@ function beginSelectionLoad(generation: number, nodeIds: readonly string[]): voi
     renderState();
     return;
   }
+  // A different selection ends the previous session's canvas draft.
+  post({ type: "scene-draft-clear", generation });
   appliedResultPending = false;
   pendingReplacementBaseline = undefined;
   // A different selection is loading. When a previous preview is on screen,
@@ -1261,6 +1296,7 @@ async function enterRectifyMode(): Promise<void> {
   if (!editor || !initialFrame || !activeFrame || !baseFrame) return;
   const sourceSize = editor.getSourceRasterSize();
   if (!sourceSize) return;
+  clearSceneDraftFeedback();
   cancelTransformGesturePreview();
   distortEndFrames.cancel();
   composeGeneration += 1;
@@ -2267,6 +2303,7 @@ function renderZoomLevel(scale: number): void {
 /** Keep tight transformed outputs registered to the loaded Figma layer. */
 function syncViewportScene(): void {
   if (!viewport || !editor || !initialFrame || !activeFrame) return;
+  sceneDraft.request();
   const display = editor.getTargetDisplaySize();
   const displayScaleX = display.width / activeFrame.renderWidth;
   const displayScaleY = display.height / activeFrame.renderHeight;
@@ -2314,6 +2351,7 @@ async function applyPerspective(duplicate = false, editableIntent?: boolean): Pr
   ) {
     return;
   }
+  clearSceneDraftFeedback();
   const source = current;
   const generation = activeGeneration;
   const spec = editor.captureSpec();
@@ -2415,6 +2453,7 @@ async function applyPerspective(duplicate = false, editableIntent?: boolean): Pr
 
 async function applyRectification(duplicate = false): Promise<void> {
   pendingReplacementBaseline = undefined;
+  clearSceneDraftFeedback();
   const output = readRectifyOutput();
   if (
     !editor ||

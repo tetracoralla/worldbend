@@ -571,7 +571,24 @@ Each workspace owns its draft, controls, messages, and runtime resources; only
 the active workspace renders. Pixel-only refreshes of the same sources, coordinate
 frame and saved task retain local drafts and history. A refresh or workspace
 exit invalidates pending publication, including asynchronous image encoding.
-Entering and returning cannot mutate Perspective semantic state. The self-contained Figma release may still inline those
+Entering and returning cannot mutate Perspective semantic state.
+
+The live scene draft is editing feedback, not publication. While a
+perspective-family edit (Transform, Distort, Warp) is active, the plugin
+maintains at most one canvas draft node: a locked, plainly named image
+rectangle at the current output placement, marked with private plugin data
+and carrying no stored operation, binding or reusable-result identity. It is
+never selectable as a source or result, never survives apply, cancel,
+selection loss, workspace or mode switch, or an error surface replacing the
+edit. Plugin close clears the draft best-effort from the UI's pagehide;
+the guaranteed backstop is a stale-draft sweep on the next plugin run, and a
+swept draft is never reused. Draft updates are coalesced and bounded; they
+never create per-frame host undo steps, and removal plus one host undo
+boundary restores the pre-draft document. The canvas draft is context
+feedback; the panel preview remains the numeric truth, and the draft is off
+whenever its update cannot be produced honestly.
+
+ The self-contained Figma release may still inline those
 modules into one HTML file; package inlining does not authorize a single
 ever-growing control surface or persistent capability copy.
 

@@ -158,6 +158,7 @@ function setup(
     viewport: { scrollAndZoomIntoView: vi.fn() },
     notify: vi.fn(),
     ui: {
+      on: vi.fn(),
       onmessage: undefined as ((message: unknown) => void) | undefined,
       postMessage: vi.fn((message: unknown) => posts.push(message)),
     },

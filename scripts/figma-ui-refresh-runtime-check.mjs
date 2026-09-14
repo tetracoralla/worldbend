@@ -38,7 +38,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   browser = await launchChrome(await findChrome(), ["--window-size=820,760"]);
-  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "surface-authoring", "designer-experience"];
+  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "surface-authoring", "designer-experience", "scene-draft"];
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
@@ -132,7 +132,61 @@ async function runFixture() {
       return window.fixtureMessages.findLast(message => message.type === "apply-native").payload;
     };
     const scenario = new URL(location.href).searchParams.get("case");
-    if (scenario === "designer-experience") {
+    if (scenario === "scene-draft") {
+      const drafts = () => window.fixtureMessages.filter(m => m.type === "scene-draft");
+      const clears = () => window.fixtureMessages.filter(m => m.type === "scene-draft-clear");
+      await wait(() => drafts().length >= 1, "initial perspective scene draft");
+      const first = drafts()[0];
+      check(first.bytes.length > 8 && first.renderWidth >= 1 && first.renderHeight >= 1 &&
+        first.placement.width > 0 && first.placement.height > 0, "Scene draft frame is incomplete");
+      const png = await createImageBitmap(new Blob([first.bytes], { type: "image/png" }));
+      check(png.width === first.renderWidth && png.height === first.renderHeight,
+        "Scene draft PNG disagrees with its dimensions");
+      png.close();
+      check(first.bytes.length <= 4 * 1024 * 1024, "Scene draft frame exceeds its bounded size");
+      // A numeric edit refreshes the in-document draft. A fresh selection
+      // opens in Distort; switch to Transform for its numeric fields.
+      get("#mode-transform").click();
+      await wait(() => !get("#scale-x").disabled, "transform controls enabled");
+      const seen = window.fixtureMessages.length;
+      get("#scale-x").value = "1.5";
+      get("#scale-x").dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "scene-draft"),
+        "edited scene draft");
+      // Correct mode is not part of the draft family: entering it clears.
+      get("#mode-rectify").click();
+      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "scene-draft-clear"),
+        "Correct clears the canvas draft");
+      // Back in the family, editing resumes the draft.
+      get("#mode-warp").click(); await ready();
+      const warpSeen = window.fixtureMessages.length;
+      get("#warp-preset").value = "arc";
+      get("#warp-preset").dispatchEvent(new Event("change", { bubbles: true }));
+      await wait(() => window.fixtureMessages.slice(warpSeen).some(m => m.type === "scene-draft"),
+        "Warp resumes the canvas draft");
+      // The composition draft anchors on the backdrop scene.
+      generation++;
+      send({ type: "selection-loading", generation, nodeIds: ["art", "backdrop"] });
+      const art = { ...payload, sourceName: "Poster artwork" };
+      const backdrop = { ...art, sourceNodeId: "backdrop", sourceName: "Studio scene", placement: { x: 800, y: 200, width: 600, height: 400 } };
+      send({ type: "source", generation, payload: { ...art, targetNodeId: undefined, nativeTarget: undefined, nativeRenderer: undefined, sources: [art, backdrop] } });
+      await wait(() => !get("#workspace-menu-mockup").disabled, "scene selection");
+      get("#more-options").click(); get("#workspace-menu-mockup").click();
+      await wait(() => get("#mockup-workspace").querySelectorAll('[data-role="planes"] button').length === 2, "scene layers");
+      const clearBefore = clears().length;
+      get("#mockup-workspace").querySelectorAll('[data-role="planes"] button')[1].click();
+      get("#mockup-workspace").querySelector('[data-role="backdrop"]').click();
+      await wait(() => get("#mockup-workspace").querySelector('[data-role="width"]').value === "600", "backdrop layout");
+      await wait(() => drafts().some(m => m.placement.width === 600 && m.placement.height === 400),
+        "composition scene draft");
+      const composite = drafts().findLast(m => m.placement.width === 600 && m.placement.height === 400);
+      check(composite.placement.x === 800 && composite.placement.y === 200,
+        "Composition draft lost its backdrop anchoring");
+      // Leaving the workspace clears the draft.
+      get("#workspace-tab-perspective").click();
+      await wait(() => clears().length > clearBefore, "workspace exit clears the draft");
+      check(window.fixtureErrors.length === 0, `fixture errors: ${window.fixtureErrors.join("; ")}`);
+    } else if (scenario === "designer-experience") {
       get("#mode-warp").click();
       await wait(() => !get("#warp-picker-trigger").disabled, "visual preset entry");
       get("#warp-picker-trigger").click();

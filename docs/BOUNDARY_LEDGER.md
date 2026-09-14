@@ -44,7 +44,7 @@ Standing rules:
 
 ## Open re-derivations
 
-### Scene-context live preview — fired 2026-09-14, decision recommended
+### Scene-context live preview — fired 2026-09-14, implemented, pending real-host verification
 
 The deferral rested on an unspoken extension of the explicit-publication
 principle: "nothing renders on the document until Apply." That conflated
@@ -56,17 +56,11 @@ in-context draft is not a boundary violation but an obligation of the
 surface in the user's document, and the adjusting loop must show the target
 scene, not only the isolated source.
 
-Constraint that made this feel like a boundary: Figma has no non-document
-overlay API, so a canvas preview means real nodes written during editing.
-That is an engineering obligation (single managed undo transaction, throttled
-draft updates, guaranteed cleanup on cancel, selection loss, mode switch and
-error), not a fundamental limit — the repository already operates this class
-of machinery for native restore and publication rollback.
-
-Smallest honest version: one draft image node (or the existing target when
-updating), updated while dragging, wrapped in one managed undo step, removed
-cleanly on exit; the panel preview remains for precise numeric work.
-Promoting it to product behavior adds a draft-lifecycle section to the
-Figma contract before release. One open verification: whether Free
-Transformer's advertised "Live Preview while dragging" is on-canvas or
-in-panel — their wording is ambiguous and was never run.
+Implemented 2026-09-14 as the live scene draft (see the Figma contract
+section): one locked draft image node per editing session in the
+Transform/Distort/Warp family and in Composition, publication-parity
+rendering, coalesced bounded updates, single-undo-episode cleanup, stale
+sweep on next run. Remaining before closing: real Figma-host verification
+(undo interleaving, close-cleanup behavior, drag-frame rate on large
+artwork) and the still-unrun check of whether Free Transformer's advertised
+"Live Preview while dragging" is on-canvas or in-panel.
