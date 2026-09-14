@@ -14,7 +14,11 @@ before treating an existing implementation as a limit. Preserve deterministic
 geometry while allowing visual selection, direct manipulation, images, and
 multimodal authoring. Changing a public semantic contract requires the relevant
 compatibility work; proposing or testing a new implementation does not by itself
-change that contract.
+change that contract. Scope boundaries are dated hypotheses, not laws: their
+class, origin evidence, review state and re-examination triggers are recorded
+in `docs/BOUNDARY_LEDGER.md`. When work or a user need collides with a
+boundary, re-derive it from current user, workflow and competitor evidence
+instead of enforcing it by default.
 
 - This product is growing into a deterministic Photoshop-familiar transform
   utility for humans and Agents, not a general image editor. The productized
