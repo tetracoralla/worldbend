@@ -125,6 +125,10 @@ const MCP_MAX_TILED_ENCODED_BYTES: u64 = 512 * 1024 * 1024;
 const MCP_MAX_TILED_TILES: u32 = 512;
 static PRIVATE_STAGING_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
+fn portable_u32_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({ "type": "integer", "minimum": 0, "maximum": u32::MAX })
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "worldbend-mcp", version, about = "Worldbend MCP server")]
 struct Args {
@@ -1308,6 +1312,7 @@ impl From<OperationId> for OperationSummary {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct SearchResult {
     operations: Vec<OperationSummary>,
+    #[schemars(schema_with = "portable_u32_schema")]
     total_matches: u32,
 }
 
@@ -8181,12 +8186,23 @@ mod tests {
             catalog_bytes <= MAX_PROGRESSIVE_TOOL_CATALOG_BYTES,
             "progressive tools/list is {catalog_bytes} bytes; budget is {MAX_PROGRESSIVE_TOOL_CATALOG_BYTES}"
         );
-        for tool in tools {
+        for tool in &tools {
             assert_eq!(
                 tool.annotations.as_ref().and_then(|a| a.open_world_hint),
                 Some(false)
             );
         }
+
+        let search_tool = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.search")
+            .unwrap();
+        let total_matches = &search_tool.output_schema.as_ref().unwrap()["$defs"]["SearchResult"]["properties"]
+            ["totalMatches"];
+        assert_eq!(total_matches["type"], json!("integer"));
+        assert_eq!(total_matches["minimum"], json!(0));
+        assert_eq!(total_matches["maximum"], json!(u32::MAX));
+        assert!(total_matches.get("format").is_none());
 
         let search = search_operation_catalog(SearchInput {
             query: "flatten plane".to_owned(),

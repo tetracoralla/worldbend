@@ -12,6 +12,8 @@
     "build:web:package": "pnpm --filter @worldbend/web build",
     "package:web": "pnpm build:web && node scripts/package-web.mjs",
     "package:agent-host": "pnpm plugin:stage && pnpm plugin:validate && node scripts/package-agent-host.mjs",
+    "package:macos-dmg": "pnpm plugin:stage && pnpm plugin:validate && node scripts/package-macos-dmg.mjs",
+    "verify:macos-dmg": "node scripts/verify-macos-dmg.mjs",
     "build:web": "pnpm build:wasm && pnpm build:web:package",
     "build:figma:entries": "pnpm build:wasm:figma && pnpm --filter @worldbend/figma build:entries",
     "carrier:figma-runtime-check": "node scripts/figma-wasm-profile-smoke.mjs",

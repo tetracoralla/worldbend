@@ -476,6 +476,8 @@ Run current equivalents of:
 pnpm check
 pnpm test:comfyui
 pnpm package:comfyui-local
+pnpm package:macos-dmg
+pnpm verify:macos-dmg -- /absolute/path/to/worldbend-<version>-macos-arm64.dmg
 pnpm performance:probe
 ```
 
@@ -495,6 +497,14 @@ only its own file/version/checksum inventory and not Comfy host loading.
 The timing probe is observational until a current SLO is declared. For a
 performance-sensitive diff, preserve its JSON output with the before/after
 environment and method rather than quoting a prior anchor number.
+
+The DMG checks are a separate distribution lane. Require a clean source record
+for a public candidate, the exact mounted four-file inventory, complete
+component file and legal digests, macOS arm64 binaries, the declared ad-hoc and
+unnotarized trust boundary, packaged MCP smoke, and an Agent Host standalone
+component preview. A passing DMG mount does not establish an installed Agent
+Host environment, and a staged plugin does not establish the downloadable
+disk image.
 
 ### Runtime Agent flow — Agent/Reviewer reports PASS, FAIL, or BLOCKED
 

@@ -195,7 +195,12 @@ and freshly verifies:
     Comfy-adapter checks with honest lane reporting;
 12. an Apache-2.0 source repository plus a self-contained,
     separately verified free Figma distribution with complete bundled
-    dependency notices.
+    dependency notices;
+13. an unsigned Apple Silicon DMG that carries one sealed, independently
+    verifiable Agent Host component plus exact checksums and trust disclosure,
+    while Agent Host owns installation, Codex projection, update, rollback,
+    and removal. The repository-local marketplace remains a staged development
+    surface rather than a public-directory claim.
 
 This productized slice includes semantic affine composition — scale X/Y,
 clockwise rotation, skew X/Y, translation, and pivot — plus bounded common

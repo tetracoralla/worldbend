@@ -526,6 +526,18 @@ remain at or below 16,384 bytes. The eight-tool direct compatibility catalog
 must remain at or below 81,920 bytes and is not loaded by the default plugin
 projection.
 
+The macOS DMG is a download carrier around that Agent distribution, not a
+second plugin model or a standalone GUI application. Its root contains exactly
+one sealed Agent Host component archive, `README.txt`, `SHA256SUMS.txt`, and
+`PACKAGE-MANIFEST.json`. The manifest records platform, architecture, component
+and descriptor digests, source revision and dirty state, and the explicit
+absence of Developer ID signing and notarization. The separately published
+release record binds the exact DMG bytes to the same component identity.
+Unchanged component inputs must reproduce the same tar.gz bytes; DMG container
+metadata is verified by exact digest and mounted-content comparison rather than
+claimed byte reproducibility. Agent Host alone owns installation, activation,
+Codex projection, update, rollback, and removal of this component.
+
 The Comfy carrier builds `worldbend` with the `comfy` feature and no default
 CLI features. Its executable command surface is exactly `inspect`, `render`,
 `rectify`, `rectify-render`, `canvas-inspect`, and `canvas-render`; presence of

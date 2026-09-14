@@ -66,6 +66,26 @@ For a practical designer-to-Agent flow, see
 - a Comfy-compatible Python environment with torch and Pillow only for
   `pnpm test:comfyui`; the packaged nodes use the host's copies.
 
+## Install and download
+
+The macOS distribution target is an Apple Silicon DMG containing one sealed
+Worldbend component for [Agent Host](https://github.com/tetracoralla/agent-host-suite).
+Agent Host owns verification, installation, Codex connection, update, rollback,
+and removal; the source checkout is not a runtime dependency. The preview DMG
+is deliberately ad-hoc signed, not Developer ID signed, and not notarized, so
+macOS may require explicit user approval. It never asks users to disable
+Gatekeeper globally.
+
+The DMG, its SHA-256, the separately importable Agent Host archive, and a
+machine-readable release manifest are produced together. Exact build, install,
+verification, trust, and removal instructions are in
+[`docs/MACOS_DISTRIBUTION.md`](docs/MACOS_DISTRIBUTION.md).
+
+Worldbend is not currently submitted to an OpenAI public plugin directory.
+The repository-local Codex marketplace is only a source-development surface:
+its ignored native payload exists after `pnpm plugin:stage`, so adding the raw
+GitHub repository is not an end-user installation route.
+
 ## Build and verify
 
 ```bash
@@ -156,6 +176,18 @@ The staged plugin includes native CLI, MCP, Capability, and transport-schema
 probe binaries plus their exact dependency-license inventory. Platform binary
 archives are release assets only when their embedded inventory passes the
 repository's archive verifier.
+
+To build the macOS download and its Agent Host component from the staged
+plugin:
+
+```bash
+pnpm package:macos-dmg
+pnpm verify:macos-dmg -- /absolute/path/to/worldbend-0.1.0-macos-arm64.dmg
+```
+
+The DMG is the human download carrier; the enclosed component archive is the
+installation payload. It does not turn the development marketplace file in
+this repository into a public Codex listing.
 
 ## Web and Figma
 
