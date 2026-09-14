@@ -124,8 +124,8 @@ export function createMockupWorkspace(input: {
   // rebuild would destroy the focused button after a single keyboard press.
   const previewFrames = createFrameCoalescer(() => void render("preview", false));
 
-  // Dormant document-node carrier for the panel composite. The host policy
-  // keeps requests off until a history-neutral Figma surface is proven.
+  // Publication-parity feedback on the real Figma canvas. It starts after a
+  // composition edit, rather than mutating the document merely on entry.
   const sceneDraft = createSceneDraftClient({
     intervalMs: 250,
     render: async () => {
@@ -319,7 +319,8 @@ export function createMockupWorkspace(input: {
       shell.apply.disabled = busy || refreshing; shell.applyNew.disabled = busy || refreshing;
       if (refreshOverlay && quality === "preview") renderOverlay();
       if (LIVE_SCENE_DRAFT_ENABLED && quality === "preview" && phase === "ready" && !busy && !refreshing) {
-        sceneDraft.request();
+        if (baseline && JSON.stringify(spec) !== JSON.stringify(baseline)) sceneDraft.request();
+        else clearSceneDraftFeedback();
       }
       return true;
     } catch (error) {

@@ -137,17 +137,21 @@ workspaces rather than extending its operation bar indefinitely.
 Editing feedback and publication are different acts. Publication — Apply,
 Update, template output — stays explicit, deliberate and authority-checked.
 Feedback during editing, including a live in-context draft of the working
-result on the Figma canvas, is not publication: it must be WYSIWYG, perfectly
-reversible, leave no document-history disturbance behind, and be cleaned up
-on apply, cancel, selection loss, workspace switch and plugin close. The
-draft never becomes the result except through the explicit publication path;
-the panel preview remains the numeric truth while the canvas draft provides
-scene context. The 2026-09-14 Figma Desktop host review showed that ordinary
-document nodes cannot yet satisfy the no-history-disturbance condition: an
-interleaved artwork edit makes cleanup independently undoable and can resurrect
-the draft. The reviewed runtime therefore keeps that carrier disabled and uses
-the panel preview until a transient host surface or history-neutral transaction
-is demonstrated.
+result on the Figma canvas, is not publication. It must be WYSIWYG, start only
+after a real edit, be removable without undoing artwork, and be plainly
+temporary. The working preview never becomes the result except through the
+explicit publication path; it uses publication-parity rendering while the
+panel retains direct controls and numeric inspection. Apply, cancel, return to
+the loaded state, selection loss, workspace switch and plugin close remove it.
+
+The 2026-09-14 Figma Desktop host review showed that Figma offers no transient
+canvas surface: safe document-node cleanup can leave one empty Undo item, and a
+later host Undo can resurrect the removed preview. The product accepts that
+recoverable host artifact because real scene feedback is central to the task.
+It never uses host Undo for cleanup, since that could undo newer artwork. The
+preview is privately marked, plainly named, excluded from product selection and
+placement logic, and swept on the next run if host history or an abnormal exit
+restores it.
 
 ## Current productized finish line
 

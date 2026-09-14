@@ -62,11 +62,15 @@ instead of enforcing it by default.
   agree; it must not silently accept product-only fields or imply independent
   substitutability.
 - The Figma surface is local and task-native. Publication is explicit;
-  feedback during editing is not publication — an in-context live draft must
-  be WYSIWYG, perfectly reversible, disturb no document history, and never
-  survive its session. Keep implementation metadata, tool names, schemas, and
-  Agent workflow out of the human UI. Figma raster outputs must respect the
-  current 4096 px per-axis image limit.
+  feedback during editing is not publication. An in-context working preview
+  must be WYSIWYG, start only after a real edit, be removable without undoing
+  artwork, and never be mistaken for a saved result. Figma's current
+  document-node carrier may leave an empty Undo step or be resurrected by a
+  later host Undo; use a plain temporary name, private marker, normal-session
+  cleanup and next-run stale sweep. Never call host Undo to hide this artifact.
+  Keep implementation metadata, tool names, schemas, and Agent workflow out of
+  the human UI. Figma raster outputs must respect the current 4096 px per-axis
+  image limit.
 - Preserve the complete dirty worktree. Do not commit, push, publish, deploy,
   or discard changes unless the owner explicitly asks.
 - Report development regression, runtime Agent flow, runtime human flow, and

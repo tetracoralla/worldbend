@@ -231,18 +231,49 @@ describe("designer and Agent handoff", () => {
     );
   });
 
-  it("keeps the document-node live draft disabled after the host-history failure", async () => {
+  it("keeps the live canvas preview locked, marked, reusable, and outside publication", async () => {
     vi.useFakeTimers(); const h = host();
     await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
     await vi.advanceTimersByTimeAsync(0);
-    const { generation } = h.posts.findLast(p => p.type === "source");
-    h.api.ui.onmessage?.({ type: "scene-draft", generation, bytes: new Uint8Array([1]),
-      renderWidth: 100, renderHeight: 80,
-      placement: { x: 5, y: 6, width: 50, height: 40 } });
+    const { payload, generation } = h.posts.findLast(p => p.type === "source");
+    const preview = () => h.page.children.find((node: any) => node.getPluginData?.("sceneDraft") === "1");
+    const sceneDraft = (bytes: number, placement: { x: number; y: number; width: number; height: number }) =>
+      h.api.ui.onmessage?.({ type: "scene-draft", generation, bytes: new Uint8Array([bytes]),
+        renderWidth: 100, renderHeight: 80, placement });
+    sceneDraft(1, { x: 5, y: 6, width: 50, height: 40 });
+    await vi.advanceTimersByTimeAsync(0);
+    const first = preview();
+    expect(first).toBeDefined();
+    expect(first!.type).toBe("RECTANGLE");
+    expect(first!.locked).toBe(true);
+    expect(first!.name).toBe("Editable source · Worldbend Working Preview");
+    expect(first).toMatchObject({ x: 5, y: 6, width: 50, height: 40 });
+    expect(h.api.commitUndo).toHaveBeenCalledTimes(1);
 
-    expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
-    expect(h.api.createRectangle).not.toHaveBeenCalled();
-    expect(h.api.commitUndo).not.toHaveBeenCalled();
+    // Updates reuse one node and create no per-frame host history.
+    sceneDraft(2, { x: 7, y: 8, width: 60, height: 30 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview()).toBe(first);
+    expect(h.api.commitUndo).toHaveBeenCalledTimes(1);
+
+    // Publication clears preview feedback before writing the real result.
+    h.api.ui.onmessage?.({ type: "apply", payload: {
+      generation, sourceNodeId: payload.sourceNodeId, spec,
+      bytes: new Uint8Array([9]), renderWidth: 520, renderHeight: 606,
+      placement: { x: 0, y: 0, width: 520, height: 606 },
+    } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview()).toBeUndefined();
+    expect(h.posts.at(-1)).toMatchObject({ type: "apply-complete" });
+    expect(h.api.triggerUndo).not.toHaveBeenCalled();
+
+    // A stale-generation frame cannot revive the working preview.
+    h.api.ui.onmessage?.({ type: "scene-draft", generation: generation + 99,
+      bytes: new Uint8Array([4]), renderWidth: 10, renderHeight: 8,
+      placement: { x: 0, y: 0, width: 10, height: 8 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview()).toBeUndefined();
+    expect(h.api.createRectangle).toHaveBeenCalledTimes(2); // preview + published result
   });
 
   it("commits leftover draft removal during the plugin-start sweep", async () => {

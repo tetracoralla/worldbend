@@ -577,27 +577,34 @@ frame and saved task retain local drafts and history. A refresh or workspace
 exit invalidates pending publication, including asynchronous image encoding.
 Entering and returning cannot mutate Perspective semantic state.
 
-A contract-complete live scene draft is editing feedback, not publication.
-While a perspective-family edit (Transform, Distort, Warp) is active, the
-candidate maintains at most one canvas draft node: a locked, plainly named image
+A live scene working preview is editing feedback, not publication. Merely
+opening the plugin or a workspace does not create one. Once a
+perspective-family edit (Transform, Distort, Warp) differs from the loaded
+result, the plugin maintains at most one canvas preview node: a locked, plainly
+named image
 rectangle at the current output placement, marked with private plugin data
 and carrying no stored operation, binding or reusable-result identity. It is
-never selectable as a source or result, never survives apply, cancel,
-selection loss, workspace or mode switch, or an error surface replacing the
-edit. Plugin close clears the draft synchronously through Figma's main-thread
-close event; UI pagehide requests an earlier clear, and a stale-draft sweep on
-the next plugin run remains the abnormal-exit backstop. A swept draft is never
-reused. Draft updates are coalesced and bounded. The implementation commits any
-pending artwork edits before creating the draft. Frame updates do not commit,
-and cleanup removes only marked draft nodes without replaying host Undo. Real
-Figma Desktop verification on 2026-09-14 found that this safe cleanup can leave
-one no-op host Undo item. `triggerUndo` is forbidden for draft cleanup because
-an artwork edit made while the plugin is open can sit above the draft and be
-undone first. Therefore the live canvas draft remains a development candidate,
-not a contract-complete release, until a host-supported transient carrier or a
-safe history-erasure mechanism is demonstrated. The reviewed runtime therefore
-does not request or apply document-node draft frames; the in-panel preview
-remains the editing feedback and numeric truth.
+never accepted as a source or result. Returning exactly to the loaded frame,
+Apply, cancel, selection loss, leaving the workspace or entering a non-preview
+mode, and an error surface replacing the edit all remove it. Plugin close clears
+the preview synchronously through Figma's main-thread close event; UI pagehide requests an earlier clear,
+and a stale-preview sweep on the next plugin run remains the abnormal-exit and
+host-Undo-resurrection backstop. A swept preview is never reused. Updates are
+coalesced and bounded to a 1024 px raster axis. Perspective uses the same export
+renderer and operation as publication; Composition uses the same composited
+preview canvas and scene placement.
+
+Figma exposes no transient plugin canvas overlay or selective history erasure.
+The implementation therefore commits pending artwork before creating the
+marked document node; later frame updates create no per-frame commits, and
+cleanup directly removes only marked preview nodes. `triggerUndo` is forbidden
+for cleanup because a user artwork edit may be newer than the preview boundary
+and would be undone first. Real Figma Desktop verification on 2026-09-14 found
+that safe cleanup can leave one empty host Undo item and that a later host Undo
+can temporarily resurrect the removed preview. This is an accepted host
+limitation rather than a reason to remove essential scene feedback: the node's
+plain `Worldbend Working Preview` name and private marker make it recoverable,
+and the next plugin run removes it without touching artwork.
 
 The self-contained Figma release may still inline those
 modules into one HTML file; package inlining does not authorize a single

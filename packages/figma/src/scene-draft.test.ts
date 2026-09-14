@@ -85,7 +85,7 @@ describe("scene draft node lifecycle", () => {
     const draft = page.children[0]!;
     expect(isSceneDraftNode(draft)).toBe(true);
     expect(draft.locked).toBe(true);
-    expect(draft.name).toBe("Poster · Worldbend draft");
+    expect(draft.name).toBe("Poster · Worldbend Working Preview");
     expect(draft).toMatchObject({ x: 5, y: 6, width: 50, height: 40 });
     expect(draft.fills).toEqual([{ type: "IMAGE", imageHash: "hash-1", scaleMode: "FILL" }]);
     // One pre-create boundary only: updates never produce per-frame history.

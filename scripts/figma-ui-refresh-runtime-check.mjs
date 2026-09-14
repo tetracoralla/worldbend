@@ -134,17 +134,39 @@ async function runFixture() {
     const scenario = new URL(location.href).searchParams.get("case");
     if (scenario === "scene-draft") {
       const drafts = () => window.fixtureMessages.filter(m => m.type === "scene-draft");
+      const clears = () => window.fixtureMessages.filter(m => m.type === "scene-draft-clear");
       const settle = () => new Promise(resolve => setTimeout(resolve, 400));
       await settle();
-      check(drafts().length === 0, "Disabled perspective carrier emitted an initial document draft");
-      // Editing remains live in-panel while the rejected document-node carrier
-      // stays silent.
+      check(drafts().length === 0, "Opening Perspective mutated the document before an edit");
+      // The default Distort workspace activates the preview from a real
+      // keyboard edit and removes it again when local Undo reaches baseline.
+      const initialClears = clears().length;
+      await moveCorner();
+      await wait(() => drafts().length >= 1, "Distort edit activates the canvas preview");
+      undo();
+      await wait(() => clears().length > initialClears, "Undo to baseline clears the canvas preview");
+      // A Transform edit activates the same bounded publication-parity frame.
       get("#mode-transform").click();
       await wait(() => !get("#scale-x").disabled, "transform controls enabled");
+      const seen = window.fixtureMessages.length;
       get("#scale-x").value = "1.5";
       get("#scale-x").dispatchEvent(new Event("input", { bubbles: true }));
-      await settle();
-      check(drafts().length === 0, "Transform edit emitted a disabled document draft");
+      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "scene-draft"),
+        "edited scene working preview");
+      const first = drafts()[0];
+      check(first.bytes.length > 8 && first.renderWidth >= 1 && first.renderHeight >= 1 &&
+        first.placement.width > 0 && first.placement.height > 0, "Scene preview frame is incomplete");
+      const png = await createImageBitmap(new Blob([first.bytes], { type: "image/png" }));
+      check(png.width === first.renderWidth && png.height === first.renderHeight,
+        "Scene preview PNG disagrees with its dimensions");
+      png.close();
+      check(first.bytes.length <= 4 * 1024 * 1024, "Scene preview frame exceeds its bounded size");
+      // Correct is not a destination preview; entering it clears the canvas.
+      get("#mode-rectify").click();
+      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "scene-draft-clear"),
+        "Correct clears the canvas preview");
+      // Returning to a placement mode does not create feedback until it differs
+      // from the loaded result; the Warp edit then resumes the working preview.
       get("#mode-warp").click(); await ready();
       get("#warp-preset").value = "arc";
       get("#warp-preset").dispatchEvent(new Event("change", { bubbles: true }));
@@ -155,9 +177,8 @@ async function runFixture() {
       get("#warp-amount").value = "40";
       get("#warp-amount").dispatchEvent(new Event("change", { bubbles: true }));
       await ready();
-      await settle();
-      check(drafts().length === 0, "Warp recovery emitted a disabled document draft");
-      // Composition uses the same host policy.
+      await wait(() => drafts().length >= 2, "Warp recovery resumes the canvas preview");
+      // Composition follows the same first-edit activation rule.
       generation++;
       send({ type: "selection-loading", generation, nodeIds: ["art", "backdrop"] });
       const art = { ...payload, sourceName: "Poster artwork" };
@@ -166,12 +187,21 @@ async function runFixture() {
       await wait(() => !get("#workspace-menu-mockup").disabled, "scene selection");
       get("#more-options").click(); get("#workspace-menu-mockup").click();
       await wait(() => get("#mockup-workspace").querySelectorAll('[data-role="planes"] button').length === 2, "scene layers");
+      const draftsBeforeCompositionEdit = drafts().length;
+      await settle();
+      check(drafts().length === draftsBeforeCompositionEdit,
+        "Opening Composition mutated the document before an edit");
+      const clearBefore = clears().length;
       get("#mockup-workspace").querySelectorAll('[data-role="planes"] button')[1].click();
       get("#mockup-workspace").querySelector('[data-role="backdrop"]').click();
       await wait(() => get("#mockup-workspace").querySelector('[data-role="width"]').value === "600", "backdrop layout");
-      await settle();
-      check(drafts().length === 0, "Composition emitted a disabled document draft");
+      await wait(() => drafts().some(m => m.placement.width === 600 && m.placement.height === 400),
+        "composition canvas preview");
+      const composite = drafts().findLast(m => m.placement.width === 600 && m.placement.height === 400);
+      check(composite.placement.x === 800 && composite.placement.y === 200,
+        "Composition preview lost its backdrop anchoring");
       get("#workspace-tab-perspective").click();
+      await wait(() => clears().length > clearBefore, "workspace exit clears the canvas preview");
       check(window.fixtureErrors.length === 0, `fixture errors: ${window.fixtureErrors.join("; ")}`);
     } else if (scenario === "designer-experience") {
       get("#mode-warp").click();

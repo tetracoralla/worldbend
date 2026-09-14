@@ -33,7 +33,7 @@ Standing rules:
 | Deterministic explicit geometry only; no implicit perception application, camera/motion estimation, adapter-local simulation, scene graph | identity | Positioning decision 2026-09-10: the differentiation is reproducible explicit operations for humans and Agents; Photoshop imitation rejected as identity, not as capability | 2026-09-14 competitor analysis (Free Transformer competes on deterministic presets; assisted perception not required) | Users repeatedly ask "match this photo automatically" and an explicit, inspectable perception-Provider design can serve it within the deterministic envelope |
 | Bounded deformation only (Mesh, Surface, Split Warp); no unbounded arbitrary deformation | identity | Contract integrity plus Photoshop-familiar bounded tools | Living boundary: expanded 2026-09-11 (mesh), 2026-09-12 (Split Warp) as needs demanded | Repeated free-form/puppet-warp demand with a bounded-envelope design |
 | No public batch operation for Agents | deferral | No usage evidence yet; order, input correlation, partial-failure, cumulative-budget, fairness, cancellation and publication semantics must be defined before implementation | Never re-derived since writing — flag at first post-release milestone | A real agent workflow observed batching through repeated calls (≥3 assets across ≥2 sessions), or an explicit user request; then define the semantics first, then build |
-| Scene-context live preview (composite the bend in the document while adjusting) | deferral — **trigger fired 2026-09-14** | Figma surface kept local and task-native; no scene model. Publication semantics are unaffected by a non-persisting draft | 2026-09-14: owner identified in-context preview as a core need for themselves and nearby designers, on top of the earlier Free Transformer gap analysis | Fired: see Open re-derivations below |
+| Scene-context live preview (composite the bend in the document while adjusting) | identity — implemented | The task is placement in a real scene; an isolated panel cannot provide the necessary visual judgment. Publication semantics remain explicit | 2026-09-14: owner prioritized canvas feedback over pristine host Undo history; implementation retains data-safe cleanup | Revisit the carrier when Figma adds a true transient canvas overlay or selective history transactions |
 | Figma raster outputs capped at 4096 px per axis | hard | Figma image API limit | — | Figma raises the limit |
 | MCP relative-path authority under an explicit granted root; preflight, overwrite authority, output limits, dry-run parity; CLI paths stay deliberate human arguments | hard | Agent safety boundary; escapes rejected with stable codes | — | — |
 | One transform model in `worldbend-core`; adapters add no second model | identity | Architecture contract; prevents divergent semantics across carriers | Healthy | — |
@@ -42,22 +42,23 @@ Standing rules:
 | ComfyUI adapter ships as source only; no registry release | deferral | Distribution effort versus unknown demand | 2026-09-14 public release kept it source-only | Real user demand after the public release |
 | Capability projection remains narrower than the product contract | identity (while experimental) | Conditional experimental status; must not imply independent substitutability | Healthy while marked experimental | Graduating the projection from experimental, with its own compatibility work |
 
-## Open re-derivations
+## Re-derived boundaries
 
-### Scene-context live preview — fired 2026-09-14, host-history blocker confirmed
+### Scene-context live preview — resolved 2026-09-14
 
 The deferral rested on an unspoken extension of the explicit-publication
 principle: "nothing renders on the document until Apply." That conflated
 feedback with publication. The unified principle: **publication is explicit;
-feedback during editing is not publication** — it must be WYSIWYG, perfectly
-reversible, and must not disturb document history. Under that principle an
+feedback during editing is not publication**. It must be WYSIWYG, must never
+undo user artwork, and must be plainly distinguishable from a saved result.
+Under that principle an
 in-context draft is not a boundary violation but an obligation of the
 "Photoshop-familiar" identity: the core job is placing a design onto a
 surface in the user's document, and the adjusting loop must show the target
 scene, not only the isolated source.
 
-Implemented as a candidate on 2026-09-14 (see the Figma contract
-section): one locked draft image node per editing session in the
+Implemented on 2026-09-14 (see the Figma contract section): one locked working
+preview image node per editing session in the
 Transform/Distort/Warp family and in Composition, publication-parity
 rendering, coalesced bounded updates, synchronous marked-node cleanup, and a
 stale sweep on next run. Free Transform's author describes its current Live Preview
@@ -66,12 +67,16 @@ so that competitor question is now resolved.
 
 Real Figma Desktop verification on 2026-09-14 passed keyboard manipulation,
 invalid-state recovery, synchronous close cleanup, and stale-draft removal, but
-failed the strict document-history condition. Direct marked-node removal is
-data-safe but leaves one no-op Undo item. Rolling the draft back with
+demonstrated a host-history limitation. Direct marked-node removal is
+data-safe but can leave one no-op Undo item, and later host Undo can resurrect
+the removed preview. Rolling the preview back with
 `triggerUndo` is not safe: host artwork edits may be newer than the draft and
 can be undone first; repeated runs also failed to establish a fresh draft
-reliably. The candidate therefore remains **FAIL for release / blocked on a
-host-supported transient canvas carrier or proven safe transaction erasure**.
-The reviewed runtime disables both draft requests and host draft writes while
-retaining synchronous cleanup for stale nodes from earlier development builds.
-Large-artwork drag-frame rate also remains unmeasured.
+reliably. The earlier decision treated pristine Undo history as a release
+condition and disabled the feature. The owner re-ranked the actual user need:
+in-context feedback is essential, while one recoverable history artifact is an
+acceptable host limitation when cleanup never risks artwork. The runtime now
+starts the preview only after the first real edit, names it `Worldbend Working
+Preview`, clears only private-marked nodes, and sweeps any resurrected or
+abnormal-exit residue on the next run. A future transient host carrier should
+replace the document node without changing the product behavior.

@@ -10,7 +10,7 @@ export interface SceneDraftPayload {
   placement: Placement;
 }
 
-/** Draft nodes carry only this private marker — never a stored operation or binding. */
+/** Preview nodes carry only this private marker — never a stored operation or binding. */
 export function isSceneDraftNode(node: BaseNode): boolean {
   return node.getPluginData(DRAFT_MARKER) === "1";
 }
@@ -34,7 +34,7 @@ export function forgetSceneDraftNodeId(id: string): void {
   draftNodeIds.delete(id);
 }
 
-/** Remove drafts left behind by an abnormal exit; they are never reused. */
+/** Remove previews left behind by an abnormal exit; they are never reused. */
 export function sweepStaleSceneDrafts(page: PageNode): void {
   // Same removal as a live clear: an uncommitted delete merges into the
   // user's next undo step and can resurrect the leftover with Cmd+Z.
@@ -42,7 +42,7 @@ export function sweepStaleSceneDrafts(page: PageNode): void {
 }
 
 /**
- * Remove the live draft without replaying host history.
+ * Remove the live working preview without replaying host history.
  *
  * Figma exposes no draft-only scene layer. Using triggerUndo here is unsafe:
  * an artwork edit made after the draft boundary can sit above the draft and
@@ -62,7 +62,7 @@ export function clearSceneDraft(page: PageNode): void {
 }
 
 /**
- * Maintain the single locked canvas draft in one host transaction. Commit the
+ * Maintain the single locked canvas working preview in one host transaction. Commit the
  * user's pending artwork changes before creating it, so direct cleanup cannot
  * merge with or roll back those changes. Frame updates never add history
  * entries of their own.
@@ -101,7 +101,7 @@ function paintDraft(
 ): void {
   const width = Math.max(0.01, Math.min(Number.MAX_SAFE_INTEGER, payload.placement.width));
   const height = Math.max(0.01, Math.min(Number.MAX_SAFE_INTEGER, payload.placement.height));
-  node.name = `${sourceName} · Worldbend draft`;
+  node.name = `${sourceName} · Worldbend Working Preview`;
   node.resize(width, height);
   node.x = payload.placement.x;
   node.y = payload.placement.y;

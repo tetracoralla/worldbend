@@ -376,9 +376,9 @@ const distortEndFrames = createFrameCoalescer(() => {
   viewport?.revealAllCorners({ animate: true });
 });
 
-// Dormant document-node carrier for a publication-parity scene draft. The host
-// policy keeps requests off after real Figma history testing; retaining the
-// bounded client preserves the candidate without silently enabling writes.
+// Publication-parity feedback on the real Figma canvas. Figma exposes no
+// transient canvas overlay, so the main thread owns one marked document node
+// after the first actual edit. The node is never the published result.
 const sceneDraft = createSceneDraftClient({
   intervalMs: 200,
   render: async () => {
@@ -851,6 +851,7 @@ function createEditor(): PerspectiveEditor | undefined {
           transformInputsValid = true;
           activeFrame = { ...activeFrame, spec: editor.captureSpec() };
           viewport?.handleCanvasResized();
+          if (editorMode === "distort") syncSceneDraft();
         }
         // Apply validity and the quiet output-size HUD both depend on live
         // dimensions. Rebuild only publication chrome during a live gesture:
@@ -864,7 +865,12 @@ function createEditor(): PerspectiveEditor | undefined {
       },
       onValidityChange(next) {
         valid = next;
-        if (next) clearError();
+        if (next) {
+          clearError();
+          if (editorMode === "distort") syncSceneDraft();
+        } else {
+          clearSceneDraftFeedback();
+        }
         renderState();
       },
     });
@@ -2315,7 +2321,7 @@ function renderZoomLevel(scale: number): void {
 /** Keep tight transformed outputs registered to the loaded Figma layer. */
 function syncViewportScene(): void {
   if (!viewport || !editor || !initialFrame || !activeFrame) return;
-  if (LIVE_SCENE_DRAFT_ENABLED) sceneDraft.request();
+  syncSceneDraft();
   const display = editor.getTargetDisplaySize();
   const displayScaleX = display.width / activeFrame.renderWidth;
   const displayScaleY = display.height / activeFrame.renderHeight;
@@ -2329,6 +2335,28 @@ function syncViewportScene(): void {
       ((activeFrame.placement.y - initialFrame.placement.y) / documentPerInitialPixelY) *
       displayScaleY,
   });
+}
+
+/**
+ * Opening Worldbend is read-only. The canvas working preview starts only once
+ * the current frame differs from the loaded Figma result, then follows every
+ * settled or live change. Returning exactly to the loaded frame removes it.
+ */
+function syncSceneDraft(): void {
+  if (!LIVE_SCENE_DRAFT_ENABLED || !initialFrame || !activeFrame) return;
+  if (!valid) {
+    clearSceneDraftFeedback();
+    return;
+  }
+  if (editorMode !== "transform" && editorMode !== "distort" && editorMode !== "warp") {
+    clearSceneDraftFeedback();
+    return;
+  }
+  if (sameTransformFrame(initialFrame, activeFrame)) {
+    clearSceneDraftFeedback();
+    return;
+  }
+  sceneDraft.request();
 }
 
 async function applyPerspective(duplicate = false, editableIntent?: boolean): Promise<void> {
