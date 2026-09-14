@@ -289,7 +289,15 @@ export async function closeChrome(browser) {
     child.kill("SIGKILL");
     await once(child, "exit");
   }
-  await rm(browser.profile, { recursive: true, force: true });
+  // Chrome's helper processes can finish flushing profile files just after
+  // the browser process exits. Let fs.rm retry transient ENOTEMPTY/EBUSY
+  // races instead of turning a successful browser contract into a CI failure.
+  await rm(browser.profile, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  });
 }
 
 function unrefDelay(milliseconds) {
