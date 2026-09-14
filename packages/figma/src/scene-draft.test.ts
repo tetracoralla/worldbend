@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSceneDraftSession,
-  createSceneDraftToken,
   isSceneDraftNode,
 } from "./scene-draft";
+import { createSceneDraftToken } from "./scene-draft-id";
 
 const SESSION_A = "session-a-00001";
 const SESSION_B = "session-b-00001";
@@ -226,8 +226,12 @@ describe("scene draft node lifecycle", () => {
   });
 
   it("creates bounded session identities and rejects malformed ones", () => {
-    const generated = createSceneDraftToken();
+    const generated = createSceneDraftToken((values) => {
+      values.set([1, 2, 3, 4]);
+      return values;
+    });
     expect(generated).toMatch(/^[a-z0-9-]{12,96}$/);
+    expect(generated).toBe("0000001-0000002-0000003-0000004");
     expect(() => createSceneDraftSession(generated)).not.toThrow();
     expect(() => createSceneDraftSession("short")).toThrow("Scene draft identity is invalid");
   });

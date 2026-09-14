@@ -198,7 +198,7 @@ describe("Figma Canvas document transaction", () => {
     const square = resultNode("square-result");
     const { figmaMock, posts, source } = setup([wide, square]);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     figmaMock.ui.onmessage?.(canvasSetMessage());
 
@@ -229,7 +229,7 @@ describe("Figma Canvas document transaction", () => {
     const square = resultNode("square-result", true);
     const { figmaMock, posts } = setup([wide, square]);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     figmaMock.ui.onmessage?.(canvasSetMessage());
 
@@ -247,7 +247,7 @@ describe("Figma Canvas document transaction", () => {
   it("replaces one Canvas result at the new output aspect without creating another node", async () => {
     const { figmaMock, posts, target } = setup([], {});
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     figmaMock.ui.onmessage?.(singleReplacementMessage());
 
@@ -268,7 +268,7 @@ describe("Figma Canvas document transaction", () => {
   it("restores the selected Canvas result if its single replacement fails", async () => {
     const { figmaMock, posts, target } = setup([], { failFirstCanvasWrite: true });
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     figmaMock.ui.onmessage?.(singleReplacementMessage());
 

@@ -105,7 +105,7 @@ describe("designer and Agent handoff", () => {
   it("distinguishes an empty canvas selection from an unsupported selection and recovers", async () => {
     vi.useFakeTimers();
     const h = host(); h.page.selection = [];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.posts.at(-1)).toMatchObject({ type: "selection-error", message: { key: "selectOneSource" } });
     h.page.selection = Array.from({ length: 10 }, () => h.frame()); h.handlers.get("selectionchange")?.();
@@ -128,7 +128,7 @@ describe("designer and Agent handoff", () => {
     const text = h.frame(); text.type = "TEXT"; content.appendChild(text);
     text.x = 50; text.y = 90; text.width = 550; text.height = 114;
     h.page.selection = [anchor];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const before = h.posts.length;
     h.page.selection = [text]; h.handlers.get("selectionchange")?.();
@@ -167,7 +167,7 @@ describe("designer and Agent handoff", () => {
       writeStoredBinding(result, { sourceNodeIds: [h.source.id], renderWidth: 1040, renderHeight: 1212 });
     }
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const { payload, generation } = h.posts.findLast(p => p.type === "source");
     const nextSpec = structuredClone(spec); nextSpec.destination.quad.tl.x = .1;
@@ -202,7 +202,7 @@ describe("designer and Agent handoff", () => {
       placement: { x: 800, y: 0, width: 520, height: 606 }, renderWidth: 520, renderHeight: 606,
     });
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const { payload, generation } = h.posts.findLast(p => p.type === "source");
     expect(payload.nativeTarget).toBe(true);
@@ -236,7 +236,7 @@ describe("designer and Agent handoff", () => {
 
   it("keeps the live canvas preview locked, marked, reusable, and outside publication", async () => {
     vi.useFakeTimers(); const h = host();
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const { payload, generation } = h.posts.findLast(p => p.type === "source");
     const preview = () => h.page.children.find((node: any) => node.getPluginData?.("sceneDraft") === "1");
@@ -286,7 +286,7 @@ describe("designer and Agent handoff", () => {
     leftover.setPluginData("sceneDraftSession", "prior-run-00001");
     leftover.setPluginData("sceneDraftRetired", "1");
     await import("./main");
-    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
     expect(h.page.children).toContain(h.source);
@@ -301,7 +301,7 @@ describe("designer and Agent handoff", () => {
     other.setPluginData("sceneDraftSession", "other-live-0001");
     other.setPluginData("sceneDraftRetired", "0");
     await import("./main");
-    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.page.children).toContain(other);
     expect(h.api.commitUndo).not.toHaveBeenCalled();
@@ -309,7 +309,7 @@ describe("designer and Agent handoff", () => {
 
   it("removes this session's live canvas draft synchronously when the host closes the plugin", async () => {
     vi.useFakeTimers(); const h = host();
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const { generation } = h.posts.findLast(p => p.type === "source");
     h.api.ui.onmessage?.({
@@ -333,7 +333,7 @@ describe("designer and Agent handoff", () => {
     vi.useFakeTimers(); const h = host(); const result = h.api.createRectangle();
     writeStoredBinding(result, { sourceNodeIds: [h.source.id], renderWidth: 1040, renderHeight: 1212 });
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.posts.at(-1)).toMatchObject({ type: "selection-error", message: { key: "invalidReusablePlane" } });
     expect(result.exportAsync).not.toHaveBeenCalled();
@@ -343,7 +343,7 @@ describe("designer and Agent handoff", () => {
     vi.useFakeTimers();
     const h = host();
     h.api.importShaderById.mockImplementation(() => new Promise(() => {}));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.posts.findLast((post) => post.type === "source")?.payload).toMatchObject({
       sourceNodeId: h.source.id, nativeRendererPending: true,
@@ -365,7 +365,7 @@ describe("designer and Agent handoff", () => {
     vi.useFakeTimers();
     const h = host();
     h.api.importShaderById.mockImplementation(() => { throw new Error("Host import unavailable"); });
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.posts.some(p => p.type === "selection-error")).toBe(false);
     expect(h.posts.findLast(p => p.type === "source").payload.sourceNodeId).toBe(h.source.id);
@@ -377,7 +377,7 @@ describe("designer and Agent handoff", () => {
     const definition = await h.api.importShaderById(renderer.id);
     let finish!: (shader: typeof definition) => void;
     h.api.importShaderById.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.posts.some(p => p.type === "source" && p.generation === 1)).toBe(true);
     if (change === "content") {
@@ -402,7 +402,7 @@ describe("designer and Agent handoff", () => {
     const definition = await h.api.importShaderById(renderer.id);
     let finish!: (shader: typeof definition) => void;
     h.api.importShaderById.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     h.api.ui.onmessage?.({ type: "apply", payload: {
       generation: 1, sourceNodeId: h.source.id, targetNodeId: result.id, spec, bytes: new Uint8Array([4]),
@@ -440,7 +440,7 @@ describe("designer and Agent handoff", () => {
   it.each(["native", "raster", "canvas", "mesh"] as const)("rejects a %s publication when its source changes during asynchronous preflight, then permits a fresh retry", async (kind) => {
     vi.useFakeTimers();
     const h = host();
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     let release!: (node: any) => void;
     h.api.getNodeByIdAsync.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
@@ -475,7 +475,7 @@ describe("designer and Agent handoff", () => {
   it.each(["native", "raster", "canvas", "mesh"] as const)("publishes twice from the same %s source snapshot, then rejects a changed source", async (kind) => {
     vi.useFakeTimers();
     const h = host();
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const placement = { x: 0, y: 0, width: 520, height: 606 };
     const common = { generation: 1, sourceNodeId: h.source.id, spec, bytes: new Uint8Array([4]), renderWidth: 520, renderHeight: 606, placement };
@@ -523,7 +523,7 @@ describe("designer and Agent handoff", () => {
       writeStoredBinding(result, { sourceNodeIds: [h.source.id], renderWidth: 520, renderHeight: 606 });
     }
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const ready = h.posts.findLast(p => p.type === "source");
     for (const width of [600, 700]) {
@@ -545,7 +545,7 @@ describe("designer and Agent handoff", () => {
     const h = host();
     let finishExport!: (bytes: Uint8Array) => void;
     h.source.exportAsync.mockImplementationOnce(() => new Promise<Uint8Array>((resolve) => { finishExport = resolve; }));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     for (let i = 0; i < 4; i++) {
       h.page.selectedTextRange = { node: h.source, start: i, end: i + 1 };
@@ -569,7 +569,7 @@ describe("designer and Agent handoff", () => {
   it("refreshes actual content edits on time while caret events continue", async () => {
     vi.useFakeTimers();
     const h = host();
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "PROPERTY_CHANGE", id: h.source.id, node: h.source }] });
     expect(h.posts.at(-1)).toMatchObject({ type: "selection-loading", generation: 2 });
@@ -583,7 +583,7 @@ describe("designer and Agent handoff", () => {
   it("invalidates an away-and-back selection and an empty selection on another page", async () => {
     vi.useFakeTimers();
     const h = host();
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     h.page.selection = []; h.handlers.get("selectionchange")?.();
     h.page.selection = [h.source]; h.handlers.get("selectionchange")?.();
@@ -608,7 +608,7 @@ describe("designer and Agent handoff", () => {
     const h = host();
     let finishExport!: (bytes: Uint8Array) => void;
     h.source.exportAsync.mockImplementationOnce(() => new Promise<Uint8Array>((resolve) => { finishExport = resolve; }));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.source.exportAsync).toHaveBeenCalledTimes(1);
     const skipped = h.frame();
@@ -631,7 +631,7 @@ describe("designer and Agent handoff", () => {
     const h = host();
     let failExport!: (reason: Error) => void;
     h.source.exportAsync.mockImplementationOnce(() => new Promise<Uint8Array>((_, reject) => { failExport = reject; }));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const latest = h.frame();
     h.page.selection = [latest]; h.handlers.get("selectionchange")?.();
@@ -651,7 +651,7 @@ describe("designer and Agent handoff", () => {
     h.page.selection = [result];
     let finishExport!: (bytes: Uint8Array) => void;
     h.source.exportAsync.mockImplementationOnce(() => new Promise<Uint8Array>((resolve) => { finishExport = resolve; }));
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.advanceTimersByTimeAsync(0);
     const child = h.frame(); h.source.appendChild(child);
     h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "PROPERTY_CHANGE", id: child.id, node: child }] });
@@ -679,7 +679,7 @@ describe("designer and Agent handoff", () => {
     const { inspect, apply } = await import("./agent-handoff");
     expect((await inspect(result.id, "granted-file", h.page.id)).placement).toMatchObject({ x: 40, y: 50 });
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source" })));
     const ready = h.posts.findLast((p) => p.type === "source");
     expect(ready.payload.placement).toMatchObject({ x: 1040, y: 2050 });
@@ -719,7 +719,7 @@ describe("designer and Agent handoff", () => {
     expect(snapshot.revision).toBe(0);
     expect(snapshot.source.nodeId).toBe(parts.content.id);
     h.page.selection = [copy];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", payload: expect.objectContaining({ nativeTarget: true, targetNodeId: copy.id, sourceNodeId: parts.content.id }) })));
     await apply({ fileKey: "granted-file", pageId: h.page.id, nodeId: copy.id, expected: snapshot.expected,
       spec, inverse: [1 / 720, 0, 0, 0, 1 / 400, 0, 0, 0, 1], width: 720, height: 400 });
@@ -737,7 +737,7 @@ describe("designer and Agent handoff", () => {
     writeStoredOperation(target, { kind: "transform", spec });
     writeStoredBinding(target, { sourceNodeIds: [h.source.id], renderWidth: 520, renderHeight: 606 });
     h.page.selection = [target];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", payload: expect.objectContaining({ sourceNodeId: h.source.id, targetNodeId: target.id, spec }) })));
     h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "PROPERTY_CHANGE", id: h.source.id, node: h.source }] });
     expect(h.posts.at(-1)).toMatchObject({ type: "selection-loading", generation: 2 });
@@ -768,7 +768,7 @@ describe("designer and Agent handoff", () => {
       for (const [key, value] of saved) copy.setSharedPluginData("worldbend", key!, value!);
       h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "PROPERTY_CHANGE", id: copy.id, node: copy }] });
     });
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 })));
     h.api.ui.onmessage?.({ type: "trigger-undo" });
     await vi.waitFor(() => expect(copy).toMatchObject({ x: 1500, y: 200, width: 520, height: 606 }));
@@ -786,7 +786,7 @@ describe("designer and Agent handoff", () => {
     const copy = { id: "copied-node", getSharedPluginData: target.getSharedPluginData };
     expect(readStoredBinding(copy)).toBeUndefined();
     h.source.remove(); h.page.selection = [target];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "selection-error", message: { key: "linkedSourceUnavailable" } })));
     expect(h.api.createImage).not.toHaveBeenCalled();
   });
@@ -802,7 +802,7 @@ describe("designer and Agent handoff", () => {
     expect(parts.surface).toMatchObject({ width: 720, height: 606 });
     expect(readStoredOperation(result)).toEqual({ status: "valid", operation: { kind: "transform", spec } });
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", payload: expect.objectContaining({ nativeTarget: true, sourceNodeId: parts.content.id, renderWidth: 720, renderHeight: 400 }) })));
     expect(parts.content.exportAsync).toHaveBeenCalledWith(expect.objectContaining({ useAbsoluteBounds: true }));
     const next = await publishNativeResult({ source: parts.content, existing: result, renderer, spec,
@@ -862,7 +862,7 @@ describe("designer and Agent handoff", () => {
     // Auto layout may reflow by a few pixels rather than multiply its height.
     content.resize(content.width, content.height + 64);
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source",
       payload: expect.objectContaining({ nativeTarget: true, renderWidth: 780, renderHeight: 909 }) })));
     await publishNativeResult({ source: content, existing: result, renderer, spec,
@@ -909,7 +909,7 @@ describe("designer and Agent handoff", () => {
     const { content } = await nativeDocumentParts(result);
     vi.spyOn(content, "exportAsync").mockRejectedValueOnce(new Error("Temporary export failure"));
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "selection-error" })));
     const error = h.posts.find((p: any) => p.type === "selection-error");
     expect(error.message).toEqual({ key: "previewFailed" });
@@ -956,7 +956,7 @@ describe("designer and Agent handoff", () => {
       };
       if (delay) setTimeout(deliver, delay); else deliver();
     });
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 })));
     if (descendant) {
       h.page.selection = [content]; h.handlers.get("selectionchange")?.();
@@ -977,7 +977,7 @@ describe("designer and Agent handoff", () => {
       placement: { x: 800, y: 20, width: 520, height: 606 }, renderWidth: 520, renderHeight: 606,
     });
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 })));
     vi.useFakeTimers();
     h.api.ui.onmessage?.({ type: "trigger-undo" });
@@ -1004,7 +1004,7 @@ describe("designer and Agent handoff", () => {
       placement: { x: 900, y: 30, width: 720, height: 400 }, renderWidth: 720, renderHeight: 400,
     });
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 })));
     h.api.ui.onmessage?.({ type: "trigger-undo" });
     h.page.selection = [h.source]; h.handlers.get("selectionchange")?.();
@@ -1025,7 +1025,7 @@ describe("designer and Agent handoff", () => {
     });
     const { content, surface } = await nativeDocumentParts(result);
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 })));
     if (descendant) {
       h.page.selection = [content]; h.handlers.get("selectionchange")?.();
@@ -1053,7 +1053,7 @@ describe("designer and Agent handoff", () => {
     });
     const { content, surface } = await nativeDocumentParts(result);
     h.page.selection = [result];
-    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(h.posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 })));
     h.page.selection = [content]; h.handlers.get("selectionchange")?.();
     surface.effects = [];

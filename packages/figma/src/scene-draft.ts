@@ -1,9 +1,9 @@
 import type { Placement } from "./messages";
+import { isSceneDraftToken } from "./scene-draft-id";
 
 const DRAFT_MARKER = "sceneDraft";
 const DRAFT_SESSION_MARKER = "sceneDraftSession";
 const DRAFT_RETIRED_MARKER = "sceneDraftRetired";
-const TOKEN_PATTERN = /^[a-z0-9-]{12,96}$/;
 
 export interface SceneDraftPayload {
   generation: number;
@@ -28,11 +28,6 @@ export function isSceneDraftNode(node: BaseNode): boolean {
   return node.getPluginData(DRAFT_MARKER) === "1";
 }
 
-export function createSceneDraftToken(): string {
-  const random = () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
-  return `${Date.now().toString(36)}-${random()}-${random()}`;
-}
-
 /**
  * Own one canvas-preview lifecycle.
  *
@@ -43,7 +38,7 @@ export function createSceneDraftToken(): string {
  * resurrects the node. An unretired node is never guessed to be stale.
  */
 export function createSceneDraftSession(sessionId: string): SceneDraftSession {
-  if (!TOKEN_PATTERN.test(sessionId)) {
+  if (!isSceneDraftToken(sessionId)) {
     throw new Error("Scene draft identity is invalid");
   }
 

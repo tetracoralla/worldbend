@@ -67,7 +67,7 @@ describe("Figma designer task main boundary", () => {
   it("exports 1–8 raw selections as an ordered source set", async () => {
     const { figmaMock, posts } = setup(2);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => {
       const message = posts.find((candidate) => (candidate as { type?: string }).type === "source") as { payload: { sources?: unknown[] } } | undefined;
       expect(message?.payload.sources).toHaveLength(2);
@@ -77,7 +77,7 @@ describe("Figma designer task main boundary", () => {
   it("publishes one canonical task result with recoverable shared data", async () => {
     const { figmaMock, posts, result, sources } = setup(1);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     figmaMock.ui.onmessage?.({
       type: "apply-designer",
@@ -108,7 +108,7 @@ describe("Figma designer task main boundary", () => {
   it("rejects a designer result when selection changes during source lookup", async () => {
     const { figmaMock, page, posts, sources } = setup(1);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
 
     let resolveLookup!: (value: (typeof sources)[number]) => void;
@@ -149,7 +149,7 @@ describe("Figma designer task main boundary", () => {
   it("persists and removes a validated Spatial Template through client storage", async () => {
     const { figmaMock, posts } = setup(1);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     const template = spatialTemplateFromMockup(defaultMockup([{
       sourceNodeId: "source-1",
@@ -196,7 +196,7 @@ describe("Figma designer task main boundary", () => {
   it("rejects saving a second template under an existing name without writing storage", async () => {
     const { figmaMock, posts } = setup(1);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     const template = spatialTemplateFromMockup(defaultMockup([{
       sourceNodeId: "source-1",
@@ -236,7 +236,7 @@ describe("Figma designer task main boundary", () => {
   it("persists a validated Sizes task template without fabricating a program root", async () => {
     const { figmaMock, posts } = setup(1);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     const template = canvasTemplateFromSet({
       schema: "worldbend.canvas-set",
@@ -271,7 +271,7 @@ describe("Figma designer task main boundary", () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error("storage unavailable"));
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => {
       expect(posts).toContainEqual({ type: "template-library", templates: [] });
       expect(posts).toContainEqual(expect.objectContaining({
@@ -319,7 +319,7 @@ describe("Figma designer task main boundary", () => {
       .mockRejectedValueOnce(new Error("storage write failed"))
       .mockResolvedValueOnce(undefined);
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(posts).toContainEqual(expect.objectContaining({ type: "source" })));
     const template = spatialTemplateFromMockup(defaultMockup([{
       sourceNodeId: "source-1",
