@@ -51,20 +51,18 @@ lists plus plan replay.
 
 ## Enforced budgets
 
-The Figma package is sufficiently platform-stable for deterministic byte
-ceilings:
+The Figma package has bounded growth checks across supported compilers:
 
-- runtime entries: at most 688,128 bytes;
-- complete archive: at most 540,672 bytes;
+- runtime entries: at most 720,896 bytes (704 KiB);
+- complete archive: at most 573,440 bytes (560 KiB);
 - complete unpacked package: at most 2,097,152 bytes.
 
-These are growth tripwires, not performance or UX acceptance. An intentional
-feature may revise a limit only with a current package measurement and review
-of the user-visible change. Split Warp added the cubic-surface planner to the
-Figma WASM build; the measured archive after that change was 524,923 bytes, so
-the archive tripwire moved from 512 KiB to 528 KiB. Copy CSS linked the core
-CSS emitter into the Figma WASM build; the measured runtime after that change
-was 668,141 bytes, so the runtime tripwire moved from 640 KiB to 672 KiB. Agent and Comfy native binary sizes vary by target,
+These are growth tripwires, not performance or UX acceptance. Revisions need
+current package measurements and review of the user-visible change. Compiler
+output can differ even with locked dependencies: the designer workflow runtime
+measured 687,561 bytes locally and 699,205 bytes on Linux with Rust 1.89.
+The ceilings allow a small margin above both builds; a single compiler's size
+must not become an accidental requirement for source users. Agent and Comfy native binary sizes vary by target,
 so their current checks record bytes but do not pretend one macOS value is a
 portable ceiling. The default Agent catalog has a 16,384-byte limit; its direct
 compatibility catalog has a separate 81,920-byte limit. Every tool-list byte
