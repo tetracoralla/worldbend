@@ -6,6 +6,7 @@ export type LocalePreference = "system" | SupportedLocale;
 export const LOCALE_STORAGE_KEY = "perspective.preferences.v1";
 
 const english = {
+  placeOnBackdrop: "Use as backdrop",
   moreOptions: "More options",
   workspaceGroupLabel: "Tools",
   advancedTools: "Advanced transforms",
@@ -331,6 +332,7 @@ const simplifiedChinese: Record<MessageKey, string> = {
   previousModes: "上一组模式",
   nextModes: "下一组模式",
   more: "高级系数",
+  placeOnBackdrop: "设为背景并放入设计稿",
   workspaceMockup: "平面合成",
   workspaceMockupDetail: "把所选图层排列到可编辑平面中",
   workspaceMesh: "网格变形",

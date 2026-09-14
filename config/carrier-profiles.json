@@ -58,7 +58,7 @@
           "dist/ui.html"
         ],
         "maxRuntimeBytes": 688128,
-        "maxArchiveBytes": 540672,
+        "maxArchiveBytes": 548864,
         "maxUnpackedBytes": 2097152,
         "forbiddenSuffixes": [".py"],
         "forbiddenPrefixes": ["bin/", "capabilities/", "skills/"]

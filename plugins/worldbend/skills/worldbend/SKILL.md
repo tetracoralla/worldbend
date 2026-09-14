@@ -107,8 +107,9 @@ there is no need to bake the content into an image.
    returned importability reasons and bind replacement assets separately.
 7. Run `rectify` once when the user or an upstream system already
    supplies a source-image quadrilateral and explicit integer output width and
-   height. Preserve strict `tl`, `tr`, `br`, `bl` meaning. Do not inspect the
-   image, infer aspect ratio, or estimate a camera. Call
+   height. Preserve strict `tl`, `tr`, `br`, `bl` meaning. Visual inspection
+   may guide an explicitly authored quadrilateral; do not present a chosen
+   aspect ratio as a measured physical ratio or estimate a camera. Call
    `rectify_render` instead when a local PNG, JPEG, or WebP must be
    flattened into the declared PNG output; its paths use the same explicit
    workspace authority and dry-run semantics as ordinary render.
@@ -119,8 +120,9 @@ there is no need to bake the content into an image.
    and one or more explicit output variants. Use the returned resolved plan to
    replay content-dependent Trim geometry on another same-sized 8-bit raster.
    The output directory must be a new relative directory; one call publishes
-   the complete ordered set or publishes nothing. Do not choose a crop,
-   background, anchor, or aspect ratio for the caller.
+   the complete ordered set or publishes nothing. An Agent may choose a crop,
+   background, anchor or aspect ratio when the user delegates that design
+   decision; pass the choice explicitly rather than implying core inference.
 10. Run `program_inspect` / `program_render` when the caller supplies one
    ordered chain of 1..8 existing Transform, Rectify, and Canvas stages over
    one source raster. Use it instead of publishing and reopening intermediate
@@ -146,16 +148,21 @@ there is no need to bake the content into an image.
    source IDs, seams, grids, measurements, opacity, and canvas. Run
    `mockup_extract_plan` / `mockup_extract_render` when the caller supplies an
    ordered set of Rectify programs to extract from one original raster. Source
-   sets must match exactly; directory output is all-or-none. Do not detect,
-   align, or repair planes.
+   sets must match exactly; directory output is all-or-none. You may author
+   explicit placement from visual context and the user’s intent; the core
+   validates those coordinates rather than inferring or repairing them.
+   Paint order is independent of source identity: a backdrop can be the first
+   plane while still referencing `source-2`. Preserve the source-ID bindings
+   when replacing artwork or reusing a saved scene.
 14. Run `mesh_plan` / `mesh_render` for a caller-authored regular custom mesh.
-   Preserve vertex order, source grid, boundary, and positive triangles. Do
-   not synthesize control points or combine custom Mesh with preset Warp.
+   Preserve vertex order, source grid, boundary, and positive triangles.
+   Author intentional control points within the brief and validate the plan;
+   never combine custom Mesh with preset Warp.
 15. Run `surface_plan` / `surface_render` for a caller-authored bounded cubic
    Bezier patch lattice plus ordered source-space deformation strokes and
    explicit interior anchors. Boundary controls remain fixed and the operation
-   resolves to the canonical validated Mesh contract. Do not infer handles,
-   replay pointer events, perform Liquify simulation, or combine the surface
+   resolves to the canonical validated Mesh contract. Author explicit handles
+   or strokes; do not replay pointer events, simulate Liquify, or combine the surface
    with a preset Warp.
 16. Run `remap_plan` / `remap_render` for explicit Brown-Conrady lens values or
    a channel displacement map. Displacement requires exactly one map; lens
@@ -164,7 +171,8 @@ there is no need to bake the content into an image.
 17. Run `timeline_plan` / `timeline_render` for explicit per-frame transforms or
    linear four-corner keyframes. The source set, frame order, IDs, fixed output,
    cumulative budget, and atomic PNG directory are part of the program. Do not
-   track motion, invent keyframes, or loop independent render calls.
+   claim inferred motion tracking or loop independent render calls. Deliberate
+   animation keyframes may be authored within the user’s brief.
 18. Run `motion_plan` / `motion_render` when the caller supplies the exact
    rational frame rate, first/last-covered keyframes, and linear, hold, or
    cubic-Bezier easing. Use the returned rational presentation times and atomic

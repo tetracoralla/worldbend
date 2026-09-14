@@ -35,5 +35,6 @@
       "Render this new source through the saved TransformSpec.",
       "Continue this selected editable Worldbend frame through the available Figma tool."
     ]
-  }
+  },
+  "license": "Apache-2.0"
 }

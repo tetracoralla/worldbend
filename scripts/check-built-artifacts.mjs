@@ -162,8 +162,8 @@ for (const removedControl of [
     throw new Error(`Figma UI restored superseded control ${removedControl}`);
   }
 }
-if (!ui.includes("workspace-navigation-tooltip")) {
-  throw new Error("Figma workspace navigation must retain a tooltip outside clipped overflow strips");
+if (!ui.includes("workspace-name")) {
+  throw new Error("Figma workspace navigation must retain visible workspace names");
 }
 if (
   ui.indexOf('id="more-options"') > ui.indexOf('id="workspace-navigation"') +

@@ -2,36 +2,20 @@
 
 ## Product direction
 
-Worldbend's owner-confirmed target is an Agent-native two-dimensional graphics
-work system with one shared non-destructive operation model and an extremely
-restrained human canvas. This is a target, not a claim that the current product
-already performs arbitrary graphics work. The exact current capabilities below
-remain authoritative; new deterministic capabilities normally enter the core
-and Agent/direct route before they are considered for human UI.
+Worldbend serves designers and Agents through a shared non-destructive operation
+model. Humans can select artwork, manipulate geometry and preview a result;
+Agents can author explicit parameters and reuse the same operation with new
+sources. The core validates and executes geometry rather than silently choosing
+the intended design.
 
-Implementation plans and recovery notes are kept locally under `.task-notes/`.
+## Interaction design
 
-## Human UI admission rule
-
-A new human-visible task may enter a carrier only when all of the following are
-current facts:
-
-1. A named designer task and affected graphic object exist; capability breadth
-   or parity with another editor is not sufficient.
-2. Repeated value is observed in real use or explicitly confirmed by the owner.
-3. The task has a task-native direct-manipulation or compact-control model,
-   preview, apply/replace behavior, Undo boundary, error recovery, and focus or
-   workspace return behavior.
-4. Its operation is already closed and validated in the shared core or another
-   named source-of-record contract. The UI does not invent adapter-local
-   geometry or hidden inference.
-5. The complete interaction fits the declared carrier resource and performance
-   boundary without degrading Perspective's continuous-edit path.
-
-Until all five are true, the capability remains headless, Agent-only, or
-unimplemented. Existing human workspaces may be simplified when current use
-shows that they fail this rule; they are not removed merely to satisfy an
-abstract minimalism preference.
+Design new surfaces around a concrete task and graphic object. Provide preview,
+apply or replace, undo, error recovery and predictable keyboard focus. Use the
+shared operation contract and measure the interaction in its intended carrier,
+including its effect on continuous editing. Prototype human and Agent workflows
+in the order that resolves the task's uncertainty; a headless implementation is
+not a prerequisite for exploring a better interaction.
 
 ## Product definition
 
@@ -209,7 +193,7 @@ and freshly verifies:
 10. a staged Codex plugin with a thin routing Skill;
 11. rerunnable development, built-runtime Agent, browser, Figma-package, and
     Comfy-adapter checks with honest lane reporting;
-12. a recoverable private GitHub source repository plus a self-contained,
+12. an Apache-2.0 source repository plus a self-contained,
     separately verified free Figma distribution with complete bundled
     dependency notices.
 
@@ -217,12 +201,10 @@ This productized slice includes semantic affine composition — scale X/Y,
 clockwise rotation, skew X/Y, translation, and pivot — plus bounded common
 Warp presets across Rust, CLI, MCP, WASM/Web, Figma, and the single-image
 ComfyUI adapter, while keeping four-corner Distort as the existing direct
-editor. See
-`docs/TRANSFORM_ROADMAP.md` for the larger Photoshop-parity order.
+editor.
 
-Business/experience acceptance remains an owner decision. A passing build,
-private GitHub push, or valid free manifest does not imply that Figma has
-approved the Community listing.
+A source build does not establish Figma Community availability. Verify the
+listing and companion effect separately from local development.
 
 ## Canonical abstraction
 

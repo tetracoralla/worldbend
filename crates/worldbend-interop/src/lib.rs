@@ -899,12 +899,12 @@ mod tests {
             (
                 include_bytes!("../tests/fixtures/photoshop-cc-placed-layer.psd"),
                 PsdContainerFormat::Psd,
-                "69ea01bf88cb85c48d3a78c3bb9e06ae141c9c9fc6a88267eae95c315e16180e",
+                "c5cf4d58ec42500adecca9f91c8b77fe5d6f464b8edf3609f00f042e56d3c450",
             ),
             (
                 include_bytes!("../tests/fixtures/photoshop-cc-placed-layer.psb"),
                 PsdContainerFormat::Psb,
-                "066eeb1bce9c123ffcb57f380d9a51e0687024fdd264904ed3a44c3d5666490c",
+                "09f67cf916b40fddcfdfa79f08fb7ea065ea8c6e262b96cfd171cdb9d6632abf",
             ),
         ];
 

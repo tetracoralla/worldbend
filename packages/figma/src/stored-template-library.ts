@@ -216,9 +216,9 @@ function canonicalMockupSourceSlots(spec: MockupSpecInput): string[] | undefined
   if (
     slots.length < 1 ||
     slots.length > 8 ||
-    slots.some((slot, index) => slot !== `source-${index + 1}`)
+    [...slots].sort((a, b) => Number(a.slice(7)) - Number(b.slice(7))).some((slot, index) => slot !== `source-${index + 1}`)
   ) return undefined;
-  return slots;
+  return slots.sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));
 }
 
 function isSafeId(value: unknown): value is string {

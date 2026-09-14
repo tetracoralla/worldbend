@@ -1,3 +1,4 @@
+import { templatePreview } from "./template-preview";
 import {
   createDesignerWorkspaceShell,
   type DesignerTaskWorkspace,
@@ -105,6 +106,7 @@ export function createTemplateWorkspace(input: {
   const footer: HTMLElement = footerElement;
 
   let templates: SavedSpatialTemplate[] = [];
+  const previews = new Map<string, Promise<SVGSVGElement>>();
   let source: DesignerWorkspaceSource | undefined;
   let selectedId: string | undefined;
   let confirmingDelete = false;
@@ -123,6 +125,8 @@ export function createTemplateWorkspace(input: {
     if (!asyncState.active) return;
     const copy = input.copy();
     shell.setCopy({ ...copy, apply: copy.use, reset: confirmingDelete ? copy.confirmRemove : copy.remove });
+    const focusedId = list.contains(document.activeElement)
+      ? (document.activeElement as HTMLElement).dataset.templateId : undefined;
     list.replaceChildren();
     if (templates.length === 0) {
       const empty = document.createElement("div");
@@ -155,7 +159,18 @@ export function createTemplateWorkspace(input: {
       button.className = "template-item";
       button.dataset.templateId = template.id;
       button.setAttribute("aria-pressed", String(template.id === selectedId));
-      button.innerHTML = `<span class="template-item-name"></span><span class="template-item-detail"></span>`;
+      button.innerHTML = `<span class="template-item-preview" aria-hidden="true"></span><span class="template-item-name"></span><span class="template-item-detail"></span>`;
+      const previewHost = button.querySelector<HTMLElement>(".template-item-preview")!;
+      const key = JSON.stringify(template.template);
+      let preview = previews.get(key);
+      if (!preview) {
+        if (previews.size >= 32) previews.clear();
+        preview = templatePreview(template.template);
+        previews.set(key, preview);
+      }
+      void preview.then(svg => {
+        if (button.isConnected) previewHost.replaceChildren(svg.cloneNode(true));
+      }).catch(() => { previews.delete(key); });
       const name = button.querySelector<HTMLElement>(".template-item-name");
       const detail = button.querySelector<HTMLElement>(".template-item-detail");
       if (!name || !detail) throw new Error("Missing Template item labels");
@@ -173,6 +188,7 @@ export function createTemplateWorkspace(input: {
         render();
       });
       list.append(button);
+      if (focusedId === template.id) button.focus({ preventScroll: true });
     }
     const selectedRecord = selected();
     const count = selectedRecord ? templateSourceCount(selectedRecord.template) : 0;

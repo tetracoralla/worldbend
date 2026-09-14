@@ -19,3 +19,17 @@ artifacts/
 *.log
 /bin/
 .task-notes/
+
+# Transactional plugin packaging scratch and recovery copies.
+plugins/worldbend/.bin-stage-*/
+plugins/worldbend/.bin-backup-*/
+plugins/worldbend/.capabilities-stage-*/
+plugins/worldbend/.capabilities-backup-*/
+plugins/worldbend/.legal-stage-*/
+plugins/worldbend/.web-stage-*/
+plugins/worldbend/.web-backup-*/
+plugins/worldbend/.LICENSE.backup-*
+plugins/worldbend/.NOTICE.backup-*
+plugins/worldbend/.licenses.backup-*/
+plugins/worldbend/.sbom.backup-*/
+plugins/worldbend/.THIRD_PARTY_NOTICES.md.backup-*

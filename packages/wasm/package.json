@@ -17,5 +17,10 @@
       "import": "./pkg-figma/worldbend_wasm.js"
     }
   },
-  "files": ["pkg", "pkg-figma", "pkg-perspective"]
+  "files": [
+    "pkg",
+    "pkg-figma",
+    "pkg-perspective"
+  ],
+  "license": "Apache-2.0"
 }

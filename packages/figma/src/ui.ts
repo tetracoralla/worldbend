@@ -98,6 +98,7 @@ import {
   type SupportedLocale,
   type UserMessage,
 } from "./i18n";
+import { createWarpPicker } from "./warp-picker";
 import { parseWarpControls, warpAmountPercent, WARP_PRESETS } from "./warp-controls";
 import { sliderProgress } from "./slider-domain";
 import {
@@ -402,6 +403,8 @@ const localeView: OptionsMenuView = createLocaleView({
     post({ type: "set-locale", preference });
   },
 });
+
+const warpPicker = createWarpPicker(warpPresetSelect, warpPresetLabel);
 
 let productWorkspace!: ProductWorkspaceRouter;
 let workspaceNavigation!: ReturnType<typeof createWorkspaceNavigation>;
@@ -2122,6 +2125,7 @@ function cloneFrame(frame: TransformFrame): TransformFrame {
 }
 
 function renderMode(): void {
+  if (editorMode !== "warp") warpPicker.close();
   const transformSelected = editorMode === "transform";
   const distortSelected = editorMode === "distort";
   const warpSelected = editorMode === "warp";
@@ -2155,6 +2159,7 @@ function renderMode(): void {
 
 function renderOptionsContext(workspace: ProductWorkspace): void {
   const perspective = workspace === "perspective";
+  if (!perspective) warpPicker.close();
   settingsPopover.dataset.workspace = perspective ? "perspective" : "global";
   for (const element of [
     perspectiveOptionsTitle,
@@ -2732,7 +2737,6 @@ function renderState(scope: "full" | "publication" = "full"): void {
     !current?.nativeRenderer ? current?.nativeTarget ? "nativeEffectUnavailable" : "nativeUnavailable" :
     !editableApplicable ? "nativeOutputLimit" : "editableOutputHelp");
   actionApplyEditable.title = editableHelp;
-  actionApplyCopy.hidden = !current?.targetNodeId;
   actionApplyCopy.disabled = !menuReady || !transformInputsValid || transformInitializing ||
     !outputApplicable || (editorMode === "rectify" && !rectifyInputsValid);
   const imageSize = outputPlan && rasterSizeForPolicy(outputPlan, outputDensityPolicy);
@@ -2753,6 +2757,11 @@ function renderState(scope: "full" | "publication" = "full"): void {
   const primaryEditable = Boolean(current?.nativeTarget) && editableModeSupported;
   if (primaryEditable) applyButton.disabled = !editableReady;
   applyButton.title = primaryEditable ? editableHelp : imageHelp;
+  const replacing = Boolean(current?.targetNodeId) && (!current?.nativeTarget || primaryEditable);
+  applyButton.textContent = translate(activeLocale, replacing
+    ? primaryEditable ? "updateEditable" : "updateHighResolutionImage"
+    : "createHighResolutionImage");
+  actionApplyCopy.hidden = !replacing;
   renderOutputSize(outputPlan);
   if (scope === "publication") return;
   // A missing native effect cannot be fixed by editing transform inputs, so
@@ -2810,6 +2819,7 @@ function renderState(scope: "full" | "publication" = "full"): void {
   transformControls.setDisabled(!ready || refreshInFlight || editorMode !== "transform");
   const warpDisabled = !ready || refreshInFlight || editorMode !== "warp";
   warpPresetSelect.disabled = warpDisabled;
+  warpPicker.sync();
   const warpAmountDisabled = warpDisabled || warpPresetSelect.value === "";
   warpAmountSlider.disabled = warpAmountDisabled;
   warpAmountInput.disabled = warpAmountDisabled;
@@ -2820,9 +2830,7 @@ function renderState(scope: "full" | "publication" = "full"): void {
   resetButton.textContent = translate(activeLocale, phase === "resetting" ? "resetting" : "reset");
   // Keep each action's meaning visible while publishing. A new copy must not
   // make the disabled Update button announce that the old result is replaced.
-  applyButton.textContent = translate(activeLocale, current?.targetNodeId
-    ? current.nativeTarget ? "updateEditable" : "updateHighResolutionImage"
-    : "createHighResolutionImage");
+
   controls.setAttribute(
     "aria-busy",
     String(
@@ -3064,6 +3072,7 @@ function surfaceWorkspaceCopy(): SurfaceWorkspaceCopy {
 
 function mockupWorkspaceCopy(): MockupWorkspaceCopy {
   return {
+    backdrop: translate(activeLocale, "placeOnBackdrop"),
     ...designerCopy("mockupTitle"),
     width: translate(activeLocale, "rectifyWidth"),
     height: translate(activeLocale, "rectifyHeight"),

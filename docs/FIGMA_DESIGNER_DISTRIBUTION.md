@@ -8,9 +8,9 @@ Designers should use the free [Community plugin](https://www.figma.com/community
 Figma delivers approved updates through that listing. The development archive
 below is for contributors and isolated verification, not the normal update path.
 
-## Install an internal development build
+## Install a development build
 
-1. Obtain `worldbend-figma-<version>.zip` from an authorized private build.
+1. Obtain `worldbend-figma-<version>.zip` from a trusted release build.
 2. Extract the entire ZIP. Figma cannot run the manifest from inside the ZIP.
 3. In Figma Desktop, choose **Plugins → Development → Import plugin from
    manifest…** and select the extracted `manifest.json`.
@@ -26,7 +26,7 @@ Verify the download before importing it:
 shasum -a 256 worldbend-figma-<version>.zip
 ```
 
-Compare that value with the checksum recorded by the private build. The
+Compare that value with the checksum recorded by the release build. The
 archive's own `SHA256SUMS.txt` covers every runtime and accompanying file.
 
 ## Build the archive from source
@@ -44,6 +44,7 @@ the ignored `artifacts/figma/` directory. It verifies this exact inventory:
 - `dist/main.js`
 - `dist/ui.html`
 - `README.md`
+- `LICENSE` and `NOTICE`
 - `THIRD_PARTY_NOTICES.md`
 - `licenses/` for the locked non-development Rust dependency closure
 - `sbom/worldbend-figma-wasm.spdx.json`
@@ -113,7 +114,7 @@ alone does not establish editable-output availability in another account.
 ## Free Community distribution
 
 Designers receive the approved plugin through Figma Community, not through the
-private GitHub repository or the internal ZIP. The Community listing is free:
+source repository or a development ZIP. The Community listing is free:
 the plugin does not request Figma's Payments API, open checkout, require a
 trial, or collect payment details. See
 [`FIGMA_COMMUNITY_RELEASE.md`](FIGMA_COMMUNITY_RELEASE.md) for listing copy,

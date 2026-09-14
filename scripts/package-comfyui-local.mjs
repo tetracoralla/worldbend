@@ -1,3 +1,4 @@
+import { rustBuildEnvironment, assertNoPrivateBuildPaths } from "./build-privacy.mjs";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -73,6 +74,7 @@ for (const entry of comfyPackageProfile.exampleEntries) {
 }
 const stagedBinary = path.join(outputRoot, "bin", binaryName);
 await copyFile(path.join(root, "target", "release", binaryName), stagedBinary);
+assertNoPrivateBuildPaths(await readFile(stagedBinary), [root]);
 if (process.platform !== "win32") await chmod(stagedBinary, 0o755);
 
 const binaryVersion = (
@@ -194,6 +196,7 @@ function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: root,
+      env: command === "cargo" ? rustBuildEnvironment(root) : process.env,
       stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
     });
     let stdout = "";

@@ -2,7 +2,7 @@
 
 This macOS arm64 Codex plugin is built from locked Rust crates; runtime crates are statically linked into its native executables. The SPDX 2.3 inventory is `sbom/worldbend-macos-arm64.spdx.json`; copied license texts are below `licenses/`.
 
-This inventory covers bundled third-party components only.
+This inventory covers bundled third-party components only. Worldbend is Apache-2.0; see LICENSE and NOTICE.
 
 The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B.dylib` and `/usr/lib/libiconv.2.dylib`. Those system libraries are not redistributed in this archive; their terms are supplied with the host operating system.
 

@@ -46,11 +46,6 @@ export function createWorkspaceNavigation(input: {
   let current: ProductWorkspace = "perspective";
   let disabled = true;
   let availability = taskWorkspaceAvailability(0);
-  const tooltip = document.createElement("span");
-  tooltip.className = "workspace-navigation-tooltip";
-  tooltip.hidden = true;
-  tooltip.setAttribute("aria-hidden", "true");
-  input.root.append(tooltip);
   const strip: HorizontalStrip = createHorizontalStrip({
     viewport: input.viewport,
     backward: input.backward,
@@ -104,26 +99,6 @@ export function createWorkspaceNavigation(input: {
     event.preventDefault();
     enabled[next]?.focus();
   };
-  const showTooltip = (button: HTMLButtonElement): void => {
-    tooltip.textContent = button.getAttribute("aria-label") ?? "";
-    tooltip.hidden = false;
-    const rootRect = input.root.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
-    const half = tooltip.offsetWidth / 2;
-    const center = buttonRect.left - rootRect.left + buttonRect.width / 2;
-    tooltip.style.left = `${Math.max(half + 4, Math.min(rootRect.width - half - 4, center))}px`;
-    tooltip.style.top = `${buttonRect.bottom - rootRect.top + 6}px`;
-  };
-  const hideTooltip = (): void => { tooltip.hidden = true; };
-  const tooltipListeners = buttons.map((button) => {
-    const show = (): void => showTooltip(button);
-    button.addEventListener("mouseenter", show);
-    button.addEventListener("mouseleave", hideTooltip);
-    button.addEventListener("focus", show);
-    button.addEventListener("blur", hideTooltip);
-    return { button, show };
-  });
-
   input.viewport.addEventListener("click", onClick);
   input.viewport.addEventListener("keydown", onKeydown);
   for (const button of input.secondaryButtons) button.addEventListener("click", onClick);
@@ -155,8 +130,8 @@ export function createWorkspaceNavigation(input: {
         if (!workspace) continue;
         const workspaceLabel = workspaces[workspace];
         button.setAttribute("aria-label", workspaceLabel);
-        const tooltip = button.querySelector<HTMLElement>(".action-tooltip");
-        if (tooltip) tooltip.textContent = workspaceLabel;
+        const name = button.querySelector<HTMLElement>(".workspace-name");
+        if (name) name.textContent = workspaceLabel;
       }
       for (const button of input.secondaryButtons) {
         const workspace = button.dataset.workspace as ProductWorkspace | undefined;
@@ -181,13 +156,6 @@ export function createWorkspaceNavigation(input: {
       input.viewport.removeEventListener("click", onClick);
       input.viewport.removeEventListener("keydown", onKeydown);
       for (const button of input.secondaryButtons) button.removeEventListener("click", onClick);
-      for (const { button, show } of tooltipListeners) {
-        button.removeEventListener("mouseenter", show);
-        button.removeEventListener("mouseleave", hideTooltip);
-        button.removeEventListener("focus", show);
-        button.removeEventListener("blur", hideTooltip);
-      }
-      tooltip.remove();
       strip.dispose();
     },
   };

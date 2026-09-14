@@ -3,8 +3,8 @@
 Worldbend is a **free Figma Community plugin**. Designers obtain approved
 updates from the [Worldbend listing](https://www.figma.com/community/plugin/1675767923532475446/worldbend).
 No trial, checkout, subscription, product account or Worldbend cloud service
-is required. Free plugin distribution does not publish or license the private
-source repository.
+is required. Worldbend source is licensed under Apache-2.0. Plugin distribution and source
+publication are separate release actions.
 
 ## Current package and companion effect
 
@@ -12,41 +12,15 @@ The Figma package is `0.3.1`. Figma assigns its own Community version number;
 local package creation and submission do not establish marketplace approval.
 
 The optional [Worldbend Perspective effect](https://www.figma.com/community/shader/1679431734495527701)
-was **rejected** on first submission with two findings: the resource's purpose
-was not clear, and using it could blank the image with no obvious recovery
-(hand-editing a control samples outside the source plane, and shader-effect
-Undo does not restore on the tested Figma build). HD images work independently
-of the effect. Editable output requires access to that exact effect. The plugin
-copies this listing URL from the output dock when the effect is missing; it does
-not submit or publish the Community resource.
+renders editable native content. HD images work independently. Editable output
+requires the exact effect to be available in the file/account; the plugin
+provides its listing URL when it is unavailable. Source builds do not install
+or publish that resource. See [FIGMA_HANDOFF.md](FIGMA_HANDOFF.md) for acquisition,
+manual-control recovery and host Undo behavior.
 
-### Resubmission package (2026-09-11)
-
-The shader source now labels all eleven controls as plugin-written
-(`H00 · set by Worldbend`, …) and keeps identity defaults, so applying the
-effect alone still leaves the image unchanged. Submit the listing with these
-directions:
-
-> **Worldbend Perspective is the companion rendering effect for the free
-> Worldbend plugin — not a standalone filter.** Worldbend's "New Editable
-> Frame" output applies this effect and writes its values automatically; you
-> never need to add or configure it by hand.
->
-> **How to use:** install the Worldbend plugin, select a source, shape it, and
-> choose New Editable Frame. This effect renders that result's perspective
-> while its native text and layout stay editable in Figma.
->
-> **Applied on its own it does not change the image.** Its H and Source values
-> are written by the plugin and are not meant for hand editing; manual edits
-> can render the image blank. To restore: set H00, H11 and H22 to 1, every
-> other H to 0, and both Source values to 1 — or remove the effect from the
-> node (on some Figma builds Undo does not restore shader-effect edits).
-
-If the resubmission publishes under the same resource, update the tested
-build id in `native-renderer.ts` and the README records from the published
-resource; a new listing id additionally requires updating
-`BUNDLED_NATIVE_RENDERER`. Keep the plugin listing's distinction visible and
-update it only after verifying the public acquisition path.
+When changing the companion resource, update its exact identity in
+`native-renderer.ts` from the published definition and verify acquisition. Keep
+submission receipts and marketplace review history outside public documentation.
 
 ## Listing content
 

@@ -1,3 +1,4 @@
+import { assertNoPrivateBuildPaths, assertNoPluginStagingResidue } from "./build-privacy.mjs";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -11,17 +12,6 @@ import { assertWebSdkIntegrity } from "./web-sdk-integrity.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(root, "plugins", "worldbend");
-// A crashed stage-plugin run leaves whole-directory swap residue behind. It
-// must never ship, and byte-comparing residue to residue would pass.
-const STAGING_RESIDUE_PREFIXES = [
-  ".bin-stage-",
-  ".bin-backup-",
-  ".capabilities-stage-",
-  ".capabilities-backup-",
-  ".legal-stage-",
-  ".web-stage-",
-  ".web-backup-",
-];
 const pluginRootReal = await realpath(pluginRoot);
 const pluginRootMetadata = await lstat(pluginRoot);
 assert(
@@ -35,13 +25,19 @@ await assertContainedRegularFile(manifestPath, "plugin manifest");
 const manifest = await readJson(manifestPath);
 const workspacePackage = await readJson(path.join(root, "package.json"));
 const carrierProfiles = await loadCarrierProfiles();
+for (const name of carrierProfiles.carriers.agent.package.requiredExecutables) {
+  const executable = process.platform === "win32" ? `${name}.exe` : name;
+  const binary = path.join(pluginRoot, "bin", executable);
+  await assertContainedRegularFile(binary, `runtime ${name}`);
+  assertNoPrivateBuildPaths(await readFile(binary), [root]);
+}
 
 assert(manifest.name === "worldbend", "plugin name must remain worldbend");
 assert(
   isWorkspacePluginVersion(manifest.version, workspacePackage.version),
   "plugin version must match the workspace version, with only an optional timestamped Codex cachebuster",
 );
-assert(!Object.hasOwn(manifest, "license"), "private plugin manifest must not declare a product license");
+assert(manifest.license === "Apache-2.0", "plugin must declare Apache-2.0");
 assert(
   typeof manifest.description === "string" && manifest.description.length > 0,
   "plugin description is required",
@@ -186,6 +182,8 @@ for (const operation of ["inspect", "render"]) {
 }
 
 for (const relative of [
+  "LICENSE",
+  "NOTICE",
   "THIRD_PARTY_NOTICES.md",
   "licenses/_common/Apache-2.0.txt",
   "sbom/worldbend-macos-arm64.spdx.json",
@@ -196,8 +194,8 @@ const sbom = await readJson(path.join(pluginRoot, "sbom", "worldbend-macos-arm64
 assert(sbom.spdxVersion === "SPDX-2.3", "SBOM must use SPDX 2.3");
 assert(sbom.dataLicense === "CC0-1.0", "SBOM data license must be CC0-1.0");
 assert(
-  sbom.packages?.[0]?.licenseDeclared === "NOASSERTION" && sbom.packages.length > 1,
-  "SBOM must leave Worldbend licensing undecided and identify its third-party runtime closure",
+  sbom.packages?.[0]?.licenseDeclared === "Apache-2.0" && sbom.packages.length > 1,
+  "SBOM must declare Apache-2.0 for Worldbend and identify its third-party runtime closure",
 );
 const notices = await readFile(path.join(pluginRoot, "THIRD_PARTY_NOTICES.md"), "utf8");
 assert(notices.includes("/usr/lib/libiconv.2.dylib"), "notices must identify the macOS native dependency");
@@ -263,10 +261,7 @@ async function assertRegularTree(directory, label) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const child = path.join(directory, entry.name);
     assert(!entry.isSymbolicLink(), `${label} may not contain a symbolic link: ${child}`);
-    assert(
-      !STAGING_RESIDUE_PREFIXES.some((prefix) => entry.name.startsWith(prefix)),
-      `${label} contains staging residue from an interrupted stage: ${child}`,
-    );
+    assertNoPluginStagingResidue(entry.name);
     if (entry.isDirectory()) await assertRegularTree(child, label);
     else assert(entry.isFile(), `${label} must contain only regular files and directories: ${child}`);
   }

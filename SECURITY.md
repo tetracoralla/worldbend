@@ -3,7 +3,8 @@
 Security fixes target the current `main` branch while the project is
 experimental.
 
-Report vulnerabilities through a private repository issue or the owner's
-existing private contact channel. Include the affected revision, a minimal
-reproduction, impact, and suggested mitigation. Do not attach private assets
-or disclose credentials or exploit details outside the private repository.
+Use GitHub's private vulnerability reporting for this repository when enabled.
+If the Security tab does not offer a private report, open an issue requesting
+only a private contact route; do not include vulnerability details there.
+Send the affected revision, minimal reproduction and impact through the private
+route once established. Never attach credentials or private design assets.

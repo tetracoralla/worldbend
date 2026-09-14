@@ -69,10 +69,10 @@ export async function writeWebLegalMaterial({ destination, version = workspaceVe
     artifactVersion: version,
     target: wasmTarget,
     rootPackageNames: ["worldbend-wasm", "worldbend-perspective-wasm"],
-    artifactName: "Worldbend private Web package",
+    artifactName: "Worldbend Web package",
     documentName: "worldbend-web",
     sbomFile: "worldbend-web.spdx.json",
-    noticeIntroduction: "This private Web package embeds the full and focused perspective WebAssembly modules built from locked Rust crates. It declares no Worldbend product license.",
+    noticeIntroduction: "This Web package embeds the full and focused perspective WebAssembly modules built from locked Rust crates. Worldbend is licensed under Apache-2.0.",
     noticeClosure: "the locked wasm32-unknown-unknown non-dev Cargo dependency closure of worldbend-wasm and worldbend-perspective-wasm (union across packaged modules)",
   });
 }
@@ -133,6 +133,7 @@ async function writeCargoLegalMaterial({
   if (crates.length === 0) throw new Error("No registry crates found in native runtime closure");
   await rm(destination, { recursive: true, force: true });
   await mkdir(destination, { recursive: true });
+  for (const file of ["LICENSE", "NOTICE"]) await copyFile(path.join(root, file), path.join(destination, file));
   const licensesRoot = path.join(destination, "licenses");
   await mkdir(licensesRoot);
 
@@ -233,7 +234,8 @@ function makeNotices(
     "",
     `${noticeIntroduction} The SPDX 2.3 inventory is \`sbom/${sbomFile}\`; copied license texts are below \`licenses/\`.`,
     "",
-    "This inventory covers bundled third-party components only.",
+    "This inventory covers bundled third-party components only. Worldbend is Apache-2.0; see LICENSE and NOTICE.",
+    ...(sbomFile.includes("figma") ? ["Figma UI SVG icons are adapted from ByteDance IconPark (https://github.com/bytedance/IconPark), Apache-2.0. See LICENSE for the terms."] : []),
   ];
   if (systemLibraryNote) lines.push("", systemLibraryNote);
   lines.push("", "## Rust non-development dependency closure", "");
@@ -258,7 +260,7 @@ async function makeSpdx(crates, { artifactName, documentName, artifactVersion })
       downloadLocation: "NOASSERTION",
       filesAnalyzed: false,
       licenseConcluded: "NOASSERTION",
-      licenseDeclared: "NOASSERTION",
+      licenseDeclared: "Apache-2.0",
       primaryPackagePurpose: "APPLICATION",
     },
     ...crates.map((crate) => ({

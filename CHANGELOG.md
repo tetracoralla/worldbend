@@ -23,17 +23,6 @@ the first Figma Community release.
   around embedded and headless host builds that reject blob-backed image
   sources with WebGL 1281.
 
-### Verification
-
-- The designer dogfood lane covers all six roadmap tasks end to end on the
-  built plugin UI, including Warp apply through the primary route, reopening
-  and updating a Warp result in place without losing its arc, and Repeat Last
-  Transform from Distort.
-- The same development build passed real Figma Desktop spot checks across
-  the repaired flows — reopening saved results, Warp apply through the
-  primary route, Repeat Last Transform, rapid re-selection, and source
-  replacement — with no defects.
-
 ## 0.3.0 - 2026-09-09
 
 ### Figma continued editing

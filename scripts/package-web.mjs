@@ -24,7 +24,7 @@ try {
   await cp(path.join(root,'docs/PLANE_POSE_CONTRACT.md'),path.join(packageRoot,'PLANE_POSE_CONTRACT.md'));
   // Vite has bundled every runtime import. Source-only workspace dependencies
   // must not escape into the independently installable local package.
-  const pkg={name:source.name,version:manifest.version,private:true,type:'module',exports:source.exports,files:['dist','examples','licenses','sbom','README.md','PLANE_POSE_CONTRACT.md','THIRD_PARTY_NOTICES.md']};
+  const pkg={name:source.name,version:manifest.version,private:true,license:'Apache-2.0',type:'module',exports:source.exports,files:['LICENSE','NOTICE','dist','examples','licenses','sbom','README.md','PLANE_POSE_CONTRACT.md','THIRD_PARTY_NOTICES.md']};
   await writeFile(path.join(packageRoot,'package.json'),JSON.stringify(pkg,null,2)+'\n');
   const archive=JSON.parse(run('npm',['pack','--ignore-scripts','--json','--pack-destination',staging],packageRoot))[0];
   const bytes=await readFile(path.join(staging,archive.filename));
@@ -39,7 +39,7 @@ try {
   const visited=new Set();
   async function visit(name){if(visited.has(name))return;visited.add(name);const data=await readFile(path.join(packageRoot,'dist',name));chunks.push({path:name,bytes:data.length,gzipBytes:gzipSync(data).length});for(const match of data.toString().matchAll(/from\s*["'](\.[^"']+\.js)["']/g))await visit(path.posix.normalize(path.posix.join(path.posix.dirname(name),match[1])));}
   await visit('perspective.js');
-  const report={schema:'worldbend.web-package-observation.v0.1',version:pkg.version,archive:archive.filename,runtimeArchive:`runtime/${runtimeArchive.filename}`,runtimeArchiveBytes:runtimeBytes.length,runtimeArchiveSha256:createHash('sha256').update(runtimeBytes).digest('hex'),archiveBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),focusedModules:chunks,focusedBytes:chunks.reduce((sum,item)=>sum+item.bytes,0),focusedGzipBytes:chunks.reduce((sum,item)=>sum+item.gzipBytes,0),productLicense:'not-declared',runtimeDependencies:[]};
+  const report={schema:'worldbend.web-package-observation.v0.1',version:pkg.version,archive:archive.filename,runtimeArchive:`runtime/${runtimeArchive.filename}`,runtimeArchiveBytes:runtimeBytes.length,runtimeArchiveSha256:createHash('sha256').update(runtimeBytes).digest('hex'),archiveBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),focusedModules:chunks,focusedBytes:chunks.reduce((sum,item)=>sum+item.bytes,0),focusedGzipBytes:chunks.reduce((sum,item)=>sum+item.gzipBytes,0),productLicense:'Apache-2.0',runtimeDependencies:[]};
   await writeFile(path.join(staging,'package-report.json'),JSON.stringify(report,null,2)+'\n');
   // A disposable consumer outside the workspace proves no workspace:* or hidden
   // package-manager resolution is necessary, and executes the packed WASM.

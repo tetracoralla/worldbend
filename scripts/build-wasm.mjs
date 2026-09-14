@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { platformExecutableName } from "./platform-tooling.mjs";
-import { assertNoPrivateBuildPaths, wasmBuildEnvironment } from "./build-privacy.mjs";
+import { assertNoPrivateBuildPaths, rustBuildEnvironment } from "./build-privacy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindgen = path.join(
@@ -67,7 +67,7 @@ assertNoPrivateBuildPaths(await readFile(path.join(output, "worldbend_wasm_bg.wa
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: "inherit", env: wasmBuildEnvironment(root) });
+    const child = spawn(command, args, { cwd: root, stdio: "inherit", env: rustBuildEnvironment(root) });
     child.once("error", reject);
     child.once("exit", (code) => {
       if (code === 0) resolve();

@@ -38,7 +38,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   browser = await launchChrome(await findChrome(), ["--window-size=820,760"]);
-  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "surface-authoring"];
+  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "surface-authoring", "designer-experience"];
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
@@ -48,8 +48,8 @@ try {
     console.log(`Built Figma UI refresh passed: ${scenario}`);
   }
   const compactScenarios = requested.length
-    ? requested.filter((name) => name === "selection-entry")
-    : ["selection-entry"];
+    ? requested.filter((name) => ["selection-entry", "designer-experience"].includes(name))
+    : ["selection-entry", "designer-experience"];
   for (const scenario of compactScenarios) {
     // Plugin windows shrink to Figma's 300 px minimum; the selection entry
     // must survive that width too, not only the comfortable default.
@@ -132,7 +132,51 @@ async function runFixture() {
       return window.fixtureMessages.findLast(message => message.type === "apply-native").payload;
     };
     const scenario = new URL(location.href).searchParams.get("case");
-    if (scenario === "surface-authoring") {
+    if (scenario === "designer-experience") {
+      get("#mode-warp").click();
+      await wait(() => !get("#warp-picker-trigger").disabled, "visual preset entry");
+      get("#warp-picker-trigger").click();
+      await wait(() => document.querySelectorAll("#warp-picker-options svg").length === 11, "core-generated preset thumbnails");
+      check(!get("#warp-picker-options").hidden, "Preset picker closed while thumbnails loaded");
+      get('[data-warp-preset="arc"]').click();
+      await wait(() => get("#warp-picker-trigger").textContent === "Arc" && get("#apply").textContent === "New HD Image" && !get("#apply").disabled, "Arc selection");
+      check(get("#apply").textContent === "New HD Image" && get("#action-apply-copy").hidden, "Warp falsely offers native replacement or duplicates image action");
+      get("#warp-picker-trigger").click();
+      get("#warp-picker-options").dispatchEvent(new KeyboardEvent("keydown", {key:"Escape",bubbles:true}));
+      check(get("#warp-picker-options").hidden && document.activeElement === get("#warp-picker-trigger"), "Escape did not restore picker focus");
+      generation++;
+      send({type:"selection-loading",generation,nodeIds:["art","backdrop"]});
+      const art = {...payload, sourceNodeId:"art",sourceName:"Poster artwork",targetNodeId:undefined,nativeTarget:undefined,nativeRenderer:undefined};
+      const backdrop = {...art,sourceNodeId:"backdrop",sourceName:"Studio scene",placement:{x:800,y:200,width:600,height:400}};
+      send({type:"source",generation,payload:{...art,sources:[art,backdrop]}});
+      await wait(() => !get("#workspace-menu-mockup").disabled, "scene selection");
+      get("#more-options").click(); get("#workspace-menu-mockup").click();
+      const root = get("#mockup-workspace");
+      await wait(() => root.querySelectorAll('[data-role="planes"] button').length === 2, "named scene layers");
+      const thumbnails = [...root.querySelectorAll('.plane-thumbnail')];
+      check(thumbnails.length === 2 && thumbnails.every(node => node instanceof HTMLCanvasElement && node.getContext('2d').getImageData(0,0,64,52).data.some((value,index) => index % 4 === 3 && value > 0)), "Source thumbnails lost decoded artwork");
+      const secondPlane = root.querySelectorAll('[data-role="planes"] button')[1];
+      secondPlane.focus(); secondPlane.click();
+      check(document.activeElement?.getAttribute('aria-selected') === 'true', "Layer selection lost keyboard focus");
+      root.querySelector('[data-role="backdrop"]').click();
+      await wait(() => root.querySelector('[data-role="width"]').value === "600" && !root.querySelector('[data-role="apply"]').disabled, "artwork placed on backdrop");
+      root.querySelector('[data-role="template-name"]').value = "Studio placement";
+      root.querySelector('[data-role="save-template"]').click();
+      await wait(() => window.fixtureMessages.some(m => m.type === "save-template"), "save reusable scene");
+      const saved = window.fixtureMessages.findLast(m => m.type === "save-template");
+      check(saved.template.operation.spec.planes[0].sourceId === "source-2", "Backdrop reordered source identities");
+      send({type:"template-library",templates:[{id:"studio",name:saved.name,template:saved.template}],mutation:{kind:"save",workspace:"mockup",requestId:saved.requestId}});
+      get("#workspace-tab-templates").click();
+      await wait(() => get('.template-item-preview').querySelector('svg'), "reusable scene thumbnail");
+      get('.template-item').click();
+      get('#templates-workspace [data-role="apply"]').click();
+      await wait(() => !root.hidden && !root.querySelector('[data-role="apply"]').disabled, "reopen scene template");
+      const seen = window.fixtureMessages.length;
+      root.querySelector('[data-role="apply"]').click();
+      await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "apply-designer"), "scene output");
+      const published = window.fixtureMessages.findLast(m => m.type === "apply-designer");
+      check(published.payload.task.spec.planes[0].sourceId === "source-2", "Publication lost backdrop source mapping");
+    } else if (scenario === "surface-authoring") {
       const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       get("#more-options").click(); get("#workspace-menu-surface").click();
       const panel = "#surface-workspace";
@@ -636,10 +680,10 @@ async function runFixture() {
       get("#warp-preset").value = "arc";
       get("#warp-preset").dispatchEvent(new Event("change", { bubbles: true }));
       await wait(() => get("#action-apply-editable").disabled && !get("#action-apply-copy").disabled, "Warp raster-only outputs");
-      const warped = await publish("#action-apply-copy", "apply", true, "apply");
+      const warped = await publish("#apply", "apply", false, "apply");
       check(Boolean(warped.spec.content.warp), "HD copy lost Warp");
       const warpAmount = get("#warp-amount").value;
-      get("#action-apply-copy").focus(); get("#warp-amount").value = "9";
+      get("#apply").focus(); get("#warp-amount").value = "9";
       get("#warp-amount").dispatchEvent(new InputEvent("input", { inputType: "historyUndo", bubbles: true }));
       check(get("#warp-amount").value === warpAmount, "Blurred Warp history changed the published draft");
       await refresh({ ...original, sourceNodeId: "correction-source" });

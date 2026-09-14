@@ -51,7 +51,7 @@ describe("Figma product workspace markup", () => {
       expect(buttonStart).toBeGreaterThan(-1);
       expect(buttonMarkup).toContain(`id="workspace-tab-${workspace}"`);
       expect(buttonMarkup).toContain(`data-icon-id="${icon}"`);
-      expect(buttonMarkup).toContain('class="action-tooltip"');
+      expect(buttonMarkup).toContain('class="workspace-name"');
       expect(buttonMarkup).toContain("aria-label=");
       const panelId = workspace === "perspective" ? "controls" : `${workspace}-workspace`;
       const panelStart = html.indexOf(`<section id="${panelId}"`);

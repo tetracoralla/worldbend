@@ -57,11 +57,13 @@
       #workspace-strip-viewport { flex: 1; }
       #workspace-items { width: max-content; display: flex; align-items: center; gap: 4px; }
       .workspace-tab, #more-options, .strip-arrow { position: relative; width: 36px; height: 36px; display: grid; flex: none; border-color: transparent; border-radius: 9px; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); background: transparent; transition: color var(--wb-motion), background var(--wb-motion), transform var(--wb-motion); }
+      .workspace-tab { width: auto; display: flex; gap: 7px; padding: 0 10px; }
+      .workspace-name { font-weight: 500; white-space: nowrap; }
+      @media (max-width: 390px) { .workspace-tab { padding: 0 8px; gap: 5px; } .workspace-tab .ui-icon { display: none; } }
       .workspace-tab .ui-icon { width: 18px; height: 18px; }
       .workspace-tab:not(:disabled):hover, .workspace-tab:focus-visible, #more-options:hover, #more-options:focus-visible { color: var(--figma-color-text, #333); background: var(--wb-control-hover); }
       .workspace-tab[aria-selected="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
       .workspace-tab .action-tooltip { display: none; }
-      .workspace-navigation-tooltip { position: absolute; z-index: 50; max-width: 180px; border-radius: 4px; padding: 4px 6px; color: #fff; background: rgb(30 30 30 / 94%); box-shadow: 0 2px 8px rgb(0 0 0 / 20%); font-size: 10px; font-weight: 500; line-height: 1.25; pointer-events: none; transform: translateX(-50%); white-space: nowrap; }
       .strip-arrow { width: 24px; border-radius: 5px; color: var(--figma-color-text-secondary, #777); }
       .strip-arrow .ui-icon { width: 14px; height: 14px; }
       .strip-arrow--backward .ui-icon { transform: rotate(180deg); }
@@ -198,10 +200,17 @@
       .designer-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
       .template-workspace .designer-body { grid-template-columns: minmax(0, 1fr); }
       .template-workspace .designer-preview { display: block; overflow: auto; padding: 20px 22px; background: var(--figma-color-bg-secondary, #f5f5f5); }
-      .template-list { display: grid; gap: 9px; max-width: 560px; margin: 0 auto; }
-      .template-item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 54px; padding: 11px 13px; border-color: transparent; border-radius: 10px; text-align: left; background: var(--figma-color-bg, #fff); box-shadow: 0 1px 2px rgb(0 0 0 / 5%); transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion), transform var(--wb-motion); }
+      .plane-thumbnail { width: 32px; height: 26px; object-fit: contain; flex: none; border-radius: 3px; background: var(--wb-control-bg); }
+      [data-role="planes"] button { min-width: 0; display: flex; align-items: center; gap: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+      [data-role="planes"] button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      [data-role="planes"] { flex-direction: column; align-items: stretch; }
+      .template-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; max-width: 800px; margin: 0 auto; }
+      .template-item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 5px; min-height: 54px; padding: 11px 13px; border-color: transparent; border-radius: 10px; text-align: left; background: var(--figma-color-bg, #fff); box-shadow: 0 1px 2px rgb(0 0 0 / 5%); transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion), transform var(--wb-motion); }
       .template-item:hover { border-color: var(--figma-color-border, #d6d6d6); box-shadow: 0 4px 12px rgb(0 0 0 / 8%); transform: translateY(-1px); }
       .template-item[aria-pressed="true"] { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .template-empty { grid-column: 1 / -1; }
+      .template-item-preview { display: block; height: 96px; border-radius: 6px; background: var(--wb-control-bg); color: var(--figma-color-text-brand, #0d99ff); }
+      .template-item-preview svg { width: 100%; height: 100%; }
       .template-item-name { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
       .template-item-detail { color: var(--figma-color-text-secondary, #777); font-size: 10px; white-space: nowrap; }
       .template-empty { min-height: 300px; display: grid; align-content: center; justify-items: center; gap: 10px; color: var(--figma-color-text-secondary, #777); }
@@ -265,6 +274,16 @@
       #rectify-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       #rectify-options[hidden] { display: none; }
       .rectify-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 34px; }
+
+      .warp-picker { position: relative; grid-column: 2 / -1; min-width: 0; }
+      #warp-picker-trigger { width: 100%; height: 36px; text-align: left; padding: 5px 12px; background: var(--wb-control-bg); border-color: transparent; }
+      #warp-picker-trigger::after { content: ""; float: right; width: 6px; height: 6px; border-right: 1px solid; border-bottom: 1px solid; transform: translateY(4px) rotate(45deg); }
+      .warp-picker-options { position: fixed; z-index: 60; width: min(360px, calc(100vw - 16px)); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 8px; overflow: auto; border: 1px solid var(--figma-color-border, #ddd); border-radius: 12px; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 32px #0003; }
+      .warp-picker-options[hidden] { display: none; }
+      .warp-picker-options button { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; border-color: transparent; background: var(--wb-control-bg); }
+      .warp-picker-options button svg { display: block; width: 100%; height: 48px; color: var(--figma-color-text-brand, #0d99ff); }
+      .warp-picker-options button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+      .warp-picker-options button[aria-pressed="true"] { border-color: var(--figma-color-border-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
       .warp-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) 72px; gap: 8px; align-items: center; min-height: 34px; }
       #warp-preset { grid-column: 2 / -1; width: 100%; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 5px 9px; color: inherit; background: var(--wb-control-bg); font: inherit; }
       #warp-preset:hover { border-color: var(--figma-color-border, #d6d6d6); background: var(--figma-color-bg, #fff); }
@@ -383,9 +402,9 @@
       </button>
       <div id="workspace-strip-viewport" class="horizontal-strip-viewport">
         <div id="workspace-items" role="tablist" aria-orientation="horizontal">
-          <button id="workspace-tab-perspective" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="perspective" aria-controls="controls" aria-selected="true" aria-label="Perspective"><span class="ui-icon" data-icon-id="icon-park:perspective" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 28V36L31 38.6M44 28L4 32M44 28V20M4 32V44L17 41.4M4 32V16M44 20V12L31 9.4M44 20L4 16M4 16V4L17 6.6M31 9.4V38.6M31 9.4L17 6.6M31 38.6L17 41.4M17 6.6V41.4" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Perspective</span></button>
-          <button id="workspace-tab-canvas" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="canvas" aria-controls="canvas-workspace" aria-selected="false" aria-label="Sizes"><span class="ui-icon" data-icon-id="icon-park:scale" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 6H42V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 29L19 29L19 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 6L19 29" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 6H8C6.89543 6 6 6.89543 6 8V40C6 41.1046 6.89543 42 8 42H40C41.1046 42 42 41.1046 42 40V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Sizes</span></button>
-          <button id="workspace-tab-templates" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="templates" aria-controls="templates-workspace" aria-selected="false" aria-label="Templates"><span class="ui-icon" data-icon-id="icon-park:page-template" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23 4H4V26H23V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H4V43H44V34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 4H31V12H44V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 18H31V26H44V18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Templates</span></button>
+          <button id="workspace-tab-perspective" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="perspective" aria-controls="controls" aria-selected="true" aria-label="Perspective"><span class="ui-icon" data-icon-id="icon-park:perspective" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 28V36L31 38.6M44 28L4 32M44 28V20M4 32V44L17 41.4M4 32V16M44 20V12L31 9.4M44 20L4 16M4 16V4L17 6.6M31 9.4V38.6M31 9.4L17 6.6M31 38.6L17 41.4M17 6.6V41.4" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Perspective</span></button>
+          <button id="workspace-tab-canvas" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="canvas" aria-controls="canvas-workspace" aria-selected="false" aria-label="Sizes"><span class="ui-icon" data-icon-id="icon-park:scale" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 6H42V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 29L19 29L19 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 6L19 29" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 6H8C6.89543 6 6 6.89543 6 8V40C6 41.1046 6.89543 42 8 42H40C41.1046 42 42 41.1046 42 40V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Sizes</span></button>
+          <button id="workspace-tab-templates" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="templates" aria-controls="templates-workspace" aria-selected="false" aria-label="Templates"><span class="ui-icon" data-icon-id="icon-park:page-template" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23 4H4V26H23V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H4V43H44V34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 4H31V12H44V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 18H31V26H44V18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Templates</span></button>
         </div>
       </div>
       <button id="workspace-forward" class="strip-arrow" type="button" aria-label="Next tools" hidden>

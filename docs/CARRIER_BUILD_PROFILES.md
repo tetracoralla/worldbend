@@ -95,3 +95,12 @@ operations is owned by `docs/RASTER_PROGRAM_CONTRACT.md`. Every new Agent family
 operation catalog and may not grow the Perspective or Canvas interfaces into a
 generic Photoshop panel, add speculative registry schema, or multiply
 top-level Agent tools per primitive.
+
+## Build-path privacy
+
+Use the repository packaging commands for distribution. Rust and WASM builds
+remap the checkout and dependency-cache roots to stable relative labels,
+preserving useful source locations without disclosing the builder's home
+directory. Native staging and package validation reject embedded private build
+paths; Figma validation also checks the decompressed WASM inside the HTML.
+A raw `cargo build` is a development output and is not a distribution check.

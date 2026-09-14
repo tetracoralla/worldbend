@@ -35,6 +35,7 @@ import {
 } from "./stored-template-library";
 
 export interface MockupWorkspaceCopy extends DesignerWorkspaceCopy {
+  backdrop: string;
   width: string;
   height: string;
   opacity: string;
@@ -66,6 +67,7 @@ export function createMockupWorkspace(input: {
 }): MockupTaskWorkspace {
   const shell = createDesignerWorkspaceShell(input.root);
   shell.inspector.innerHTML = `<div class="designer-tabs" data-role="planes" role="tablist"></div>
+    <button data-role="backdrop" type="button"></button>
     <div class="designer-row"><label class="designer-field"><span data-role="width-label"></span><input data-role="width" type="number" min="1" max="4096" step="1"></label><label class="designer-field"><span data-role="height-label"></span><input data-role="height" type="number" min="1" max="4096" step="1"></label></div>
     <div class="inspector-divider" aria-hidden="true"></div>
     <label class="designer-field"><span data-role="opacity-label"></span><input data-role="opacity" type="range" min="0" max="100" step="1"></label>
@@ -75,6 +77,7 @@ export function createMockupWorkspace(input: {
     <label class="designer-field"><span data-role="template-name-label"></span><input data-role="template-name" type="text" maxlength="80"></label>
     <span class="designer-row"><button data-role="save-template" type="button"></button> <button data-role="copy-parameters" type="button"></button></span>`;
   const planes = role<HTMLDivElement>(shell.inspector, "planes");
+  const backdrop = role<HTMLButtonElement>(shell.inspector, "backdrop");
   const width = role<HTMLInputElement>(shell.inspector, "width");
   const height = role<HTMLInputElement>(shell.inspector, "height");
   const opacity = role<HTMLInputElement>(shell.inspector, "opacity");
@@ -120,6 +123,20 @@ export function createMockupWorkspace(input: {
   const previewFrames = createFrameCoalescer(() => void render("preview", false));
 
   shell.back.addEventListener("click", input.onBack);
+  backdrop.addEventListener("click", () => {
+    if (!spec || !source || busy || refreshing) return;
+    const next = placeOnBackdrop(spec, activePlaneId, source.sources);
+    if (!next) return;
+    spec = next;
+    history?.push(spec);
+    phase = "ready";
+    undoRouted = false;
+    appliedResultPending = false;
+    activePlaneId = spec.planes[1]?.id ?? spec.planes[0]!.id;
+    clearFeedback();
+    renderControls();
+    void render();
+  });
   shell.reset.addEventListener("click", () => {
     if (!baseline) return;
     spec = structuredClone(baseline);
@@ -263,18 +280,45 @@ export function createMockupWorkspace(input: {
 
   function renderControls(): void {
     if (!spec) return;
+    backdrop.textContent = input.copy().backdrop;
+    backdrop.disabled = busy || refreshing || spec.planes.length < 2;
     width.value = String(spec.canvas.width);
     height.value = String(spec.canvas.height);
+    const restorePlaneFocus = planes.contains(document.activeElement);
     planes.replaceChildren();
     for (const plane of spec.planes) {
       const button = document.createElement("button");
       button.type = "button";
       button.role = "tab";
-      button.textContent = plane.id;
+      const artwork = source ? sourceForPlane(source.sources, plane.sourceId) : undefined;
+      const name = document.createElement("span");
+      name.textContent = artwork?.sourceName ?? plane.id;
+      button.append(name);
+      button.title = name.textContent;
+      button.tabIndex = plane.id === activePlaneId ? 0 : -1;
+      if (artwork) {
+        const thumbnail = document.createElement("canvas");
+        thumbnail.width = 64; thumbnail.height = 52;
+        thumbnail.setAttribute("aria-hidden", "true");
+        const fit = Math.min(64 / artwork.image.width, 52 / artwork.image.height);
+        const w = artwork.image.width * fit, h = artwork.image.height * fit;
+        thumbnail.getContext("2d")?.drawImage(artwork.image, (64 - w) / 2, (52 - h) / 2, w, h);
+        thumbnail.className = "plane-thumbnail";
+        button.prepend(thumbnail);
+      }
       button.setAttribute("aria-selected", String(plane.id === activePlaneId));
       button.addEventListener("click", () => { activePlaneId = plane.id; renderControls(); renderOverlay(); });
+      button.addEventListener("keydown", event => {
+        const tabs = [...planes.querySelectorAll<HTMLButtonElement>("button")];
+        const index = tabs.indexOf(button);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : event.key === "ArrowDown" ? (index + 1) % tabs.length : event.key === "ArrowUp" ? (index + tabs.length - 1) % tabs.length : -1;
+        if (next < 0) return;
+        event.preventDefault();
+        tabs[next]?.click();
+      });
       planes.append(button);
     }
+    if (restorePlaneFocus) planes.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus({ preventScroll: true });
     const active = activePlane();
     opacity.value = String(Math.round((active?.opacity ?? 1) * 100));
     grid.checked = Boolean(active?.grid);
@@ -543,3 +587,22 @@ function drawGrid(context: CanvasRenderingContext2D, grid: { vertical: Array<{ s
   context.restore();
 }
 function role<T extends HTMLElement>(root: HTMLElement, name: string): T { const value = root.querySelector<HTMLElement>(`[data-role="${name}"]`); if (!value) throw new Error(`Missing mockup workspace role ${name}`); return value as T; }
+
+/** Explicit layout command; emits only the existing shared MockupSpec. */
+export function placeOnBackdrop(spec: MockupSpecInput, planeId: string, sources: readonly LoadedDesignerSource[]): MockupSpecInput | undefined {
+  const backdrop = spec.planes.find(plane => plane.id === planeId);
+  const background = backdrop && sourceForPlane(sources, backdrop.sourceId);
+  if (!backdrop || !background || spec.planes.length < 2) return undefined;
+  const scale = Math.min(1, 4096 / background.placement.width, 4096 / background.placement.height);
+  const canvas = { width: Math.max(1, Math.round(background.placement.width * scale)), height: Math.max(1, Math.round(background.placement.height * scale)) };
+  const full = normalizedSpec({ tl:{x:0,y:0},tr:{x:1,y:0},br:{x:1,y:1},bl:{x:0,y:1} });
+  const planes = [ { ...backdrop, opacity: 1, transform: full }, ...spec.planes.filter(plane => plane.id !== planeId).map(plane => {
+    const artwork = sourceForPlane(sources, plane.sourceId);
+    if (!artwork) return plane;
+    const fit = Math.min(canvas.width * 0.65 / artwork.placement.width, canvas.height * 0.65 / artwork.placement.height);
+    const w = artwork.placement.width * fit / canvas.width, h = artwork.placement.height * fit / canvas.height;
+    const x = (1 - w) / 2, y = (1 - h) / 2;
+    return { ...plane, transform: { ...plane.transform, destination: normalizedSpec({tl:{x,y},tr:{x:x+w,y},br:{x:x+w,y:y+h},bl:{x,y:y+h}}).destination } };
+  }) ];
+  return { ...spec, canvas, planes, seams: [] };
+}

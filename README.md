@@ -15,14 +15,16 @@ contracts. PSD interoperability is bounded, read-only Smart Object inspection
 and Spatial Template projection rather than a Photoshop document editor.
 
 > Project status: the shared core and Agent toolchain remain an experimental
-> `0.1.0` commercial pre-release. The Figma `0.3.1` package includes the HD image
+> `0.1.0` pre-release. The Figma `0.3.1` package includes the HD image
 > and editable-result workflows in [FIGMA_HANDOFF.md](docs/FIGMA_HANDOFF.md).
-> Editable output requires the companion Worldbend Perspective effect; its
-> first Community submission was rejected and a labeled resubmission is
-> prepared. HD output works independently.
-> Source is maintained in a private repository. The transform
+> Editable output requires the companion Worldbend Perspective effect.
+> HD output works independently.
+> Source is licensed under Apache-2.0. The transform
 > and error contracts are versioned, but compatibility guarantees may tighten
 > before `1.0.0`.
+
+For a practical designer-to-Agent flow, see
+[reuse a design in a scene](docs/SCENE_WORKFLOW.md).
 
 ## What is included
 
@@ -67,14 +69,12 @@ and Spatial Template projection rather than a Photoshop document editor.
 ## Build and verify
 
 ```bash
-git clone git@github.com:tetracoralla/worldbend.git
+git clone https://github.com/tetracoralla/worldbend.git
 cd worldbend
 pnpm bootstrap:wasm
 pnpm install --frozen-lockfile
 pnpm check
 ```
-
-Repository access is limited to explicitly authorized collaborators.
 
 `pnpm bootstrap:wasm` installs the matching `wasm-bindgen` CLI under the
 ignored `.tools/` directory. `pnpm check` covers formatting, linting, Rust and
@@ -257,11 +257,14 @@ The product boundary is in
 
 ## Collaboration and security
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing a private change.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing a change.
 Report security problems only through the private route described in
 [`SECURITY.md`](SECURITY.md). Binary distributions retain the notices required
 by their bundled third-party dependencies.
 
-The product license status is recorded in [LICENSE-STATUS.md](LICENSE-STATUS.md).
+Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) and
+[third-party notices](THIRD_PARTY_NOTICES.md). Apache-2.0 permits commercial use
+and closed-source derivatives, includes an express patent grant, and grants
+no trademark rights. Input artwork retains its own ownership and license.
 Keep task plans, review notes and local evidence in the ignored `.task-notes/`
 directory; they are not part of source or binary distribution.

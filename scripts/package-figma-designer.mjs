@@ -74,6 +74,8 @@ await rm(archivePath, { force: true });
 await writeFigmaLegalMaterial({ destination: packageRoot, version: packageMetadata.version });
 const legalFiles = await listRegularFiles(packageRoot);
 const requiredLegalFiles = [
+  "LICENSE",
+  "NOTICE",
   "THIRD_PARTY_NOTICES.md",
   "sbom/worldbend-figma-wasm.spdx.json",
 ];

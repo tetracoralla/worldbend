@@ -1,7 +1,6 @@
 # Worldbend executable contract v0.1
 
-The broader Photoshop-style direction and operation priority are recorded in
-`docs/TRANSFORM_ROADMAP.md`. This contract continues to own the stable
+See [PRODUCT_MODEL.md](PRODUCT_MODEL.md) for product capabilities. This contract owns the
 TransformSpec, a semantic affine composer, and one bounded common-preset Warp
 slice without weakening existing plane validation.
 
@@ -546,8 +545,8 @@ The Figma `perspective` workspace keeps the checked operation order Transform,
 Distort, Warp, Correct. Free and Perspective are Distort-local peer choices:
 the subgroup is visible only while Distort is active, and the top-level
 Distort mode button is the control that re-enters it from any other mode. One
-persistent icon-only workspace navigation with localized pointer-hover and
-keyboard-focus tooltips holds the repeat-use `perspective`, `canvas`, and
+persistent labeled workspace navigation with localized visible names and
+keyboard focus holds the repeat-use `perspective`, `canvas`, and
 `templates` workspaces plus overflow scroll affordances and the More control.
 More exposes the replacing `mockup`, `mesh`, `surface`, and `remap` workspaces as
 task-labeled advanced transforms. Their canonical IDs and stored semantics do
@@ -661,7 +660,7 @@ control language. Its popover contains task-labeled advanced transforms,
 secondary session actions, the explicit output-density policy, and language.
 Its Perspective-only entries hide inside task workspaces while the advanced
 transform entries and language remain available. Perspective, Sizes, and
-Templates remain icon-only primary peers; when an advanced workspace is active,
+Templates remain labeled primary peers; when an advanced workspace is active,
 More carries its selected emphasis without hiding the current workspace.
 Navigation into a replacing parameter surface uses a right-facing enter arrow;
 down arrows are reserved for dropdown or disclosure behavior. Product icons

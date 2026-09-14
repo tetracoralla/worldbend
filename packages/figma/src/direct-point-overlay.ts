@@ -358,6 +358,7 @@ export function createDirectPointOverlay(input: {
           selected = new Set([point.id]);
           syncPressed();
         }
+        button.focus({ preventScroll: true });
         beginDrag(event, point, button);
       });
       button.addEventListener("pointermove", (event) => {

@@ -1,6 +1,6 @@
 # Spatial Template and Variation Job contract
 
-Status: implementation contract for the owner-authorized reusable-production
+Status: implementation contract for the reusable-production
 foundation.
 
 ## Purpose and current consumers
@@ -144,7 +144,7 @@ The historical eight direct MCP tools remain frozen.
 Figma authors and reuses templates through the dedicated quiet Templates
 workspace and the existing Mockup and Sizes task objects. Templates is a fifth
 replacing sibling workspace; it does not enter Perspective `EditorMode` or add
-controls to the frozen Perspective operation bar. The contract does not
+controls to the Perspective operation bar. The contract does not
 authorize a layers panel, job dashboard, source-path storage, or Agent/runtime
 metadata in the human surface. A Mockup library entry remains the canonical
 single-output Spatial Template above. A Sizes-only library entry uses the

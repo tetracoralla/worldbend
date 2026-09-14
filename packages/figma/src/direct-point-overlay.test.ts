@@ -10,6 +10,7 @@ class OverlayElement extends EventTarget {
   attributes: Record<string, string> = {};
   className = "";
   type = "";
+  focus = vi.fn();
   captured = new Set<number>();
   setAttribute(name: string, value: string) { this.attributes[name] = value; }
   getAttribute(name: string) { return this.attributes[name]; }
@@ -45,6 +46,7 @@ it("keeps off-center grabs fixed until movement and uses the same offset for win
   onMove.mockClear();
   send(button, "pointerdown", 322, 142); // 12 px right, 8 px above its center.
   expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.525, y: 0.5 }, false);
+  expect(button.focus).toHaveBeenCalledWith({ preventScroll: true });
   expect(button.style).toMatchObject({ left: "210px", top: "100px" });
   send(button, "pointermove", 342, 152);
   expect(onMove).toHaveBeenLastCalledWith("point", { x: 0.575, y: 0.55 }, false);

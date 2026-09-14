@@ -1,6 +1,6 @@
 # Worldbend Canvas contract
 
-Status: implementation contract for the owner-authorized Canvas and
+Status: implementation contract for the Canvas and
 multi-output phase.
 
 ## Boundary
@@ -178,7 +178,7 @@ ceiling. One Canvas Set occupies one slot.
 ## Carrier projections
 
 Figma exposes Canvas as a sibling `ProductWorkspace`, not an `EditorMode`.
-Perspective keeps its frozen Transform, Free, Perspective, Warp, Correct, More
+Perspective keeps its Transform, Free, Perspective, Warp, Correct, More
 sequence. A compact icon beside the selected source identity opens a short task
 menu; Sizes enters the sibling workspace without entering the mode bar or More
 menu. The human workspace exposes 1..8 named ordered outputs and all six

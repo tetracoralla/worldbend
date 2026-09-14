@@ -1,3 +1,4 @@
+import { rustBuildEnvironment, assertNoPrivateBuildPaths } from "./build-privacy.mjs";
 import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -53,6 +54,7 @@ try {
     const executable = executableName(name);
     const destination = path.join(staging, executable);
     await copyFile(path.join(root, "target", "release", executable), destination);
+    assertNoPrivateBuildPaths(await readFile(destination), [root]);
     if (process.platform !== "win32") await chmod(destination, 0o755);
     const version = (
       await run(destination, ["--version"], { capture: true, timeout: 5_000 })
@@ -104,6 +106,8 @@ try {
       staging: capabilityStaging,
     },
     ...[
+      "LICENSE",
+      "NOTICE",
       "licenses",
       "sbom",
       "THIRD_PARTY_NOTICES.md",
@@ -175,6 +179,7 @@ function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: root,
+      env: command === "cargo" ? rustBuildEnvironment(root) : process.env,
       stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
       timeout: options.timeout,
       killSignal: "SIGKILL",

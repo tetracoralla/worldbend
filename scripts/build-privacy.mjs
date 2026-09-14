@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 
-export function wasmBuildEnvironment(root, environment = process.env, home = homedir()) {
+export function rustBuildEnvironment(root, environment = process.env, home = homedir()) {
   const flags = environment.CARGO_ENCODED_RUSTFLAGS !== undefined
     ? environment.CARGO_ENCODED_RUSTFLAGS.split("\x1f").filter(Boolean)
     : (environment.RUSTFLAGS ?? "").split(/\s+/).filter(Boolean);
@@ -35,4 +35,11 @@ export function assertFigmaRuntimePrivacy(ui, main, roots = []) {
     if (decoded.subarray(0, 4).equals(Buffer.from([0, 97, 115, 109]))) wasmCount++;
   }
   if (wasmCount !== 1) throw new Error("Expected one embedded WASM module for the Figma privacy check");
+}
+
+export function assertNoPluginStagingResidue(name) {
+  if (/^\.(?:bin|capabilities|legal|web)-(?:stage|backup)-/.test(name) ||
+      /^\.(?:LICENSE|NOTICE|licenses|sbom|THIRD_PARTY_NOTICES\.md)\.backup-/.test(name)) {
+    throw new Error("Plugin contains staging residue from an interrupted stage");
+  }
 }

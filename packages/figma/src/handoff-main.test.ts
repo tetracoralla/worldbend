@@ -191,6 +191,45 @@ describe("designer and Agent handoff", () => {
     expect(h.source.width).toBe(original.width); expect(h.source.fills).toEqual(original.fills);
   });
 
+  it.each(["warp", "rectify"] as const)("publishes a %s raster beside an open native result", async (mode) => {
+    vi.useFakeTimers(); const h = host();
+    const result = await publishNativeResult({ source: h.source, renderer, spec,
+      inverse: [1 / 520, 0, 0, 0, 1 / 606, 0, 0, 0, 1],
+      placement: { x: 800, y: 0, width: 520, height: 606 }, renderWidth: 520, renderHeight: 606,
+    });
+    h.page.selection = [result];
+    await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await vi.advanceTimersByTimeAsync(0);
+    const { payload, generation } = h.posts.findLast(p => p.type === "source");
+    expect(payload.nativeTarget).toBe(true);
+    const rasterSpec = { ...spec, content: { ...spec.content, warp: { preset: "arc" as const, amount: 0.5 } } };
+    const rectification = { schema: "worldbend.rectify" as const, version: "0.1" as const,
+      source: { space: "normalized" as const, quad: spec.destination.quad }, output: { width: 1040, height: 1212 } };
+    // The primary Apply in Warp/Correct mode is the HD route and carries the
+    // native frame's targetNodeId without a duplicate flag.
+    h.api.ui.onmessage?.({ type: "apply", payload: {
+      generation, sourceNodeId: payload.sourceNodeId, targetNodeId: result.id,
+      ...(mode === "warp" ? { spec: rasterSpec } : { rectification }),
+      bytes: new Uint8Array([9]), renderWidth: 1040, renderHeight: 1212,
+      placement: { x: 800, y: 0, width: 520, height: 606 },
+    } });
+    await vi.advanceTimersByTimeAsync(0);
+    const complete = h.posts.at(-1);
+    expect(complete).toMatchObject({ type: "apply-complete", operation: "apply" });
+    expect(complete.targetNodeId).not.toBe(result.id);
+    const published = h.registry.get(complete.targetNodeId);
+    expect(published.type).toBe("RECTANGLE");
+    expect(readStoredOperation(published)).toEqual({ status: "valid", operation: mode === "warp"
+      ? { kind: "transform", spec: rasterSpec } : { kind: "rectify", spec: rectification } });
+    expect(readStoredBinding(published)?.sourceNodeIds).toEqual([payload.sourceNodeId]);
+    // The editable result keeps its projection instead of being overwritten.
+    expect(result.type).toBe("FRAME");
+    expect(await nativeDocumentParts(result)).toBeDefined();
+    expect(h.api.viewport.scrollAndZoomIntoView).toHaveBeenCalledWith(
+      expect.arrayContaining([published, result]),
+    );
+  });
+
   it("rejects a tagged result with missing transform data instead of applying perspective to its pixels again", async () => {
     vi.useFakeTimers(); const h = host(); const result = h.api.createRectangle();
     writeStoredBinding(result, { sourceNodeIds: [h.source.id], renderWidth: 1040, renderHeight: 1212 });

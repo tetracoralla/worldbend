@@ -846,27 +846,38 @@ async function applyResult(
     let existing: RectangleNode | undefined;
     // Apply-as-copy keeps an existing pair result untouched and publishes a
     // new rectangle instead of replacing in place.
+    let besideNativeResult = false;
     if (payload.targetNodeId && !payload.duplicate) {
       const target = await figma.getNodeByIdAsync(payload.targetNodeId);
       if (requestGeneration !== selectionGeneration || reloadScheduled) {
         throw userError("selectionChanged");
       }
-      if (!target || target.type !== "RECTANGLE") {
+      if (!target) {
         throw userError("resultUnavailable");
       }
-      const stored = readStoredOperation(target);
-      const targetRaster = storedRasterSize(target) ?? {
-        width: checkedOutputAxis(target.width),
-        height: checkedOutputAxis(target.height),
-      };
-      if (
-        stored.status !== "valid" ||
-        targetRaster.width !== prepared.renderWidth ||
-        targetRaster.height !== prepared.renderHeight
-      ) {
-        throw userError("resultChanged");
+      if (target.type === "FRAME") {
+        // The open selection is a native result, and a raster publication
+        // (Warp or Correct) cannot replace it: publish a new image beside the
+        // editable frame instead of failing the only available output route.
+        besideNativeResult = true;
+      } else {
+        if (target.type !== "RECTANGLE") {
+          throw userError("resultUnavailable");
+        }
+        const stored = readStoredOperation(target);
+        const targetRaster = storedRasterSize(target) ?? {
+          width: checkedOutputAxis(target.width),
+          height: checkedOutputAxis(target.height),
+        };
+        if (
+          stored.status !== "valid" ||
+          targetRaster.width !== prepared.renderWidth ||
+          targetRaster.height !== prepared.renderHeight
+        ) {
+          throw userError("resultChanged");
+        }
+        existing = target;
       }
-      existing = target;
     }
 
     const storedOperation: StoredOperation = payload.rectification
@@ -896,7 +907,7 @@ async function applyResult(
       renderHeight: payload.renderHeight,
     });
     const zoomContext: SceneNode[] = [source];
-    if (payload.targetNodeId && payload.duplicate) {
+    if (payload.targetNodeId && (payload.duplicate || besideNativeResult)) {
       const pairTarget = await figma.getNodeByIdAsync(payload.targetNodeId);
       if (pairTarget && isSceneNode(pairTarget)) zoomContext.push(pairTarget);
     }

@@ -19,5 +19,6 @@
     "typescript": "7.0.2",
     "vite": "7.3.6",
     "vite-plugin-singlefile": "2.3.3"
-  }
+  },
+  "license": "Apache-2.0"
 }
