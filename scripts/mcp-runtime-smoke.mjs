@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
   rm,
@@ -189,6 +190,7 @@ async function main() {
     client = new StdioClient(mcp, ["--root", fixtureRoot]);
     await client.initialize();
     await checkToolCatalog(client);
+    await checkSpecialFileRecovery(client);
     await checkCompose(client);
     await checkSolveAndStructuredErrors(client);
     await checkEveryToolRejectsUnknownFields(client);
@@ -208,6 +210,50 @@ async function main() {
     if (fixtureValidated) await rm(fixtureRoot, { recursive: true, force: true });
     await rm(stagingRoot, { recursive: true, force: true });
   }
+}
+
+async function checkSpecialFileRecovery(activeClient) {
+  if (process.platform === "win32") return;
+  const fifo = path.join(fixtureRoot, "blocked.fifo");
+  const created = spawnSync("mkfifo", [fifo], { encoding: "utf8" });
+  assert.equal(created.status, 0, created.stderr);
+  const request = activeClient.beginRequest("tools/call", {
+    name: "worldbend.render",
+    arguments: {
+      source: "blocked.fifo",
+      output: "out/fifo.png",
+      dryRun: true,
+      spec: pixelSpec,
+    },
+  });
+  const started = Date.now();
+  const outcome = await Promise.race([
+    request.promise.then(response => ({ kind: "response", response })),
+    new Promise(resolve => setTimeout(() => resolve({ kind: "timeout" }), 1_500)),
+  ]);
+  if (outcome.kind === "timeout") {
+    // Unblock a regressed read-only FIFO open without risking another blocking
+    // writer, then consume the pending response before failing this smoke.
+    try {
+      const writer = await open(fifo, constants.O_WRONLY | constants.O_NONBLOCK);
+      await writer.close();
+    } catch (error) {
+      if (error?.code !== "ENXIO") throw error;
+    }
+    await request.promise.catch(() => undefined);
+    assert.fail("MCP source preflight blocked on a FIFO before returning its type error");
+  }
+  expectToolError(outcome.response, "E_PATH_OUTSIDE_ROOT");
+  assert(Date.now() - started < 1_500, "FIFO rejection exceeded its bounded preflight window");
+
+  const recovered = await activeClient.callTool("worldbend.render", {
+    source: "source.png",
+    output: "out/after-fifo.png",
+    dryRun: true,
+    spec: pixelSpec,
+  });
+  assert.equal(recovered.result.structuredContent.ok, true);
+  assert.equal(recovered.result.structuredContent.result.status, "ready");
 }
 
 async function checkFigmaPreparationCatalog(client) {
@@ -924,6 +970,10 @@ async function checkProgressiveCatalog(activeClient) {
   assert.equal(variationDry.result.structuredContent.result.status, "ready");
   assert.equal(variationDry.result.structuredContent.result.items.length, 2);
   assert.equal(
+    variationDry.result.content[0].text,
+    "Variation Job ready: 2 planned items; 2 rendered, 0 failed; 4 actual outputs validated in out/variation-dry.",
+  );
+  assert.equal(
     await exists(path.join(fixtureRoot, "out", "variation-dry")),
     false,
   );
@@ -938,6 +988,10 @@ async function checkProgressiveCatalog(activeClient) {
   });
   assert.equal(variationWritten.result.structuredContent.ok, true);
   assert.equal(variationWritten.result.structuredContent.result.status, "written");
+  assert.equal(
+    variationWritten.result.content[0].text,
+    "Variation Job written: 2 planned items; 2 rendered, 0 failed; 4 actual outputs written in out/variations.",
+  );
   assert.equal(
     variationWritten.result.structuredContent.result.items[0].outputs[0].output,
     "out/variations/sku-a/hero.png",
@@ -1308,6 +1362,10 @@ async function checkContinueVariation(activeClient) {
     const result = response.result.structuredContent.result;
     assert.deepEqual(result.items.map(item => [item.index, item.id, item.status]), [[0, "sku-a", "rendered"], [1, "sku-b", "failed"]]);
     assert.equal(result.items[1].error.code, expected);
+    assert.equal(
+      response.result.content[0].text,
+      `Variation Job written: 2 planned items; 1 rendered, 1 failed; 2 actual outputs written in ${outputDirectory}.`,
+    );
     assert.deepEqual(await readdir(path.join(fixtureRoot, outputDirectory)), ["sku-a"]);
   }
   for (const dryRun of [true, false]) {
@@ -1318,6 +1376,10 @@ async function checkContinueVariation(activeClient) {
     assert.equal(response.result.structuredContent.ok, true, JSON.stringify(response.result.structuredContent));
     assert.equal(response.result.structuredContent.result.dryRun, dryRun);
     assert(response.result.structuredContent.result.items.every(item => item.status === "failed"));
+    assert.equal(
+      response.result.content[0].text,
+      `Variation Job ${dryRun ? "ready" : "written"}: 2 planned items; 0 rendered, 2 failed; 0 actual outputs ${dryRun ? "validated" : "written"} in ${outputDirectory}.`,
+    );
     assert.equal(await exists(path.join(fixtureRoot, outputDirectory)), !dryRun);
     if (!dryRun) assert.deepEqual(await readdir(path.join(fixtureRoot, outputDirectory)), []);
   }

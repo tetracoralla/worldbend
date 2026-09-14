@@ -13,6 +13,7 @@ import { scalePreviewSolve } from "./designer-preview";
 import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
 import { createFrameCoalescer } from "./frame-coalescer";
 import type { Phase } from "./editor-state";
+import { DesignerDraftOriginState } from "./designer-draft-origin";
 import { createWorkspaceHistory, type WorkspaceHistory } from "./workspace-history";
 import { handleWorkspaceHistoryShortcut } from "./workspace-shortcuts";
 import { normalizeTemplateName } from "./stored-template-library";
@@ -82,6 +83,7 @@ export function createMeshWorkspace(input: {
   let phase: Phase = "idle";
   let undoRouted = false;
   let appliedResultPending = false;
+  const draftOrigin = new DesignerDraftOriginState();
   let nextTemplateRequestId = 1;
   let pendingTemplateRequestId: number | undefined;
   let savingTemplate = false;
@@ -95,6 +97,7 @@ export function createMeshWorkspace(input: {
   shell.reset.addEventListener("click", () => {
     if (!baseline) return;
     spec = structuredClone(baseline);
+    draftOrigin.mark("user");
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
@@ -105,6 +108,7 @@ export function createMeshWorkspace(input: {
   subdivisions.addEventListener("change", () => {
     if (!spec) return;
     spec = { ...spec, mesh: resampleMesh(spec.mesh, Number(subdivisions.value)) };
+    draftOrigin.mark("user");
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
@@ -118,6 +122,7 @@ export function createMeshWorkspace(input: {
       if (!spec) return;
       const next = Number(button.dataset.density);
       spec = { ...spec, mesh: resampleMesh(spec.mesh, next) };
+      draftOrigin.mark("user");
       history?.push(spec);
       phase = "ready";
       undoRouted = false;
@@ -209,6 +214,7 @@ export function createMeshWorkspace(input: {
       return;
     }
     spec = { ...spec, mesh: { ...spec.mesh, vertices } };
+    draftOrigin.mark("user");
     phase = "ready";
     undoRouted = false;
     appliedResultPending = false;
@@ -286,6 +292,7 @@ export function createMeshWorkspace(input: {
 
   function restoreHistory(restored: MeshWarpSpecInput): void {
     spec = restored;
+    draftOrigin.mark("user");
     renderControls();
     void render();
   }
@@ -299,7 +306,7 @@ export function createMeshWorkspace(input: {
 
   async function seedFromPerspectiveIfNeeded(): Promise<void> {
     if (!source || nextTask(source, "mesh")) return;
-    if (history?.canUndo() || history?.canRedo() || appliedResultPending) return;
+    if (!draftOrigin.shouldSeedFromPerspective()) return;
     const live = input.livePerspective?.();
     if (!live) return;
     const seededSource = source;
@@ -309,6 +316,7 @@ export function createMeshWorkspace(input: {
       const next = await meshSpecFromPerspective(live);
       if (!active || generation !== seedGeneration || source !== seededSource || spec !== seededSpec) return;
       spec = next;
+      draftOrigin.mark("perspective");
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
@@ -350,7 +358,9 @@ export function createMeshWorkspace(input: {
       }
       const first = next.sources[0];
       if (!first) return;
-      spec = nextTask(next, "mesh") ?? createMeshSpec(first.renderWidth, first.renderHeight);
+      const storedTask = nextTask(next, "mesh");
+      spec = storedTask ?? createMeshSpec(first.renderWidth, first.renderHeight);
+      draftOrigin.loadSource(storedTask !== undefined);
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
@@ -358,11 +368,12 @@ export function createMeshWorkspace(input: {
       renderControls();
       if (active) void seedAndRender();
     },
-    clearSource(error) { refreshing = false; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { refreshing = false; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; draftOrigin.clear(); shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     loadTemplate(next: MeshWarpSpecInput) {
       if (!source?.sources[0]) return false;
       spec = structuredClone(next);
       spec.targetSize = { width: source.sources[0].renderWidth, height: source.sources[0].renderHeight };
+      draftOrigin.mark("template");
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";

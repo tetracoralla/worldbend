@@ -15,6 +15,7 @@ import { scalePreviewSolve } from "./designer-preview";
 import { createDirectPointOverlay, type DirectPointOverlay } from "./direct-point-overlay";
 import { createFrameCoalescer } from "./frame-coalescer";
 import type { Phase } from "./editor-state";
+import { DesignerDraftOriginState } from "./designer-draft-origin";
 import { transformForMesh } from "./mesh-workspace";
 import {
   appendStrokeSample,
@@ -138,6 +139,7 @@ export function createSurfaceWorkspace(input: {
   let phase: Phase = "idle";
   let undoRouted = false;
   let appliedResultPending = false;
+  const draftOrigin = new DesignerDraftOriginState();
   let tool: SurfaceTool = "handles";
   let lastMesh: WarpMesh | undefined;
   let brush: {
@@ -162,6 +164,7 @@ export function createSurfaceWorkspace(input: {
     if (!baseline || busy) return;
     finishBrush(); overlay?.interrupt(); brushLimitReason = undefined;
     spec = structuredClone(baseline);
+    draftOrigin.mark("user");
     history?.push(spec);
     phase = "ready";
     undoRouted = false;
@@ -328,6 +331,7 @@ export function createSurfaceWorkspace(input: {
       return;
     }
     spec = { ...spec, envelope: { ...spec.envelope, points: points as BezierEnvelope["points"] } };
+    draftOrigin.mark("user");
     phase = "ready";
     undoRouted = false;
     appliedResultPending = false;
@@ -460,6 +464,7 @@ export function createSurfaceWorkspace(input: {
   function restoreHistory(restored: SurfaceDeformationSpecInput): void {
     brushLimitReason = undefined;
     spec = restored;
+    draftOrigin.mark("user");
     renderControls();
     void render();
   }
@@ -472,10 +477,11 @@ export function createSurfaceWorkspace(input: {
 
   async function seedFromPerspectiveIfNeeded(): Promise<void> {
     if (!source || nextTask(source)) return;
-    if (history?.canUndo() || history?.canRedo() || appliedResultPending) return;
+    if (!draftOrigin.shouldSeedFromPerspective()) return;
     const live = input.livePerspective?.();
     if (!live) return;
     spec = surfaceSpecFromPerspective(live);
+    draftOrigin.mark("perspective");
     baseline = structuredClone(spec);
     history = createWorkspaceHistory(spec);
     phase = "ready";
@@ -492,6 +498,7 @@ export function createSurfaceWorkspace(input: {
       if (!source?.sources[0]) return false;
       spec = structuredClone(next);
       spec.targetSize = { width: source.sources[0].renderWidth, height: source.sources[0].renderHeight };
+      draftOrigin.mark("template");
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
@@ -540,7 +547,9 @@ export function createSurfaceWorkspace(input: {
       brushLimitReason = undefined;
       const first = next.sources[0];
       if (!first) return;
-      spec = nextTask(next) ?? createSurfaceSpec(first.renderWidth, first.renderHeight);
+      const storedTask = nextTask(next);
+      spec = storedTask ?? createSurfaceSpec(first.renderWidth, first.renderHeight);
+      draftOrigin.loadSource(storedTask !== undefined);
       baseline = structuredClone(spec);
       history = createWorkspaceHistory(spec);
       phase = "ready";
@@ -548,7 +557,7 @@ export function createSurfaceWorkspace(input: {
       renderControls();
       if (active) void seedAndRender();
     },
-    clearSource(error) { refreshing = false; finishBrush(); brushHover = undefined; brushLimitReason = undefined; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
+    clearSource(error) { refreshing = false; finishBrush(); brushHover = undefined; brushLimitReason = undefined; generation += 1; moveFrames.cancel(); overlay?.interrupt(); busy = false; phase = "idle"; appliedResultPending = false; draftOrigin.clear(); shell.setBusy(false); source = undefined; spec = undefined; history = undefined; shell.showError(error); shell.apply.disabled = true; },
     updateLocale() {
       const copy = input.copy();
       shell.setCopy(copy);
@@ -603,6 +612,7 @@ export function createSurfaceWorkspace(input: {
   }
 
   function commitEdit(): void {
+    draftOrigin.mark("user");
     if (spec) history?.push(spec);
     phase = "ready"; undoRouted = false; appliedResultPending = false;
   }
@@ -621,6 +631,7 @@ export function createSurfaceWorkspace(input: {
     }
     brush.lastUv = uv;
     spec = { ...spec, strokes: next };
+    draftOrigin.mark("user");
     phase = "ready"; undoRouted = false; appliedResultPending = false;
     moveFrames.request();
   }

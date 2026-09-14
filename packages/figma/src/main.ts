@@ -48,12 +48,10 @@ import {
 import type { StoredDesignerTask } from "./stored-designer-task";
 import { placementBeside } from "./result-placement";
 import {
-  clearSceneDraft,
-  forgetSceneDraftNodeId,
+  createSceneDraftSession,
+  createSceneDraftToken,
   isSceneDraftNode,
-  isSceneDraftNodeId,
-  sweepStaleSceneDrafts,
-  updateSceneDraft,
+  type SceneDraftSession,
 } from "./scene-draft";
 import { LIVE_SCENE_DRAFT_ENABLED } from "./scene-draft-policy";
 import {
@@ -90,6 +88,8 @@ let uiInitialized = false;
 let templateLibrary: StoredTemplateLibrary = emptyTemplateLibrary();
 let templateLibraryReadFailed = false;
 let templateMutation = Promise.resolve();
+const sceneDraftSessionId = createSceneDraftToken();
+const sceneDraftSession: SceneDraftSession = createSceneDraftSession(sceneDraftSessionId);
 
 let selectionGeneration = 0;
 let preparedSelection:
@@ -163,13 +163,6 @@ figma.on("selectionchange", handleSelectionChange);
 figma.on("currentpagechange", handleCurrentPageChange);
 figma.on("close", handlePluginClose);
 observedPage.on("nodechange", handleNodeChange);
-// A draft from an abnormal exit is garbage, never a reusable result. Clean the
-// already-loaded page synchronously, then load other pages individually in the
-// background. The manifest uses dynamic-page access, so reading an unloaded
-// page's children would otherwise make the plugin fail at startup. Per-page
-// loading also keeps the editor usable while large documents are inspected.
-sweepStaleSceneDrafts(observedPage);
-void sweepOtherPageSceneDrafts(observedPage.id);
 figma.ui.onmessage = (message: unknown) => {
   if (!isUiToMainMessage(message)) {
     post({
@@ -201,12 +194,16 @@ figma.ui.onmessage = (message: unknown) => {
   }
   if (message.type === "scene-draft") {
     if (LIVE_SCENE_DRAFT_ENABLED && !applying && message.generation === selectionGeneration) {
-      updateSceneDraft(figma.currentPage, message, preparedSelection?.payload.sourceName ?? "Worldbend");
+      sceneDraftSession.update(
+        figma.currentPage,
+        message,
+        preparedSelection?.payload.sourceName ?? "Worldbend",
+      );
     }
     return;
   }
   if (message.type === "scene-draft-clear") {
-    if (message.generation === selectionGeneration) clearSceneDraft(figma.currentPage);
+    if (message.generation === selectionGeneration) sceneDraftSession.clear(figma.currentPage);
     return;
   }
   if (message.type === "restore-native") {
@@ -275,7 +272,7 @@ async function sweepOtherPageSceneDrafts(startupPageId: string): Promise<void> {
     if (page.id === startupPageId) continue;
     try {
       await page.loadAsync();
-      sweepStaleSceneDrafts(page);
+      sceneDraftSession.sweepRetired(page);
     } catch {
       // Residue cleanup is a best-effort recovery path. An inaccessible page
       // must not prevent the user from working on the current loaded page.
@@ -290,6 +287,11 @@ async function initializeUi(nextSystemLocales: string[]): Promise<void> {
     storedLocalePreference,
     storedTemplateLibrary,
   ]);
+  // Only a session's own cleanup may mark a preview retired. Never infer that
+  // an unretired node is stale from its age or client identity: it may still
+  // be another plugin instance's live feedback.
+  sceneDraftSession.sweepRetired(observedPage);
+  void sweepOtherPageSceneDrafts(observedPage.id);
   localePreference = nextPreference;
   if (!savedLibraryRead.ok) {
     templateLibraryReadFailed = true;
@@ -491,7 +493,7 @@ async function undoInHost(): Promise<void> {
     return;
   }
   applying = true;
-  clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(figma.currentPage);
   try {
     const publicationUndo = nativePublicationUndoFor(result);
     publishing = true;
@@ -569,7 +571,7 @@ async function restoreNativeSelection(request: Extract<UiToMainMessage, { type: 
   }
   const node = selected?.type === "FRAME" ? selected : undefined;
   applying = true;
-  clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(figma.currentPage);
   try {
     const check = () => {
       if (request.generation !== selectionGeneration ||
@@ -830,7 +832,7 @@ async function applyNativeResult(payload: NativeApplyPayload): Promise<void> {
     return;
   }
   applying = true;
-  clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(figma.currentPage);
   try {
     const prepared = requirePreparedSelection(payload);
     const [source, renderer, target] = await Promise.all([
@@ -877,7 +879,7 @@ async function applyResult(
     return;
   }
   applying = true;
-  clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(figma.currentPage);
   try {
     const prepared = requirePreparedSelection(payload);
     const source = await figma.getNodeByIdAsync(payload.sourceNodeId);
@@ -985,7 +987,7 @@ async function applyCanvasSet(
     return;
   }
   applying = true;
-  clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(figma.currentPage);
   try {
     const prepared = requirePreparedSelection(payload);
     const source = await figma.getNodeByIdAsync(payload.sourceNodeId);
@@ -1079,7 +1081,7 @@ async function applyDesignerResult(
     return;
   }
   applying = true;
-  clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(figma.currentPage);
   try {
     const prepared = requirePreparedDesignerSelection(payload);
     const actualIds = currentEditingSelection().map((node) => node.id);
@@ -1292,11 +1294,11 @@ function rememberSelectionIdentity(): boolean {
 
 function handleCurrentPageChange(): void {
   observeNativeUndo?.();
-  clearSceneDraft(observedPage);
+  sceneDraftSession.clear(observedPage);
   observedPage.off("nodechange", handleNodeChange);
   observedPage = figma.currentPage;
   observedPage.on("nodechange", handleNodeChange);
-  sweepStaleSceneDrafts(observedPage);
+  sceneDraftSession.sweepRetired(observedPage);
   scheduleLoadSelection();
 }
 
@@ -1304,17 +1306,17 @@ function handlePluginClose(): void {
   // Figma invokes this synchronously while document APIs are still available.
   // Keep shutdown work minimal: the live draft is the only canvas resource
   // owned by the editing session.
-  clearSceneDraft(observedPage);
-  if (figma.currentPage.id !== observedPage.id) clearSceneDraft(figma.currentPage);
+  sceneDraftSession.clear(observedPage);
+  if (figma.currentPage.id !== observedPage.id) sceneDraftSession.clear(figma.currentPage);
 }
 
 function handleNodeChange(event: NodeChangeEvent): void {
   observeNativeUndo?.();
   const relevantChanges = event.nodeChanges.filter((change) => {
-    if (!isSceneDraftNodeId(change.id)) return true;
+    if (!sceneDraftSession.isOwnedNodeId(change.id)) return true;
     // Keep the id until Figma delivers DELETE so batched draft changes remain
     // recognizable, then release it to keep a long editing session bounded.
-    if (change.type === "DELETE") forgetSceneDraftNodeId(change.id);
+    if (change.type === "DELETE") sceneDraftSession.forgetNodeId(change.id);
     return false;
   });
   if (publishing || (!preparedSelection && !loadingSelection)) return;

@@ -38,7 +38,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   browser = await launchChrome(await findChrome(), ["--window-size=820,760"]);
-  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "surface-authoring", "designer-experience", "scene-draft"];
+  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "designer-template", "surface-authoring", "designer-experience", "scene-draft"];
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
@@ -411,7 +411,88 @@ async function runFixture() {
         await wait(() => !get(panel).hidden && document.querySelector(`${panel} canvas`) && !get(`${panel} [data-role="apply"]`).disabled, `${workspace} ready`);
         await frames();
         const point = () => get(`${panel} .direct-point`);
-        if (scenario === "designer-history") {
+        if (scenario === "designer-template") {
+          // A template starts with an empty local history just like a blank
+          // workspace. Its explicit origin, not canUndo(), must keep the live
+          // Perspective seed from replacing it on entry.
+          get(`${panel} [data-role="back"]`).click();
+          const transform = structuredClone(spec);
+          const meshVertices = Array.from({ length: 9 }, (_, index) => {
+            const x = index % 3, y = Math.floor(index / 3);
+            const source = { x: x / 2, y: y / 2 };
+            return { source, warped: index === 4 ? { x: .37, y: .62 } : { ...source } };
+          });
+          const surfacePoints = Array.from({ length: 16 }, (_, index) => ({
+            x: (index % 4) / 3,
+            y: Math.floor(index / 4) / 3,
+          }));
+          surfacePoints[5] = { x: .38, y: .42 };
+          const templateSpec = workspace === "mesh" ? {
+            schema: "worldbend.mesh-warp", version: "0.1", transform,
+            targetSize: { width: 200, height: 160 },
+            mesh: { subdivisions: 2, vertices: meshVertices },
+          } : {
+            schema: "worldbend.surface-deformation", version: "0.1", transform,
+            targetSize: { width: 200, height: 160 }, meshSubdivisions: 12,
+            envelope: { columns: 1, rows: 1, points: surfacePoints },
+            anchors: [{ id: "pin-6-6", column: 6, row: 6 }],
+            strokes: [{ id: "stroke-1", samples: [{
+              position: { x: .4, y: .4 }, delta: { x: .05, y: 0 }, radius: .12, strength: .5,
+            }] }],
+          };
+          send({ type: "template-library", templates: [{
+            id: `${workspace}-template`, name: `${workspace} template`, template: {
+              schema: "worldbend.figma-task-template", version: "0.1",
+              operation: { kind: workspace, spec: templateSpec },
+            },
+          }] });
+          get("#workspace-tab-templates").click();
+          await wait(() => !get("#templates-workspace").hidden && document.querySelector(".template-item"),
+            `${workspace} template list`);
+          get(".template-item").click();
+          get('#templates-workspace [data-role="apply"]').click();
+          await wait(() => !get(panel).hidden && document.querySelector(`${panel} .direct-point`) &&
+            !get(`${panel} [data-role="apply"]`).disabled, `${workspace} template opened`);
+          await frames();
+          const templatePosition = point().style.left;
+
+          get("#workspace-tab-perspective").click();
+          get("#more-options").click(); get(`#workspace-menu-${workspace}`).click();
+          await frames();
+          check(point().style.left === templatePosition, `${workspace} template changed after leaving and re-entering`);
+
+          generation += 1;
+          send({ type: "selection-loading", generation, nodeIds: [payload.targetNodeId] });
+          send({ type: "source", generation, payload });
+          await wait(() => !get(`${panel} [data-role="apply"]`).disabled, `${workspace} template refresh`);
+          await frames();
+          check(point().style.left === templatePosition, `${workspace} source refresh replaced the template`);
+
+          key(point(), "ArrowRight", { shiftKey: true }); await frames();
+          check(point().style.left !== templatePosition, `${workspace} template edit did not move`);
+          key(get(`${panel} [data-role="reset"]`), "z", { metaKey: true }); await frames();
+          check(point().style.left === templatePosition, `${workspace} Undo did not restore the template baseline`);
+          key(point(), "ArrowRight", { shiftKey: true }); await frames();
+          get(`${panel} [data-role="reset"]`).click(); await frames();
+          check(point().style.left === templatePosition, `${workspace} Reset did not restore the template baseline`);
+
+          const seen = window.fixtureMessages.length;
+          get(`${panel} [data-role="apply"]`).click();
+          await wait(() => window.fixtureMessages.slice(seen).some(m => m.type === "apply-designer"),
+            `${workspace} template publication`);
+          const published = window.fixtureMessages.findLast(m => m.type === "apply-designer").payload.task.spec;
+          check(published.targetSize.width === 200 && published.targetSize.height === 160,
+            `${workspace} template lost its current source dimensions`);
+          if (workspace === "mesh") {
+            check(published.mesh.subdivisions === 2 && published.mesh.vertices[4].warped.x === .37 &&
+              published.mesh.vertices[4].warped.y === .62, "Mesh template lost its authored grid");
+          } else {
+            check(published.envelope.points[5].x === .38 && published.envelope.points[5].y === .42 &&
+              published.anchors[0].id === "pin-6-6" && published.strokes[0].samples.length === 1,
+            "Split Warp template lost its envelope, pin, or brush stroke");
+          }
+          send({ type: "apply-designer-complete", generation, targetNodeId: `${workspace}-result`, operation: "apply" });
+        } else if (scenario === "designer-history") {
           const original = point().style.left;
           const button = point(), box = button.getBoundingClientRect();
           const x = box.left + box.width / 2, y = box.top + box.height / 2;

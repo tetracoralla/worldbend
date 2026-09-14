@@ -60,8 +60,9 @@ scene, not only the isolated source.
 Implemented on 2026-09-14 (see the Figma contract section): one locked working
 preview image node per editing session in the
 Transform/Distort/Warp family and in Composition, publication-parity
-rendering, coalesced bounded updates, synchronous marked-node cleanup, and a
-stale sweep on next run. Free Transform's author describes its current Live Preview
+rendering, coalesced bounded updates, synchronous session-owned cleanup, and a
+next-run sweep limited to nodes positively retired by their owning session.
+Free Transform's author describes its current Live Preview
 as appearing [on the canvas while dragging](https://www.reddit.com/r/FigmaDesign/comments/1vjz61m/im_a_designer_not_a_developer_i_taught_myself/),
 so that competitor question is now resolved.
 
@@ -77,6 +78,11 @@ condition and disabled the feature. The owner re-ranked the actual user need:
 in-context feedback is essential, while one recoverable history artifact is an
 acceptable host limitation when cleanup never risks artwork. The runtime now
 starts the preview only after the first real edit, names it `Worldbend Working
-Preview`, clears only private-marked nodes, and sweeps any resurrected or
-abnormal-exit residue on the next run. A future transient host carrier should
-replace the document node without changing the product behavior.
+Preview`, gives every plugin run an independent owner token, clears only that
+run's node, and marks it retired before removal so host-Undo resurrection is
+safe to sweep later. Figma client storage is scoped to a user and plugin, not to
+one running tab, so a prior token is not proof that its session ended. If a
+crash prevents retirement, later runs preserve the unretired, plainly named
+node rather than risk deleting a collaborator's active preview. A future
+transient host carrier should replace the document node without changing the
+product behavior.

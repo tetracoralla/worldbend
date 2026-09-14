@@ -83,7 +83,10 @@ function host() {
     currentPage: page, root: { children: [page] }, fileKey: "granted-file", mixed: Symbol("mixed"),
     on: (name: string, fn: (...args: any[]) => void) => handlers.set(name, fn),
     showUI: vi.fn(), commitUndo: vi.fn(), triggerUndo: vi.fn(), notify: vi.fn(),
-    clientStorage: { getAsync: vi.fn(async () => undefined) },
+    clientStorage: {
+      getAsync: vi.fn(async (_key?: string): Promise<unknown> => undefined),
+      setAsync: vi.fn(async () => undefined),
+    },
     viewport: { scrollAndZoomIntoView: vi.fn() },
     ui: { on: vi.fn(), onmessage: undefined as ((message: unknown) => void) | undefined, postMessage: (message: unknown) => posts.push(message) },
     getNodeByIdAsync: vi.fn(async (id: string) => registry.get(id) ?? null),
@@ -280,25 +283,49 @@ describe("designer and Agent handoff", () => {
     vi.useFakeTimers(); const h = host();
     const leftover = h.api.createRectangle();
     leftover.setPluginData("sceneDraft", "1");
+    leftover.setPluginData("sceneDraftSession", "prior-run-00001");
+    leftover.setPluginData("sceneDraftRetired", "1");
     await import("./main");
+    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await vi.advanceTimersByTimeAsync(0);
     expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
     expect(h.page.children).toContain(h.source);
     expect(h.api.commitUndo).toHaveBeenCalledTimes(1);
     expect(h.api.triggerUndo).not.toHaveBeenCalled();
   });
 
-  it("removes a legacy live canvas draft synchronously when the host closes the plugin", async () => {
+  it("preserves an unretired preview from another active plugin session", async () => {
+    vi.useFakeTimers(); const h = host();
+    const other = h.api.createRectangle();
+    other.setPluginData("sceneDraft", "1");
+    other.setPluginData("sceneDraftSession", "other-live-0001");
+    other.setPluginData("sceneDraftRetired", "0");
+    await import("./main");
+    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.page.children).toContain(other);
+    expect(h.api.commitUndo).not.toHaveBeenCalled();
+  });
+
+  it("removes this session's live canvas draft synchronously when the host closes the plugin", async () => {
     vi.useFakeTimers(); const h = host();
     await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"] });
     await vi.advanceTimersByTimeAsync(0);
-    const legacyDraft = h.api.createRectangle();
-    legacyDraft.setPluginData("sceneDraft", "1");
+    const { generation } = h.posts.findLast(p => p.type === "source");
+    h.api.ui.onmessage?.({
+      type: "scene-draft",
+      generation,
+      bytes: new Uint8Array([1]),
+      renderWidth: 10,
+      renderHeight: 8,
+      placement: { x: 0, y: 0, width: 10, height: 8 },
+    });
     expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(true);
 
     h.handlers.get("close")?.();
 
     expect(h.page.children.some((node: any) => node.getPluginData?.("sceneDraft") === "1")).toBe(false);
-    expect(h.api.commitUndo).toHaveBeenCalledTimes(1);
+    expect(h.api.commitUndo).toHaveBeenCalledTimes(2);
     expect(h.api.triggerUndo).not.toHaveBeenCalled();
   });
 

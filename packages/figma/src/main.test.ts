@@ -859,7 +859,13 @@ describe("Figma selection generations", () => {
   it("sweeps a stale working preview left on a page that is not current", async () => {
     let otherPageLoaded = false;
     const artwork = { id: "artwork", getPluginData: vi.fn(() => "") };
-    const staleDraft = { id: "stale-draft", getPluginData: vi.fn(() => "1"), remove: vi.fn() };
+    const staleDraft = {
+      id: "stale-draft",
+      getPluginData: vi.fn((key: string) =>
+        key === "sceneDraft" || key === "sceneDraftRetired" ? "1" : "prior-session-0001"
+      ),
+      remove: vi.fn(),
+    };
     const otherPage = {
       id: "other-page",
       type: "PAGE",
@@ -895,6 +901,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
 
     await vi.waitFor(() => expect(staleDraft.remove).toHaveBeenCalledTimes(1));
     expect(otherPage.loadAsync).toHaveBeenCalledTimes(1);
