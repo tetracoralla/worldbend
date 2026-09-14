@@ -610,7 +610,9 @@ that safe cleanup can leave one empty host Undo item and that a later host Undo
 can temporarily resurrect the removed preview. This is an accepted host
 limitation rather than a reason to remove essential scene feedback: the node's
 plain `Worldbend Working Preview` name and private marker make it recoverable,
-and the next plugin run removes it without touching artwork.
+and the next plugin run removes it without touching artwork. While a preview
+exists it is ordinary document content: collaborators in a live session see it
+update and disappear alongside the editor.
 
 The self-contained Figma release may still inline those
 modules into one HTML file; package inlining does not authorize a single

@@ -15,7 +15,8 @@ contracts. PSD interoperability is bounded, read-only Smart Object inspection
 and Spatial Template projection rather than a Photoshop document editor.
 
 > Project status: the shared core and Agent toolchain remain an experimental
-> `0.1.0` pre-release. The Figma `0.3.1` package includes the HD image
+> `0.1.0` pre-release. The Figma `0.4.0` package adds the live canvas
+> working preview and includes the HD image
 > and editable-result workflows in [FIGMA_HANDOFF.md](docs/FIGMA_HANDOFF.md).
 > Editable output requires the companion Worldbend Perspective effect.
 > HD output works independently.

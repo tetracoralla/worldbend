@@ -8,7 +8,7 @@ publication are separate release actions.
 
 ## Current package and companion effect
 
-The Figma package is `0.3.1`. Figma assigns its own Community version number;
+The Figma package is `0.4.0`. Figma assigns its own Community version number;
 local package creation and submission do not establish marketplace approval.
 
 The optional [Worldbend Perspective effect](https://www.figma.com/community/shader/1679431734495527701)
@@ -32,9 +32,18 @@ submission receipts and marketplace review history outside public documentation.
 - **Custom tags:** distort, perspective, transform, warp
 
 The listing should explain the completed task: select a source, shape it with
-Transform, Distort, Perspective, Warp or Correct, then create an HD image.
-Sizes creates named variants; Templates save repeatable work. Composition,
-Mesh and Lens & maps are discoverable under More.
+Transform, Distort, Perspective, Warp or Correct, watch the working preview
+update in place on the canvas, then create an HD image. Sizes creates named
+variants; Templates save repeatable work. Composition, Mesh and Lens & maps
+are discoverable under More.
+
+The 0.4.0 release notes must cover the live working preview honestly: it
+appears only after the first real edit, follows Transform, Distort, Warp and
+Composition in place, is never part of the document's results, and is removed
+on Apply, Reset, cancellation or closing the plugin. State the one host
+limitation in one plain sentence — after the preview is removed, an Undo can
+briefly bring it back; delete it or keep editing, it never affects artwork.
+Collaborators in a live session see the preview node while it exists.
 
 Keep the two output routes' purposes distinct in the listing text: editable
 Frames are for continuing to design with native content, and HD images are
