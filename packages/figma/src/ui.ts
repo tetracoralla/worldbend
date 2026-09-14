@@ -689,6 +689,10 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: MainToUiMessage }>) =>
     phase = current ? "ready" : "idle";
     showError(message.message);
     renderState();
+    // The host rejected or rolled back publication, so the user's live draft
+    // is still the current object. Restore its in-context feedback without
+    // requiring an otherwise meaningless control nudge.
+    syncSceneDraft();
   }
   if (message.type === "apply-complete" && message.generation === activeGeneration) {
     appliedTransformMemory.complete(message.generation);
@@ -2391,7 +2395,6 @@ async function applyPerspective(duplicate = false, editableIntent?: boolean): Pr
   ) {
     return;
   }
-  clearSceneDraftFeedback();
   const source = current;
   const generation = activeGeneration;
   const spec = editor.captureSpec();
@@ -2414,6 +2417,10 @@ async function applyPerspective(duplicate = false, editableIntent?: boolean): Pr
     return;
   }
   const rasterSize = rasterSizeForPolicy(outputPlan, policy);
+  // Synchronous validation failures leave the working preview untouched.
+  // Clear only after publication is actually accepted; any later failure
+  // restores feedback from the still-live editing state below.
+  clearSceneDraftFeedback();
   activeFrame = cloneFrame(output);
   const replacing = !duplicate && source.targetNodeId && editable === Boolean(source.nativeTarget);
   pendingReplacementBaseline = replacing ? {
@@ -2488,6 +2495,7 @@ async function applyPerspective(duplicate = false, editableIntent?: boolean): Pr
     phase = "ready";
     showError(error);
     renderState();
+    syncSceneDraft();
   }
 }
 

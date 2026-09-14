@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultMockup, mockupGeometryFingerprint } from "./mockup-workspace";
-import type { LoadedDesignerSource } from "./designer-workspace-common";
+import { sameJsonValue, type LoadedDesignerSource } from "./designer-workspace-common";
 
 const source = (id: string, x: number): LoadedDesignerSource => ({
   sourceNodeId: id,
@@ -39,6 +39,30 @@ describe("mockupGeometryFingerprint", () => {
     expect(mockupGeometryFingerprint(moved)).not.toBe(mockupGeometryFingerprint(spec));
     expect(mockupGeometryFingerprint({ ...spec, canvas: { width: 50, height: 40 } }))
       .not.toBe(mockupGeometryFingerprint(spec));
+  });
+});
+
+describe("sameJsonValue", () => {
+  it("ignores object key order and detects a semantic edit", () => {
+    const spec = defaultMockup([source("one", 10)]);
+    const reordered = {
+      planes: spec.planes.map((plane) => ({
+        opacity: plane.opacity,
+        transform: plane.transform,
+        sourceId: plane.sourceId,
+        id: plane.id,
+      })),
+      background: spec.background,
+      canvas: spec.canvas,
+      version: spec.version,
+      schema: spec.schema,
+      seams: spec.seams,
+    };
+    expect(sameJsonValue(reordered, spec)).toBe(true);
+    expect(sameJsonValue({
+      ...reordered,
+      canvas: { ...spec.canvas, width: spec.canvas.width + 1 },
+    }, spec)).toBe(false);
   });
 });
 

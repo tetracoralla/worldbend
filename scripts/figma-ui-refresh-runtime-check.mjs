@@ -136,6 +136,13 @@ async function runFixture() {
       const drafts = () => window.fixtureMessages.filter(m => m.type === "scene-draft");
       const clears = () => window.fixtureMessages.filter(m => m.type === "scene-draft-clear");
       const settle = () => new Promise(resolve => setTimeout(resolve, 400));
+      const failNextCanvasEncode = () => {
+        const original = HTMLCanvasElement.prototype.toBlob;
+        HTMLCanvasElement.prototype.toBlob = function(callback) {
+          HTMLCanvasElement.prototype.toBlob = original;
+          callback(null);
+        };
+      };
       await settle();
       check(drafts().length === 0, "Opening Perspective mutated the document before an edit");
       // The default Distort workspace activates the preview from a real
@@ -178,6 +185,33 @@ async function runFixture() {
       get("#warp-amount").dispatchEvent(new Event("change", { bubbles: true }));
       await ready();
       await wait(() => drafts().length >= 2, "Warp recovery resumes the canvas preview");
+      // A local final-encode failure also restores the preview; this path
+      // never reaches the simulated Figma main thread.
+      const perspectiveDraftsBeforeLocalFailure = drafts().length;
+      const perspectiveApplyMessagesBeforeLocalFailure = window.fixtureMessages.filter(m => m.type === "apply").length;
+      failNextCanvasEncode();
+      get("#apply").click();
+      await wait(() => !get("#apply").disabled && !get("#error").hidden,
+        "Perspective local failure returns to editing");
+      await wait(() => drafts().length > perspectiveDraftsBeforeLocalFailure,
+        "Perspective local failure restores the working preview");
+      check(window.fixtureMessages.filter(m => m.type === "apply").length === perspectiveApplyMessagesBeforeLocalFailure,
+        "Perspective local failure crossed the host publication boundary");
+      // A host-side publication failure restores the still-dirty canvas
+      // preview and leaves the error visible for a meaningful retry.
+      const perspectiveDraftsBeforeFailure = drafts().length;
+      const perspectiveClearsBeforeFailure = clears().length;
+      const perspectiveApplySeen = window.fixtureMessages.length;
+      get("#apply").click();
+      await wait(() => window.fixtureMessages.slice(perspectiveApplySeen).some(m => m.type === "apply"),
+        "Perspective publication request");
+      await wait(() => clears().length > perspectiveClearsBeforeFailure,
+        "Perspective publication clears the working preview");
+      send({ type: "apply-error", generation, message: { key: "nativeApplyFailed" } });
+      await ready();
+      await wait(() => drafts().length > perspectiveDraftsBeforeFailure,
+        "Perspective failure restores the working preview");
+      check(!get("#error").hidden, "Perspective failure recovery erased its error");
       // Composition follows the same first-edit activation rule.
       generation++;
       send({ type: "selection-loading", generation, nodeIds: ["art", "backdrop"] });
@@ -191,7 +225,6 @@ async function runFixture() {
       await settle();
       check(drafts().length === draftsBeforeCompositionEdit,
         "Opening Composition mutated the document before an edit");
-      const clearBefore = clears().length;
       get("#mockup-workspace").querySelectorAll('[data-role="planes"] button')[1].click();
       get("#mockup-workspace").querySelector('[data-role="backdrop"]').click();
       await wait(() => get("#mockup-workspace").querySelector('[data-role="width"]').value === "600", "backdrop layout");
@@ -200,8 +233,30 @@ async function runFixture() {
       const composite = drafts().findLast(m => m.placement.width === 600 && m.placement.height === 400);
       check(composite.placement.x === 800 && composite.placement.y === 200,
         "Composition preview lost its backdrop anchoring");
+      const compositionDraftsBeforeLocalFailure = drafts().length;
+      const compositionApplyMessagesBeforeLocalFailure = window.fixtureMessages.filter(m => m.type === "apply-designer").length;
+      failNextCanvasEncode();
+      get('#mockup-workspace [data-role="apply"]').click();
+      await wait(() => !get('#mockup-workspace [data-role="apply"]').disabled &&
+        !get('#mockup-workspace [data-role="error"]').hidden,
+      "Composition local failure returns to editing");
+      await wait(() => drafts().length > compositionDraftsBeforeLocalFailure,
+        "Composition local failure restores the working preview");
+      check(window.fixtureMessages.filter(m => m.type === "apply-designer").length === compositionApplyMessagesBeforeLocalFailure,
+        "Composition local failure crossed the host publication boundary");
+      const compositionDraftsBeforeFailure = drafts().length;
+      const compositionApplySeen = window.fixtureMessages.length;
+      get('#mockup-workspace [data-role="apply"]').click();
+      await wait(() => window.fixtureMessages.slice(compositionApplySeen).some(m => m.type === "apply-designer"),
+        "Composition publication request");
+      send({ type: "apply-designer-error", generation, message: { key: "previewFailed" } });
+      await wait(() => drafts().length > compositionDraftsBeforeFailure,
+        "Composition failure restores the working preview");
+      check(!get('#mockup-workspace [data-role="error"]').hidden,
+        "Composition failure recovery erased its error");
+      const exitClearBefore = clears().length;
       get("#workspace-tab-perspective").click();
-      await wait(() => clears().length > clearBefore, "workspace exit clears the canvas preview");
+      await wait(() => clears().length > exitClearBefore, "workspace exit clears the canvas preview");
       check(window.fixtureErrors.length === 0, `fixture errors: ${window.fixtureErrors.join("; ")}`);
     } else if (scenario === "designer-experience") {
       get("#mode-warp").click();

@@ -19,6 +19,7 @@ import {
   fitPreviewCanvas,
   numericInput,
   postDesignerResult,
+  sameJsonValue,
   sameDesignerSelection,
   canRetainDesignerDraft,
   type DesignerTaskWorkspace,
@@ -319,7 +320,7 @@ export function createMockupWorkspace(input: {
       shell.apply.disabled = busy || refreshing; shell.applyNew.disabled = busy || refreshing;
       if (refreshOverlay && quality === "preview") renderOverlay();
       if (LIVE_SCENE_DRAFT_ENABLED && quality === "preview" && phase === "ready" && !busy && !refreshing) {
-        if (baseline && JSON.stringify(spec) !== JSON.stringify(baseline)) sceneDraft.request();
+        if (baseline && !sameJsonValue(spec, baseline)) sceneDraft.request();
         else clearSceneDraftFeedback();
       }
       return true;
@@ -434,8 +435,32 @@ export function createMockupWorkspace(input: {
         bytes, width: appliedSpec.canvas.width, height: appliedSpec.canvas.height, duplicate });
     } catch (error) {
       if (!current()) return;
-      busy = false; phase = "ready"; shell.setBusy(false); renderControls(); shell.showError(input.formatError(error));
+      recoverFailedApply(input.formatError(error));
     }
+  }
+
+  function recoverFailedApply(message: string): void {
+    const recoverySource = source;
+    const recoverySpec = spec;
+    busy = false;
+    phase = "ready";
+    appliedResultPending = false;
+    shell.setBusy(false);
+    renderControls();
+    renderTemplateSave();
+    shell.showError(message);
+    // Rebuild both panel and canvas feedback. render() clears stale errors on
+    // success, so restore the publication error after the async frame lands.
+    void render().then(() => {
+      if (
+        active &&
+        !busy &&
+        !refreshing &&
+        phase === "ready" &&
+        source === recoverySource &&
+        spec === recoverySpec
+      ) shell.showError(message);
+    });
   }
 
   function restoreHistory(restored: MockupSpecInput): void {
@@ -558,9 +583,16 @@ export function createMockupWorkspace(input: {
     handleMainMessage(message: MainToUiMessage) {
       if (!busy || (message.type !== "apply-designer-complete" && message.type !== "apply-designer-error")) return false;
       if (!source || message.generation !== source.selectionGeneration) return true;
-      busy = false; shell.setBusy(false); renderTemplateSave();
-      if (message.type === "apply-designer-error") { phase = "ready"; appliedResultPending = false; shell.showError(input.formatError(message.message)); }
-      else { phase = "ready"; appliedResultPending = true; undoRouted = false; shell.status.textContent = input.copy().applied; }
+      if (message.type === "apply-designer-error") recoverFailedApply(input.formatError(message.message));
+      else {
+        busy = false;
+        shell.setBusy(false);
+        renderTemplateSave();
+        phase = "ready";
+        appliedResultPending = true;
+        undoRouted = false;
+        shell.status.textContent = input.copy().applied;
+      }
       return true;
     },
     handleKeydown(event) {

@@ -594,6 +594,12 @@ coalesced and bounded to a 1024 px raster axis. Perspective uses the same export
 renderer and operation as publication; Composition uses the same composited
 preview canvas and scene placement.
 
+A rejected publication is not a completed edit. Synchronous preflight failures
+leave the working preview in place. If final encoding or the Figma main-thread
+write fails after the preview was cleared for publication, the UI returns to
+the same editable draft, restores its canvas preview automatically, and keeps
+the publication error visible so the next retry is informed.
+
 Figma exposes no transient plugin canvas overlay or selective history erasure.
 The implementation therefore commits pending artwork before creating the
 marked document node; later frame updates create no per-frame commits, and
