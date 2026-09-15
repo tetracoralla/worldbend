@@ -383,6 +383,7 @@ const distortEndFrames = createFrameCoalescer(() => {
 const sceneDraft = createSceneDraftClient({
   intervalMs: 200,
   render: async () => {
+    if (productWorkspace.current() !== "perspective") return undefined;
     if (!editor || !activeFrame || phase !== "ready" || refreshInFlight || composeInFlight) return undefined;
     if (editorMode !== "transform" && editorMode !== "distort" && editorMode !== "warp") return undefined;
     const placement = activeFrame.placement;
@@ -2352,7 +2353,7 @@ function syncViewportScene(): void {
  */
 function syncSceneDraft(): void {
   if (!LIVE_SCENE_DRAFT_ENABLED || !initialFrame || !activeFrame) return;
-  if (!valid) {
+  if (productWorkspace.current() !== "perspective" || !valid) {
     clearSceneDraftFeedback();
     return;
   }

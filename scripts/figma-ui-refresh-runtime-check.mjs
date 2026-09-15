@@ -42,8 +42,12 @@ try {
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
-    const target = await createPage(browser.debugUrl, `http://127.0.0.1:${address.port}/?case=${scenario}`);
-    const result = await readPageResult(target.webSocketDebuggerUrl);
+    // Window size includes Chrome's own chrome even in headless mode. Set the
+    // content viewport explicitly to match figma.showUI before running inputs.
+    const target = await createPage(browser.debugUrl, "about:blank");
+    const result = await readPageResult(target.webSocketDebuggerUrl, {
+      width: 820, height: 760, url: `http://127.0.0.1:${address.port}/?case=${scenario}&width=820`,
+    });
     assert(!result.error, `${scenario}: ${result.error}`);
     console.log(`Built Figma UI refresh passed: ${scenario}`);
   }
@@ -96,7 +100,11 @@ async function runFixture() {
   const ready = () => wait(() => !get("#apply").disabled, "ready to apply");
   try {
     const expectedWidth = new URL(location.href).searchParams.get("width");
-    if (expectedWidth) check(innerWidth === Number(expectedWidth), `Expected ${expectedWidth}px viewport, received ${innerWidth}px`);
+    if (expectedWidth) {
+      check(innerWidth === Number(expectedWidth), `Expected ${expectedWidth}px viewport, received ${innerWidth}px`);
+      const expectedHeight = Number(expectedWidth) === 300 ? 520 : 760;
+      check(innerHeight === expectedHeight, `Expected ${expectedHeight}px viewport height, received ${innerHeight}px`);
+    }
     await wait(() => window.fixtureMessages.some(message => message.type === "ready"), "UI startup");
     send({ type: "locale", preference: "en", locale: "en" });
     const canvas = document.createElement("canvas"); canvas.width = 200; canvas.height = 160;
@@ -150,6 +158,17 @@ async function runFixture() {
       const initialClears = clears().length;
       await moveCorner();
       await wait(() => drafts().length >= 1, "Distort edit activates the canvas preview");
+      get("#more-options").click(); get("#workspace-menu-mesh").click();
+      await wait(() => !get("#mesh-workspace").hidden, "Mesh workspace entered");
+      await settle();
+      const hiddenDraftCount = drafts().length;
+      generation += 1;
+      send({ type: "selection-loading", generation, nodeIds: [payload.targetNodeId] });
+      send({ type: "source", generation, payload });
+      await wait(() => !get('#mesh-workspace [data-role="apply"]').disabled, "Mesh source refreshed");
+      await settle();
+      check(drafts().length === hiddenDraftCount, "A hidden Perspective refresh revived its canvas preview over Mesh");
+      get("#workspace-tab-perspective").click(); await ready();
       undo();
       await wait(() => clears().length > initialClears, "Undo to baseline clears the canvas preview");
       // A Transform edit activates the same bounded publication-parity frame.

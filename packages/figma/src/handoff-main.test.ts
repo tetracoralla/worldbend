@@ -1,8 +1,17 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readStoredBinding, writeStoredBinding } from "./stored-binding";
 import { readStoredOperation, writeStoredOperation } from "./stored-operation";
 import { publishNativeResult, nativeDocumentParts, restoreNativeProjection } from "./native-document";
 import { createMeshSpec } from "./mesh-workspace";
+
+// Exercise the exact script embedded in MCP as well as its TypeScript source.
+// Bundler upgrades can change this carrier independently of source tests.
+async function loadAgentHandoff(entry: "source" | "bundled"): Promise<typeof import("./agent-handoff")> {
+  if (entry === "source") return import("./agent-handoff");
+  const code = readFileSync(new URL("../../../crates/worldbend-mcp/src/figma-runtime.js", import.meta.url), "utf8");
+  return new Function(`${code}\nreturn WorldbendFigmaHandoff;`)();
+}
 
 const spec = {
   schema: "worldbend.transform" as const, version: "0.1" as const,
@@ -277,6 +286,34 @@ describe("designer and Agent handoff", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(preview()).toBeUndefined();
     expect(h.api.createRectangle).toHaveBeenCalledTimes(2); // preview + published result
+  });
+
+  it.each(["existing", "new"])("ignores %s foreign preview deletion while still refreshing deleted artwork", async (kind) => {
+    vi.useFakeTimers(); const h = host();
+    const foreign = h.api.createRectangle();
+    foreign.setPluginData("sceneDraft", "1");
+    foreign.setPluginData("sceneDraftSession", "foreign-session-0001");
+    if (kind === "new") h.page.children = h.page.children.filter((node: any) => node !== foreign);
+    await import("./main");
+    h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
+    await vi.advanceTimersByTimeAsync(0);
+    if (kind === "new") {
+      h.page.children.push(foreign);
+      h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "CREATE", id: foreign.id, node: foreign }] });
+    }
+    const before = h.posts.length;
+    const exports = h.source.exportAsync.mock.calls.length;
+    foreign.remove();
+    // Deleted host nodes no longer expose private data or ancestry.
+    h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "DELETE", id: foreign.id }] });
+    await vi.advanceTimersByTimeAsync(150);
+    expect(h.posts.slice(before).filter(p => p.type === "selection-loading")).toEqual([]);
+    expect(h.source.exportAsync).toHaveBeenCalledTimes(exports);
+
+    const child = h.api.createRectangle(); h.source.appendChild(child); child.remove();
+    h.pageHandlers.get("nodechange")?.({ nodeChanges: [{ type: "DELETE", id: child.id }] });
+    await vi.advanceTimersByTimeAsync(150);
+    expect(h.source.exportAsync).toHaveBeenCalledTimes(exports + 1);
   });
 
   it("commits leftover draft removal during the plugin-start sweep", async () => {
@@ -666,7 +703,7 @@ describe("designer and Agent handoff", () => {
     expect(delivered[0].generation).toBe(2);
   });
 
-  it("updates a nested native result in parent coordinates and rejects stale reparenting", async () => {
+  it.each(["source", "bundled"] as const)("updates a nested native result in parent coordinates and rejects stale reparenting (%s)", async (entry) => {
     const h = host();
     const result = await publishNativeResult({ source: h.source, renderer, spec,
       inverse: [1 / 520, 0, 0, 0, 1 / 606, 0, 0, 0, 1],
@@ -676,7 +713,7 @@ describe("designer and Agent handoff", () => {
     Object.defineProperty(result, "absoluteBoundingBox", { get: () => ({
       x: result.x + 1000, y: result.y + 2000, width: result.width, height: result.height,
     }) });
-    const { inspect, apply } = await import("./agent-handoff");
+    const { inspect, apply } = await loadAgentHandoff(entry);
     expect((await inspect(result.id, "granted-file", h.page.id)).placement).toMatchObject({ x: 40, y: 50 });
     h.page.selection = [result];
     await import("./main"); h.api.ui.onmessage?.({ type: "ready", systemLocales: ["en"], sceneDraftSessionId: "test-session-00001" });
@@ -703,7 +740,7 @@ describe("designer and Agent handoff", () => {
     otherParent.parent = { type: "PAGE", id: "other-page", parent: null };
     await expect(inspect(result.id, "granted-file", h.page.id)).rejects.toThrow("E_FIGMA_SCOPE");
   });
-  it("reopens and independently updates a duplicated native design without touching its original", async () => {
+  it.each(["source", "bundled"] as const)("reopens and independently updates a duplicated native design without touching its original (%s)", async (entry) => {
     const h = host();
     const original = await publishNativeResult({ source: h.source, renderer, spec,
       inverse: [1 / 520, 0, 0, 0, 1 / 606, 0, 0, 0, 1],
@@ -714,7 +751,7 @@ describe("designer and Agent handoff", () => {
     const parts = await nativeDocumentParts(copy);
     expect(parts.copied).toBe(true);
     expect(parts.content.id).not.toBe(originalParts.content.id);
-    const { inspect, apply } = await import("./agent-handoff");
+    const { inspect, apply } = await loadAgentHandoff(entry);
     const snapshot = await inspect(copy.id, "granted-file", h.page.id);
     expect(snapshot.revision).toBe(0);
     expect(snapshot.source.nodeId).toBe(parts.content.id);
@@ -838,7 +875,10 @@ describe("designer and Agent handoff", () => {
     result.setSharedPluginData = set;
   });
 
-  it.each(["resize", "scale"])("reopens a native %s with current dimensions and can fit changed content in place", async (kind) => {
+  it.each([
+    { kind: "resize", entry: "source" }, { kind: "scale", entry: "source" },
+    { kind: "resize", entry: "bundled" }, { kind: "scale", entry: "bundled" },
+  ] as const)("reopens a native $kind with current dimensions and can fit changed content in place ($entry)", async ({ kind, entry }) => {
     const h = host();
     const result = await publishNativeResult({ source: h.source, renderer, spec,
       inverse: [1 / 520, 0, 0, 0, 1 / 606, 0, 0, 0, 1],
@@ -846,7 +886,7 @@ describe("designer and Agent handoff", () => {
     const { content, surface } = await nativeDocumentParts(result);
     result.resize(780, 909);
     if (kind === "scale") { surface.resize(780, 909); content.resize(780, 909); content.y = -0.00000762939453125; }
-    const { inspect, apply } = await import("./agent-handoff");
+    const { inspect, apply } = await loadAgentHandoff(entry);
     const snapshot = await inspect(result.id, "granted-file", h.page.id);
     expect(snapshot.spec.destination.quad.br.x).toBeCloseTo(kind === "scale" ? 1 : 520 / 780);
     expect(snapshot.spec.destination.quad.br.y).toBeCloseTo(kind === "scale" ? 1 : 606 / 909);
@@ -874,13 +914,13 @@ describe("designer and Agent handoff", () => {
     await expect(nativeDocumentParts(result)).rejects.toThrow("structure changed");
   });
 
-  it("lets an external Agent retain native edits, then rejects reuse of an obsolete handoff", async () => {
+  it.each(["source", "bundled"] as const)("lets an external Agent retain native edits, then rejects reuse of an obsolete handoff (%s)", async (entry) => {
     const h = host();
     const result = await publishNativeResult({ source: h.source, renderer, spec,
       inverse: [1 / 520, 0, 0, 0, 1 / 606, 0, 0, 0, 1],
       placement: { x: 800, y: 0, width: 520, height: 606 }, renderWidth: 520, renderHeight: 606,
     });
-    const { inspect, apply } = await import("./agent-handoff");
+    const { inspect, apply } = await loadAgentHandoff(entry);
     const before = await inspect(result.id, "granted-file", h.page.id);
     const { content } = await nativeDocumentParts(result);
     content.name = "Human edited this content";

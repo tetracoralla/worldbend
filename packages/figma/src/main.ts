@@ -108,6 +108,16 @@ function beginPublication(): void {
   figma.commitUndo();
 }
 let observedPage = figma.currentPage;
+// Observation is separate from mutation ownership: another session's preview
+// deletion must not invalidate this session's artwork or interrupt a gesture.
+const observedDraftNodeIds = new Set<string>();
+function observePageDrafts(): void {
+  observedDraftNodeIds.clear();
+  for (const node of observedPage.children) {
+    if (isSceneDraftNode(node)) observedDraftNodeIds.add(node.id);
+  }
+}
+observePageDrafts();
 let selectionPageId = observedPage.id;
 let selectionNodeIds = observedPage.selection.map((node) => node.id);
 let editingSelection: readonly SceneNode[] = [];
@@ -1304,6 +1314,7 @@ function handleCurrentPageChange(): void {
   sceneDraftSession?.clear(observedPage);
   observedPage.off("nodechange", handleNodeChange);
   observedPage = figma.currentPage;
+  observePageDrafts();
   observedPage.on("nodechange", handleNodeChange);
   sceneDraftSession?.sweepRetired(observedPage);
   scheduleLoadSelection();
@@ -1320,11 +1331,17 @@ function handlePluginClose(): void {
 function handleNodeChange(event: NodeChangeEvent): void {
   observeNativeUndo?.();
   const relevantChanges = event.nodeChanges.filter((change) => {
-    if (!sceneDraftSession?.isOwnedNodeId(change.id)) return true;
-    // Keep the id until Figma delivers DELETE so batched draft changes remain
-    // recognizable, then release it to keep a long editing session bounded.
-    if (change.type === "DELETE") sceneDraftSession.forgetNodeId(change.id);
-    return false;
+    if (change.type !== "DELETE" && !change.node.removed && isSceneDraftNode(change.node)) {
+      observedDraftNodeIds.add(change.id);
+    }
+    const isDraft = observedDraftNodeIds.has(change.id) || sceneDraftSession?.isOwnedNodeId(change.id);
+    // Deleted nodes cannot expose their private markers. Remember observations
+    // until DELETE, then release them so repeated sessions stay bounded.
+    if (change.type === "DELETE") {
+      observedDraftNodeIds.delete(change.id);
+      sceneDraftSession?.forgetNodeId(change.id);
+    }
+    return !isDraft;
   });
   if (publishing || (!preparedSelection && !loadingSelection)) return;
   if (relevantChanges.some((change) => nodeChangeTouchesPreparedSelection(change))) {
