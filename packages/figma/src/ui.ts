@@ -100,6 +100,7 @@ import {
 } from "./i18n";
 import { createWarpPicker } from "./warp-picker";
 import { createSceneDraftClient } from "./scene-draft-client";
+import { createSceneDraftToken } from "./scene-draft-id";
 import { LIVE_SCENE_DRAFT_ENABLED } from "./scene-draft-policy";
 import { parseWarpControls, warpAmountPercent, WARP_PRESETS } from "./warp-controls";
 import { sliderProgress } from "./slider-domain";
@@ -382,6 +383,7 @@ const distortEndFrames = createFrameCoalescer(() => {
 const sceneDraft = createSceneDraftClient({
   intervalMs: 200,
   render: async () => {
+    if (productWorkspace.current() !== "perspective") return undefined;
     if (!editor || !activeFrame || phase !== "ready" || refreshInFlight || composeInFlight) return undefined;
     if (editorMode !== "transform" && editorMode !== "distort" && editorMode !== "warp") return undefined;
     const placement = activeFrame.placement;
@@ -820,7 +822,10 @@ document.addEventListener("input", (event) => {
 document.addEventListener("keyup", handleKeyUp);
 window.addEventListener("blur", releasePreviewPan);
 
-if (editor) post({ type: "ready", systemLocales });
+if (editor) {
+  const sceneDraftSessionId = createSceneDraftToken((values) => crypto.getRandomValues(values));
+  post({ type: "ready", systemLocales, sceneDraftSessionId });
+}
 
 function createEditor(): PerspectiveEditor | undefined {
   try {
@@ -2348,7 +2353,7 @@ function syncViewportScene(): void {
  */
 function syncSceneDraft(): void {
   if (!LIVE_SCENE_DRAFT_ENABLED || !initialFrame || !activeFrame) return;
-  if (!valid) {
+  if (productWorkspace.current() !== "perspective" || !valid) {
     clearSceneDraftFeedback();
     return;
   }

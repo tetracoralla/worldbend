@@ -318,17 +318,40 @@ fn success_summary(result: &Value) -> String {
         result.get("outputDirectory").and_then(Value::as_str),
         result.get("items").and_then(Value::as_array),
     ) {
-        if let Some(output_count) = result
+        if result
             .get("plan")
             .and_then(|plan| plan.get("outputCount"))
             .and_then(Value::as_u64)
+            .is_some()
         {
+            let planned_items = result
+                .get("plan")
+                .and_then(|plan| plan.get("items"))
+                .and_then(Value::as_array)
+                .map_or(items.len(), Vec::len);
+            let rendered_items = items
+                .iter()
+                .filter(|item| item.get("status").and_then(Value::as_str) == Some("rendered"))
+                .count();
+            let failed_items = items
+                .iter()
+                .filter(|item| item.get("status").and_then(Value::as_str) == Some("failed"))
+                .count();
+            let actual_outputs = items
+                .iter()
+                .filter_map(|item| item.get("outputs").and_then(Value::as_array))
+                .map(Vec::len)
+                .sum::<usize>();
+            let output_state = if status == "written" {
+                "written"
+            } else {
+                "validated"
+            };
             return bounded_text(
                 &format!(
-                    "Variation Job {status}: {} item{} and {output_count} output{} in {directory}.",
-                    items.len(),
-                    if items.len() == 1 { "" } else { "s" },
-                    if output_count == 1 { "" } else { "s" }
+                    "Variation Job {status}: {planned_items} planned item{}; {rendered_items} rendered, {failed_items} failed; {actual_outputs} actual output{} {output_state} in {directory}.",
+                    if planned_items == 1 { "" } else { "s" },
+                    if actual_outputs == 1 { "" } else { "s" },
                 ),
                 MAX_SCHEMA_ERROR_CHARS,
             );
@@ -9225,6 +9248,41 @@ mod tests {
                 "candidates": []
             })),
             "Plane assessment noCandidate: 0 candidates from worldbend.alpha-quad-v1; no transform applied."
+        );
+    }
+
+    #[test]
+    fn variation_summaries_report_actual_outcomes_instead_of_plan_totals() {
+        let summary = |status: &str, items: Value| {
+            success_summary(&json!({
+                "status": status,
+                "outputDirectory": "out/job",
+                "plan": {
+                    "outputCount": 6,
+                    "items": [{}, {}, {}]
+                },
+                "items": items
+            }))
+        };
+        let rendered = |outputs: usize| {
+            json!({
+                "status": "rendered",
+                "outputs": vec![json!({}); outputs]
+            })
+        };
+        let failed = || json!({ "status": "failed", "error": { "code": "E_RENDER" } });
+
+        assert_eq!(
+            summary("written", json!([rendered(2), failed(), failed()])),
+            "Variation Job written: 3 planned items; 1 rendered, 2 failed; 2 actual outputs written in out/job."
+        );
+        assert_eq!(
+            summary("written", json!([failed(), failed(), failed()])),
+            "Variation Job written: 3 planned items; 0 rendered, 3 failed; 0 actual outputs written in out/job."
+        );
+        assert_eq!(
+            summary("ready", json!([rendered(2), rendered(2), rendered(2)])),
+            "Variation Job ready: 3 planned items; 3 rendered, 0 failed; 6 actual outputs validated in out/job."
         );
     }
 

@@ -86,7 +86,7 @@ describe("Figma selection generations", () => {
       height: 760,
       themeColors: true,
     });
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-Hans-CN", "en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-Hans-CN", "en-US"], sceneDraftSessionId: "test-session-00001" });
 
     await vi.waitFor(() => {
       expect(posts).toContainEqual({ type: "locale", preference: "system", locale: "zh-CN" });
@@ -120,7 +120,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-CN"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-CN"], sceneDraftSessionId: "test-session-00001" });
 
     await vi.waitFor(() => {
       expect(posts).toContainEqual({ type: "locale", preference: "en", locale: "en" });
@@ -157,7 +157,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-CN"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["zh-CN"], sceneDraftSessionId: "test-session-00001" });
     pending.resolve(new Uint8Array([1]));
     await vi.waitFor(() => expect(source.exportAsync).toHaveBeenCalledTimes(1));
 
@@ -211,7 +211,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await flushMicrotasks();
     expect(first.exportAsync).toHaveBeenCalledTimes(1);
     expect(posts).toContainEqual({
@@ -277,7 +277,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await flushMicrotasks();
     expect(source.exportAsync).toHaveBeenCalledTimes(1);
 
@@ -320,7 +320,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     initialBytes.resolve(new Uint8Array([1]));
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
@@ -380,7 +380,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     initialBytes.resolve(new Uint8Array([1]));
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
@@ -480,7 +480,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     pending.resolve(new Uint8Array([1]));
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
@@ -594,7 +594,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     pending.resolve(new Uint8Array([1]));
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
@@ -695,7 +695,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     pending.resolve(new Uint8Array([1]));
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
@@ -794,7 +794,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     pending.resolve(new Uint8Array([1]));
     await vi.waitFor(() => {
       expect(posts).toContainEqual(expect.objectContaining({ type: "source", generation: 1 }));
@@ -848,7 +848,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
-    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"] });
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
     await vi.waitFor(() => expect(figmaMock.ui.postMessage).toHaveBeenCalled());
 
     figmaMock.ui.onmessage?.({ type: "trigger-undo" });
@@ -859,7 +859,13 @@ describe("Figma selection generations", () => {
   it("sweeps a stale working preview left on a page that is not current", async () => {
     let otherPageLoaded = false;
     const artwork = { id: "artwork", getPluginData: vi.fn(() => "") };
-    const staleDraft = { id: "stale-draft", getPluginData: vi.fn(() => "1"), remove: vi.fn() };
+    const staleDraft = {
+      id: "stale-draft",
+      getPluginData: vi.fn((key: string) =>
+        key === "sceneDraft" || key === "sceneDraftRetired" ? "1" : "prior-session-0001"
+      ),
+      remove: vi.fn(),
+    };
     const otherPage = {
       id: "other-page",
       type: "PAGE",
@@ -895,6 +901,7 @@ describe("Figma selection generations", () => {
     vi.stubGlobal("__html__", "");
 
     await import("./main");
+    figmaMock.ui.onmessage?.({ type: "ready", systemLocales: ["en-US"], sceneDraftSessionId: "test-session-00001" });
 
     await vi.waitFor(() => expect(staleDraft.remove).toHaveBeenCalledTimes(1));
     expect(otherPage.loadAsync).toHaveBeenCalledTimes(1);

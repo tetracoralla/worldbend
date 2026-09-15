@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  clearSceneDraft,
-  forgetSceneDraftNodeId,
+  createSceneDraftSession,
   isSceneDraftNode,
-  isSceneDraftNodeId,
-  sweepStaleSceneDrafts,
-  updateSceneDraft,
 } from "./scene-draft";
+import { createSceneDraftToken } from "./scene-draft-id";
+
+const SESSION_A = "session-a-00001";
+const SESSION_B = "session-b-00001";
 
 function rectangle(id: string) {
   const pluginData = new Map<string, string>();
@@ -81,7 +81,8 @@ const payload = (bytes: number, placement: { x: number; y: number; width: number
 describe("scene draft node lifecycle", () => {
   it("maintains one locked, marked node reused across updates without undo commits", () => {
     const { page, figma, events } = host();
-    updateSceneDraft(page, payload(1, { x: 5, y: 6, width: 50, height: 40 }), "Poster");
+    const session = createSceneDraftSession(SESSION_A);
+    session.update(page, payload(1, { x: 5, y: 6, width: 50, height: 40 }), "Poster");
     const draft = page.children[0]!;
     expect(isSceneDraftNode(draft)).toBe(true);
     expect(draft.locked).toBe(true);
@@ -92,7 +93,7 @@ describe("scene draft node lifecycle", () => {
     expect(figma.commitUndo).toHaveBeenCalledTimes(1);
     expect(events.slice(0, 2)).toEqual(["commit", "create"]);
 
-    updateSceneDraft(page, payload(2, { x: 7, y: 8, width: 60, height: 30 }), "Poster");
+    session.update(page, payload(2, { x: 7, y: 8, width: 60, height: 30 }), "Poster");
     expect(page.children).toHaveLength(1);
     expect(page.children[0]).toBe(draft);
     expect(draft).toMatchObject({ x: 7, y: 8, width: 60, height: 30 });
@@ -101,52 +102,61 @@ describe("scene draft node lifecycle", () => {
     expect(figma.createRectangle).toHaveBeenCalledTimes(1);
   });
 
-  it("clear removes only marked drafts and never replays host history", () => {
+  it("clear retires and removes only this session's draft without replaying host history", () => {
     const { page, figma } = host();
-    updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    const session = createSceneDraftSession(SESSION_A);
+    session.update(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
     const selected = rectangle("selected");
     selected.parent = page;
     page.children.push(selected);
     page.selection = [selected];
     expect(figma.commitUndo).toHaveBeenCalledTimes(1);
-    const id = page.children[0]!.id;
-    clearSceneDraft(page);
+    const draft = page.children[0]!;
+    const id = draft.id;
+    session.clear(page);
+    expect(draft.getPluginData("sceneDraftRetired")).toBe("1");
     expect(page.children).toEqual([selected]);
-    expect(isSceneDraftNodeId(id)).toBe(true);
-    forgetSceneDraftNodeId(id);
-    expect(isSceneDraftNodeId(id)).toBe(false);
+    expect(session.isOwnedNodeId(id)).toBe(true);
+    session.forgetNodeId(id);
+    expect(session.isOwnedNodeId(id)).toBe(false);
     expect(figma.triggerUndo).not.toHaveBeenCalled();
     expect(page.selection).toEqual([selected]);
     expect(figma.commitUndo).toHaveBeenCalledTimes(2);
     // Clearing with no draft creates no additional host boundary.
-    clearSceneDraft(page);
+    session.clear(page);
     expect(figma.commitUndo).toHaveBeenCalledTimes(2);
   });
 
-  it("sweeps stale drafts from abnormal exits and never touches artwork", () => {
+  it("sweeps only nodes whose owning session explicitly retired them", () => {
     const { page, figma } = host();
-    const staleDraft = rectangle("stale-draft");
-    staleDraft.parent = page;
-    staleDraft.setPluginData("sceneDraft", "1");
+    const previous = createSceneDraftSession("session-old-0001");
+    previous.update(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Old");
+    const staleDraft = page.children[0]!;
+    previous.clear(page);
+    // Model host Undo resurrecting the removed node with its pre-removal data.
+    staleDraft.removed = false;
     page.children.push(staleDraft);
     const artwork = rectangle("art");
     artwork.parent = page;
     page.children.push(artwork);
-    sweepStaleSceneDrafts(page);
+    const current = createSceneDraftSession(SESSION_A);
+    current.sweepRetired(page);
     expect(page.children).toEqual([artwork]);
+    expect(staleDraft.removed).toBe(true);
     expect(artwork.removed).toBe(false);
     expect(figma.triggerUndo).not.toHaveBeenCalled();
-    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
-    sweepStaleSceneDrafts(page);
-    expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(3);
+    current.sweepRetired(page);
+    expect(figma.commitUndo).toHaveBeenCalledTimes(3);
   });
 
-  it("does not let a late stale sweep remove this run's live preview", () => {
+  it("does not let a late retired sweep remove any live preview", () => {
     const { page, figma } = host();
-    updateSceneDraft(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
+    const session = createSceneDraftSession(SESSION_A);
+    session.update(page, payload(1, { x: 0, y: 0, width: 10, height: 10 }), "Poster");
     const draft = page.children[0];
 
-    sweepStaleSceneDrafts(page);
+    createSceneDraftSession(SESSION_B).sweepRetired(page);
 
     expect(page.children).toEqual([draft]);
     expect(figma.commitUndo).toHaveBeenCalledTimes(1);
@@ -154,13 +164,15 @@ describe("scene draft node lifecycle", () => {
 
   it("ignores empty payloads instead of writing a broken draft", () => {
     const { page, figma } = host();
-    updateSceneDraft(page, { ...payload(0, { x: 0, y: 0, width: 10, height: 10 }), bytes: new Uint8Array() }, "Poster");
+    const session = createSceneDraftSession(SESSION_A);
+    session.update(page, { ...payload(0, { x: 0, y: 0, width: 10, height: 10 }), bytes: new Uint8Array() }, "Poster");
     expect(page.children).toHaveLength(0);
     expect(figma.createRectangle).not.toHaveBeenCalled();
   });
 
   it("drops a partially painted node when the host rejects the frame, without a history boundary", () => {
     const { page, figma } = host();
+    const session = createSceneDraftSession(SESSION_A);
     // Simulate the host rejecting an extreme placement size during paint.
     figma.createRectangle.mockImplementationOnce(() => {
       const node = rectangle("node-rejected");
@@ -172,9 +184,55 @@ describe("scene draft node lifecycle", () => {
       return node;
     });
     const extreme = payload(1, { x: 0, y: 0, width: Number.MAX_SAFE_INTEGER, height: 10 });
-    expect(() => updateSceneDraft(page, extreme, "Poster")).not.toThrow();
+    expect(() => session.update(page, extreme, "Poster")).not.toThrow();
     expect(page.children).toHaveLength(0);
     // Only the pre-create boundary ran; the failed create never entered history.
     expect(figma.commitUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps concurrent sessions from sweeping, overwriting, or clearing one another", () => {
+    const { page } = host();
+    const a = createSceneDraftSession(SESSION_A);
+    const b = createSceneDraftSession(SESSION_B);
+    a.update(page, payload(1, { x: 1, y: 2, width: 10, height: 10 }), "A");
+    const aNode = page.children[0]!;
+
+    b.sweepRetired(page);
+    expect(page.children).toEqual([aNode]);
+    b.update(page, payload(2, { x: 20, y: 30, width: 12, height: 14 }), "B");
+    const bNode = page.children[1]!;
+    expect(bNode).not.toBe(aNode);
+
+    a.update(page, payload(3, { x: 4, y: 5, width: 16, height: 18 }), "A");
+    expect(aNode).toMatchObject({ x: 4, y: 5, width: 16, height: 18 });
+    expect(bNode).toMatchObject({ x: 20, y: 30, width: 12, height: 14 });
+
+    b.clear(page);
+    expect(page.children).toEqual([aNode]);
+    expect(aNode.removed).toBe(false);
+  });
+
+  it("preserves an unowned legacy marker because it may still be another live session", () => {
+    const { page, figma } = host();
+    const legacy = rectangle("legacy");
+    legacy.parent = page;
+    legacy.setPluginData("sceneDraft", "1");
+    page.children.push(legacy);
+
+    createSceneDraftSession(SESSION_A).sweepRetired(page);
+
+    expect(page.children).toEqual([legacy]);
+    expect(figma.commitUndo).not.toHaveBeenCalled();
+  });
+
+  it("creates bounded session identities and rejects malformed ones", () => {
+    const generated = createSceneDraftToken((values) => {
+      values.set([1, 2, 3, 4]);
+      return values;
+    });
+    expect(generated).toMatch(/^[a-z0-9-]{12,96}$/);
+    expect(generated).toBe("0000001-0000002-0000003-0000004");
+    expect(() => createSceneDraftSession(generated)).not.toThrow();
+    expect(() => createSceneDraftSession("short")).toThrow("Scene draft identity is invalid");
   });
 });

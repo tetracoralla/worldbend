@@ -33,6 +33,7 @@ import {
   type FigmaTaskTemplate,
   type SavedSpatialTemplate,
 } from "./stored-template-library";
+import { isSceneDraftToken } from "./scene-draft-id";
 
 export interface SourceRasterPayload {
   bytes: Uint8Array;
@@ -131,7 +132,7 @@ export type MainToUiMessage =
 export type UiToMainMessage =
   | { type: "restore-native"; generation: number; nodeId: string; expected: string }
   | { type: "apply-native"; payload: NativeApplyPayload }
-  | { type: "ready"; systemLocales: string[] }
+  | { type: "ready"; systemLocales: string[]; sceneDraftSessionId: string }
   | { type: "set-locale"; preference: LocalePreference }
   | {
       type: "scene-draft";
@@ -216,7 +217,8 @@ export function isUiToMainMessage(value: unknown): value is UiToMainMessage {
     typeof value["expected"] === "string" && value["expected"].length > 0 && value["expected"].length <= 4096;
   if (value["type"] === "ready") {
     return (
-      Object.keys(value).length === 2 &&
+      hasExactKeys(value, ["type", "systemLocales", "sceneDraftSessionId"]) &&
+      isSceneDraftToken(value["sceneDraftSessionId"]) &&
       Array.isArray(value["systemLocales"]) &&
       value["systemLocales"].length <= 16 &&
       value["systemLocales"].every(

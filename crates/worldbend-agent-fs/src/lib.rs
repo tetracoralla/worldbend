@@ -4,7 +4,9 @@
 //! without following symlinks, and held source/output handles remain
 //! authoritative if visible pathnames are replaced before use.
 
-use cap_fs_ext::{FollowSymlinks, OpenOptions, OpenOptionsFollowExt, ambient_authority};
+use cap_fs_ext::{
+    FollowSymlinks, OpenOptions, OpenOptionsFollowExt, OpenOptionsSyncExt, ambient_authority,
+};
 use cap_primitives::fs::{
     DirOptions, create_dir, hard_link, open, open_ambient_dir, open_dir_nofollow, remove_dir,
     remove_dir_all, remove_file, rename, stat,
@@ -72,7 +74,11 @@ impl WorkspaceRoot {
         reject_symlink(&parent, &name, components.len() - 1)?;
 
         let mut options = OpenOptions::new();
-        options.read(true).follow(FollowSymlinks::No);
+        // A FIFO opened read-only can block before descriptor metadata is
+        // available. Acquire every candidate without blocking, then make the
+        // held descriptor's regular-file identity authoritative. A pathname
+        // stat alone would leave a replace-between-check-and-open race.
+        options.read(true).follow(FollowSymlinks::No).nonblock(true);
         let file = open(&parent, Path::new(&name), &options).map_err(|error| {
             classify_open_error(
                 &parent,
@@ -1113,6 +1119,51 @@ mod tests {
         workspace
             .prepare_file_output("assets/output.svg", false)
             .unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_fifo_without_waiting_for_a_writer_and_then_recovers() {
+        use std::{
+            ffi::CString,
+            os::unix::ffi::OsStrExt,
+            sync::{Arc, mpsc},
+            time::Duration,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("blocked.fifo");
+        let fifo_name = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        fs::write(root.path().join("source.png"), b"png").unwrap();
+        let workspace = Arc::new(WorkspaceRoot::open(root.path()).unwrap());
+        let (sent, received) = mpsc::channel();
+        let worker = Arc::clone(&workspace);
+        let handle = std::thread::spawn(move || {
+            sent.send(worker.open_source("blocked.fifo").map(|_| ()))
+                .unwrap();
+        });
+
+        let result = match received.recv_timeout(Duration::from_millis(250)) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Release a regressed blocking open so the test fails without
+                // leaving a permanently blocked process or thread behind.
+                let writer = fs::OpenOptions::new().write(true).open(&fifo).unwrap();
+                drop(writer);
+                let _ = received.recv_timeout(Duration::from_secs(1));
+                handle.join().unwrap();
+                panic!("opening a FIFO waited for a writer before rejecting its type");
+            }
+            Err(error) => panic!("FIFO result channel failed: {error}"),
+        };
+        handle.join().unwrap();
+        assert_eq!(result.unwrap_err().code, ErrorCode::PathOutsideRoot);
+
+        let mut regular = workspace.open_source("source.png").unwrap();
+        let mut bytes = Vec::new();
+        regular.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"png");
     }
 
     #[test]

@@ -583,13 +583,17 @@ perspective-family edit (Transform, Distort, Warp) differs from the loaded
 result, the plugin maintains at most one canvas preview node: a locked, plainly
 named image
 rectangle at the current output placement, marked with private plugin data
-and carrying no stored operation, binding or reusable-result identity. It is
+with a fresh per-run owner token and carrying no stored operation, binding or
+reusable-result identity. It is
 never accepted as a source or result. Returning exactly to the loaded frame,
 Apply, cancel, selection loss, leaving the workspace or entering a non-preview
 mode, and an error surface replacing the edit all remove it. Plugin close clears
 the preview synchronously through Figma's main-thread close event; UI pagehide requests an earlier clear,
-and a stale-preview sweep on the next plugin run remains the abnormal-exit and
-host-Undo-resurrection backstop. A swept preview is never reused. Updates are
+and cleanup marks that run's node retired before removing it. A later run may
+sweep only a node carrying that positive retirement marker, which is the
+host-Undo-resurrection backstop. A marker, old session token, or client identity
+alone does not prove that another plugin instance has ended, so unretired nodes
+are never auto-deleted or reused. Updates are
 coalesced and bounded to a 1024 px raster axis. Perspective uses the same export
 renderer and operation as publication; Composition uses the same composited
 preview canvas and scene placement.
@@ -610,9 +614,14 @@ that safe cleanup can leave one empty host Undo item and that a later host Undo
 can temporarily resurrect the removed preview. This is an accepted host
 limitation rather than a reason to remove essential scene feedback: the node's
 plain `Worldbend Working Preview` name and private marker make it recoverable,
-and the next plugin run removes it without touching artwork. While a preview
-exists it is ordinary document content: collaborators in a live session see it
-update and disappear alongside the editor.
+and the retirement marker lets the next plugin run remove an Undo-resurrected
+node without touching artwork or another live session. A host or process crash
+can prevent the synchronous retirement step. Because Figma exposes no reliable
+proof that such an unretired node is no longer owned by a live tab, later runs
+leave it plainly named for explicit document cleanup instead of risking a
+collaborator's active feedback. While a preview exists it is ordinary document
+content: collaborators in a live session see it update and disappear alongside
+the editor.
 
 The self-contained Figma release may still inline those
 modules into one HTML file; package inlining does not authorize a single

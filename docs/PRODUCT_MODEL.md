@@ -150,8 +150,12 @@ later host Undo can resurrect the removed preview. The product accepts that
 recoverable host artifact because real scene feedback is central to the task.
 It never uses host Undo for cleanup, since that could undo newer artwork. The
 preview is privately marked, plainly named, excluded from product selection and
-placement logic, and swept on the next run if host history or an abnormal exit
-restores it.
+placement logic, and owned by one plugin run. Cleanup retires its own node before
+removal, so a later run can safely sweep an Undo-resurrected node. An abnormal
+exit may leave an unretired node, but Figma supplies no proof that an unretired
+node is not still active in another tab; the plugin therefore preserves it as a
+plainly named, explicit document-cleanup target instead of deleting another
+session's live feedback.
 
 ## Current productized finish line
 

@@ -143,7 +143,7 @@ describe("UI message guard", () => {
         payload: { ...validApply.payload, duplicate: "yes" },
       }),
     ).toBe(false);
-    expect(isUiToMainMessage({ type: "ready", systemLocales: ["zh-CN", "en-US"] })).toBe(
+    expect(isUiToMainMessage({ type: "ready", systemLocales: ["zh-CN", "en-US"], sceneDraftSessionId: "test-session-00001" })).toBe(
       true,
     );
     expect(isUiToMainMessage({ type: "set-locale", preference: "system" })).toBe(true);
@@ -204,7 +204,13 @@ describe("UI message guard", () => {
       }),
     ).toBe(false);
     expect(isUiToMainMessage({ type: "ready" })).toBe(false);
-    expect(isUiToMainMessage({ type: "ready", systemLocales: [""] })).toBe(false);
+    expect(isUiToMainMessage({ type: "ready", systemLocales: ["en-US"] })).toBe(false);
+    expect(isUiToMainMessage({
+      type: "ready",
+      systemLocales: ["en-US"],
+      sceneDraftSessionId: "short",
+    })).toBe(false);
+    expect(isUiToMainMessage({ type: "ready", systemLocales: [""], sceneDraftSessionId: "test-session-00001" })).toBe(false);
     expect(isUiToMainMessage({ type: "set-locale", preference: "fr" })).toBe(false);
     expect(
       isUiToMainMessage({
