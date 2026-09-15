@@ -78,7 +78,7 @@ in [FIGMA_HANDOFF.md](FIGMA_HANDOFF.md).
 ## Media
 
 Use the owned icon and current product examples in
-[`assets/figma-community`](../assets/figma-community/README.md). The `0.3`
+[`assets/figma-community`](../assets/figma-community/README.md). The `0.4`
 thumbnail shows an actual HD result. The companion-effect thumbnail separately
 shows a sampled editable Frame. Do not reuse old interface screenshots as
 current previews. Exclude account chrome, unrelated artwork, company projects,

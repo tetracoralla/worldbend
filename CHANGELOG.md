@@ -22,6 +22,15 @@ the first Figma Community release.
   editing or delete it; the next plugin run sweeps any residue from every
   page of the document.
 
+### Figma interface and release media
+
+- Refined the 300-pixel-wide plugin layout so source and output labels stay
+  clear of the artwork, guidance remains readable, and the output actions keep
+  a deliberate full-width hierarchy instead of collapsing into a narrow
+  secondary column.
+- Updated the Community cover for 0.4 with a readable version mark and a clean
+  original-to-HD comparison at both full and marketplace-card sizes.
+
 ## 0.3.1 - 2026-09-11
 
 ### Transform reliability
