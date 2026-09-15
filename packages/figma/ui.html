@@ -250,6 +250,19 @@
       .native-guidance { flex: 1 1 100%; margin: 0; max-width: 62ch; font-size: 11px; line-height: 1.5; text-align: right; color: var(--figma-color-text-secondary, #777); }
       #copy-effect-listing { flex: 1 1 100%; min-height: 28px; padding: 0; border: 0; color: var(--figma-color-text-brand, #0d99ff); background: transparent; font: inherit; font-size: 11px; text-align: right; }
       #copy-effect-listing[hidden] { display: none; }
+      @media (max-width: 420px) {
+        #action-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px 10px; padding: 10px 12px; }
+        #controls #editor { padding: 44px 32px 50px; }
+        #session-actions { grid-column: 1; grid-row: 2; }
+        #output-actions { display: contents; }
+        .native-guidance { grid-column: 1 / -1; grid-row: 1; max-width: none; font-size: 10.5px; line-height: 1.4; text-align: left; }
+        #copy-effect-listing { grid-column: 2; grid-row: 2; min-width: 0; min-height: 34px; text-align: right; }
+        #action-apply-editable { grid-column: 1 / -1; grid-row: 3; width: 100%; }
+        #output-actions:has(#action-apply-copy:not([hidden])) #action-apply-editable { grid-column: 1; }
+        #action-apply-copy { grid-column: 2; grid-row: 3; width: 100%; }
+        #apply { grid-column: 1 / -1; grid-row: 4; width: 100%; }
+        #action-dock button { min-width: 0; min-height: 34px; padding-inline: 10px; }
+      }
       #status:empty { display: none; }
       #error { display: flex; align-items: center; gap: 8px; }
       #error-text { min-width: 0; flex: 1; }

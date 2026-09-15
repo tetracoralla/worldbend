@@ -38,7 +38,7 @@ try {
   const address = server.address();
   assert(address && typeof address !== "string");
   browser = await launchChrome(await findChrome(), ["--window-size=820,760"]);
-  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "designer-template", "surface-authoring", "designer-experience", "scene-draft"];
+  const scenarios = ["content-history", "pending-distort-commit", "unpainted-distort-commit", "transform-controls", "external-operation", "output-workflow", "native-output-limits", "native-publication-undo", "fixed-preview-labels", "late-native-renderer", "hd-source-reuse", "projective-edge-quality", "selection-entry", "dogfood-tasks", "designer-history", "designer-publication", "designer-projection", "designer-refresh", "designer-template", "surface-authoring", "designer-experience", "scene-draft", "visual-footer"];
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
   for (const scenario of requested.length ? requested : scenarios) {
@@ -52,8 +52,8 @@ try {
     console.log(`Built Figma UI refresh passed: ${scenario}`);
   }
   const compactScenarios = requested.length
-    ? requested.filter((name) => ["selection-entry", "designer-experience"].includes(name))
-    : ["selection-entry", "designer-experience"];
+    ? requested.filter((name) => ["selection-entry", "designer-experience", "visual-footer"].includes(name))
+    : ["selection-entry", "designer-experience", "visual-footer"];
   for (const scenario of compactScenarios) {
     // Plugin windows shrink to Figma's 300 px minimum; the selection entry
     // must survive that width too, not only the comfortable default.
@@ -578,6 +578,55 @@ async function runFixture() {
             `${workspace} handle is detached from the projected artwork: ${visibleX}`);
         }
         get(`${panel} [data-role="back"]`).click();
+      }
+    } else if (scenario === "visual-footer") {
+      const visual = { ...payload, sourceNodeId: "visual-original", sourceName: "Campaign card" };
+      delete visual.targetNodeId;
+      delete visual.nativeTarget;
+      delete visual.nativeRenderer;
+      await refresh(visual);
+      await moveCorner();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const footer = get("#action-dock");
+      const guidance = get("#native-guidance");
+      const listing = get("#copy-effect-listing");
+      const reset = get("#reset");
+      const editable = get("#action-apply-editable");
+      const applyButton = get("#apply");
+      check(!guidance.hidden && !listing.hidden,
+        "Visual footer did not expose editable-output guidance");
+      check(!applyButton.disabled, "Visual footer blocked the HD image route");
+      if (innerWidth === 300) {
+        await wait(() => {
+          const artwork = get(".worldbend-editor").getBoundingClientRect();
+          const source = get("#source-name").getBoundingClientRect();
+          const size = get("#output-size").getBoundingClientRect();
+          return source.bottom <= artwork.top + 1 && size.top >= artwork.bottom - 1;
+        }, "compact labels settle outside the artwork");
+        const footerBox = footer.getBoundingClientRect();
+        const listingBox = listing.getBoundingClientRect();
+        const resetBox = reset.getBoundingClientRect();
+        const editableBox = editable.getBoundingClientRect();
+        const applyBox = applyButton.getBoundingClientRect();
+        const artworkBox = get(".worldbend-editor").getBoundingClientRect();
+        const sourceBox = get("#source-name").getBoundingClientRect();
+        const sizeBox = get("#output-size").getBoundingClientRect();
+        const sizeFlow = get("#output-size-flow");
+        check(footer.scrollWidth <= footer.clientWidth + 1, "Compact footer scrolls horizontally");
+        check(Math.abs(listingBox.top - resetBox.top) <= 2,
+          "Compact recovery link is detached from Reset");
+        check(editableBox.width >= footerBox.width - 25 && applyBox.width >= footerBox.width - 25,
+          "Compact output actions do not use the available width");
+        check(getComputedStyle(guidance).textAlign === "left",
+          "Compact capability guidance is hard to scan");
+        check(get("#editor").getBoundingClientRect().height >= 140,
+          "Compact footer crowds out the transform preview");
+        check(sourceBox.bottom <= artworkBox.top + 1,
+          "Compact source label overlaps the artwork");
+        check(sizeBox.top >= artworkBox.bottom - 1,
+          "Compact output size overlaps the artwork");
+        check(sizeFlow.scrollWidth <= sizeFlow.clientWidth + 1,
+          "Compact output size is visibly truncated");
       }
     } else if (scenario === "selection-entry") {
       const state = get("#selection-state");
