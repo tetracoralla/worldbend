@@ -74,6 +74,17 @@ pnpm build:figma
 pnpm check
 ```
 
+The complete browser checks require Chrome or Chromium. On a display-less
+Debian/Ubuntu host, install the Vulkan loader, Mesa driver and virtual display:
+
+```sh
+sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
+WORLDBEND_WEBGPU_HEADED=1 xvfb-run -a pnpm check
+```
+
+The [clean-checkout workflow](.github/workflows/ci.yml) configures this environment.
+macOS browser checks use the native graphics backend.
+
 Useful focused checks:
 
 ```sh
