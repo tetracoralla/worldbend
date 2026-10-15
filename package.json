@@ -96,7 +96,7 @@
     "test:source-sampling:from-build": "node scripts/source-sampling-runtime-check.mjs"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.138.0",
+    "@figma/plugin-typings": "1.141.0",
     "@types/node": "26.4.1",
     "fflate": "0.8.3",
     "json-schema-to-typescript": "16.0.0",
