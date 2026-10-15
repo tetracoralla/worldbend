@@ -322,6 +322,11 @@ export async function findChrome() {
 
 export async function launchChrome(executable, extraArgs = []) {
   const profile = await mkdtemp(path.join(tmpdir(), "worldbend-parity-chrome-"));
+  // Software Vulkan provides a real WebGPU device on display-less Linux hosts.
+  // Keep desktop platforms on their native backends and preserve caller overrides.
+  const webgpuArgs = process.platform === "linux" && extraArgs.includes("--enable-unsafe-webgpu")
+    ? ["--enable-features=Vulkan", "--use-angle=vulkan", "--use-vulkan=swiftshader",
+      "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface"] : [];
   const args = [
     "--headless=new",
     // A display-less Linux runner can otherwise report no pointing device.
@@ -334,6 +339,7 @@ export async function launchChrome(executable, extraArgs = []) {
     "--no-default-browser-check",
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
+    ...webgpuArgs,
     ...extraArgs,
     "about:blank",
   ];

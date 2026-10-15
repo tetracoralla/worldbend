@@ -41,6 +41,14 @@ jobs:
           cache: true
           install: false
 
+      - name: Prepare Linux software WebGPU
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers
+          node scripts/webgpu-runtime-check.mjs
+
       - name: Install Rust 1.89 with lint and WASM targets
         shell: bash
         run: |
@@ -99,6 +107,14 @@ jobs:
           runtime: node@22
           cache: true
           install: false
+
+      - name: Prepare Linux software WebGPU
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers
+          node scripts/webgpu-runtime-check.mjs
 
       - name: Install Rust 1.89 with lint and WASM targets
         shell: bash
