@@ -56,7 +56,11 @@ try{
   policy.revision=3;policy.exposed=input.policy.exposed;session.revise(nextSource,policy,session.getState().guard);assert(session.getState().output.plan.delivery.material[key]===defaultValue,'policy restore did not restore saved intent');
   const bad=JSON.parse(saved);bad.preference.scope='other';try{session.restorePreference(JSON.stringify(bad),session.getState().guard);throw Error('wrong scope accepted')}catch(error){assert(error.message!=='wrong scope accepted','wrong scope was restored')}
   const keptState=JSON.stringify(session.getState());try{session.commit({[field]:{kind:'number',value:2}},session.getState().guard);throw Error('range accepted')}catch(error){assert(error.message!=='range accepted','out-of-range preference accepted')};assert(keptState===JSON.stringify(session.getState()),'invalid preference changed accepted state');
-  const beforePixels=pixelData(host);session.commit({[field]:{kind:'number',value:.95}},session.getState().guard);await wait(40);const changedPixels=pixelData(host);
+  // Refresh the accepted state and snapshot each submission in the same task.
+  // WebGPU canvas textures expire after presentation; delayed reads can be empty.
+  session.setRuntime(session.getState().input.runtime,session.getState().guard);
+  const beforePixels=pixelData(host);session.commit({[field]:{kind:'number',value:.95}},session.getState().guard);const changedPixels=pixelData(host);
+  if(beforePixels)assert(beforePixels.some((value,index)=>index%4===3&&value>0)&&changedPixels.some((value,index)=>index%4===3&&value>0),family+' did not present visible GPU pixels');
   if(beforePixels)assert(!equal(beforePixels,changedPixels),family+' preference changed no actual GPU pixels');
   session.destroy();assert(content===host.firstChild&&!host.querySelector('canvas')&&!host.querySelector('.worldbend-texture'),'retirement damaged host content or kept material');
   const restoreInput=structuredClone(input);restoreInput.source=nextSource;session=await attachMaterialPreference(host,restoreInput);session.restorePreference(saved,session.getState().guard);
