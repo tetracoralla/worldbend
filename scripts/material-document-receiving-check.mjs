@@ -40,8 +40,8 @@ try{
   const children=[...hosts].map(([id,h])=>[id,h.firstChild]);let clicks=0;hosts.get('poster').firstChild.addEventListener('click',()=>clicks++);
   const devices=[],realAdapter=navigator.gpu.requestAdapter.bind(navigator.gpu);
   navigator.gpu.requestAdapter=async(...args)=>{const adapter=await realAdapter(...args);if(!adapter)return null;return new Proxy(adapter,{get(target,key){if(key==='requestDevice')return async(...args)=>{const device=await target.requestDevice(...args);devices.push(device);return device};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value}})};
-  const callbackErrors=[];const trap=event=>{if(event.message?.includes('host material reporter')){event.preventDefault();callbackErrors.push(event.message);}};addEventListener('error',trap);
-  const session=await attachMaterialDocument(p.initial,{resolveSurface:b=>hosts.get(b.slotId),paused:true,onError:()=>{throw Error('host material reporter')}});session.setPaused(true);
+  let reportCalls=0;const callbackErrors=[];const trap=event=>{if(event.message?.includes('host material reporter')){event.preventDefault();callbackErrors.push(event.message);}};addEventListener('error',trap);
+  const session=await attachMaterialDocument(p.initial,{resolveSurface:b=>hosts.get(b.slotId),paused:true,onError:()=>{reportCalls++;throw Error('host material reporter')}});session.setPaused(true);
   const nodes=()=>[...hosts].map(([id,h])=>[id,...h.querySelectorAll('canvas,svg,.worldbend-texture')]);
   const original=nodes(),before=session.getState(),beforePixels=await pixels(hosts.get('poster'));
   const invalid=structuredClone(p.next);invalid.deliveries.find(d=>d.material.family==='texture').material.delivery.material.grain=2;
@@ -84,7 +84,13 @@ try{
   children.find(([id])=>id==='poster')[1].click();assert(clicks===1&&children.every(([id,c])=>c.parentElement===hosts.get(id)),'Material continuation replaced host content/actions');
   await session.recover();assert(hosts.get('poster').querySelector('canvas')===kept,'Ordinary recovery rebuilt a healthy renderer');
   const healthyMesh=hosts.get('poster').querySelector('canvas'),foilCanvas=hosts.get('foil-seal').querySelector('canvas'),beforeLoss=session.getState().guard;
-  devices[1].destroy();await wait(30);assert(callbackErrors.length===0,'The material error reporter escaped the receiving boundary');assert(session.getState().surfaces.find(s=>s.family==='foil').status==='lost','Actual owned GPU device loss was hidden');
+  const foilDevice=readGpuPixels.deviceFor(foilCanvas),beforeReports=reportCalls;
+  assert(foilDevice,'The visible Foil canvas has no owned GPU device');foilDevice.destroy();
+  await Promise.race([foilDevice.lost,wait(5000).then(()=>{throw Error('Owned GPU device loss did not settle')})]);
+  for(let n=0;n<200&&reportCalls===beforeReports;n++)await wait(10);
+  await wait(0);
+  assert(reportCalls>beforeReports&&callbackErrors.length===0,'The material error reporter was not invoked or escaped the receiving boundary');
+  assert(session.getState().surfaces.find(s=>s.slotId==='foil-seal').status==='lost','Actual owned GPU device loss was hidden');
   await rejected(()=>session.revise(p.initial,beforeLoss),'Device loss did not invalidate the old runtime guard');
   await session.recover();assert(session.getState().surfaces.every(s=>s.status==='ready')&&hosts.get('poster').querySelector('canvas')===healthyMesh&&hosts.get('foil-seal').querySelector('canvas')===foilCanvas,'Device recovery discarded healthy work or failed to restore the owned renderer');
   session.setPaused(true);assert((await pixels(hosts.get('foil-seal'))).some((n,i)=>i%4===3&&n>0),'Recovered GPU material rendered no pixels');

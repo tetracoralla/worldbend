@@ -63,7 +63,7 @@ export function installCanvasReadback(decode) {
     }
     return result;
   };
-  return async canvas => {
+  const read = async canvas => {
     const record = contexts.get(canvas.getContext('webgpu'));
     if (record?.error) throw record.error;
     if (!record?.snapshot) throw Error('No submitted WebGPU canvas frame');
@@ -81,6 +81,8 @@ export function installCanvasReadback(decode) {
       buffer.destroy();
     }
   };
+  read.deviceFor = canvas => contexts.get(canvas.getContext('webgpu'))?.device;
+  return read;
 }
 
 export const canvasReadbackScript = `const readGpuPixels = (${installCanvasReadback})(${decodeCanvasPixels});`;
