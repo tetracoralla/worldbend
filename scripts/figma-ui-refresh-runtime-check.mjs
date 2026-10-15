@@ -100,18 +100,42 @@ try {
   scenarios.push("free-outline");
   const requested = process.argv.slice(2);
   for (const scenario of requested) assert(scenarios.includes(scenario), `Unknown Figma UI scenario: ${scenario}`);
+  const pageIds = async () => (await (await fetch(`${browser.debugUrl}/json/list`)).json())
+    .filter(target => target.type === "page").map(target => target.id);
+  const initialPageIds = new Set(await pageIds());
+  let releasedPages = 0;
   for (const scenario of requested.length ? requested : scenarios) {
     // Window size includes Chrome's own chrome even in headless mode. Set the
     // content viewport explicitly to cover the laptop-sized initial UI before inputs.
     const target = await createPage(browser.debugUrl, "about:blank");
-    const result = await readPageResult(target.webSocketDebuggerUrl, {
+    let scenarioError;
+    try {
+      const result = await readPageResult(target.webSocketDebuggerUrl, {
       width: 820, height: 660, focus: true, url: `http://127.0.0.1:${address.port}/${scenario === "host-visible-layout" ? "host" : ""}?case=${scenario}&width=820`,
-      trustedInput: ["preview-drag-chrome","pointer-release-compat","foil-workspace","composition-motion","free-outline"].includes(scenario), timeoutMs: ["preview-drag-chrome","pointer-release-compat"].includes(scenario) ? 60_000 : 30_000,
+      trustedInput: ["preview-drag-chrome","pointer-release-compat","foil-workspace","composition-motion","free-outline"].includes(scenario), timeoutMs: ["preview-drag-chrome","pointer-release-compat","composition-motion"].includes(scenario) ? 60_000 : 30_000,
       screenshotDirectory: process.env.WORLDBEND_FIGMA_DRAG_EVIDENCE,
-    });
-    assert(!result.error, `${scenario}: ${result.error}`);
+      });
+      assert(!result.error, `${scenario}: ${result.error}`);
+    } catch (error) { scenarioError = error; throw error; }
+    finally {
+      // Each page owns a WASM instance and can retain focused animation work.
+      // Retire only this scenario's page before the next case starts.
+      try {
+        const response = await fetch(`${browser.debugUrl}/json/close/${encodeURIComponent(target.id)}`);
+        assert(response.ok, `Could not close owned fixture page: ${response.status}`);
+        const deadline = Date.now() + 5000;
+        while ((await pageIds()).includes(target.id) && Date.now() < deadline)
+          await new Promise(resolve => setTimeout(resolve, 20));
+        assert((await pageIds()).every(id => initialPageIds.has(id)), "Fixture pages accumulated between scenarios");
+        releasedPages++;
+      } catch (error) {
+        if (scenarioError) throw new AggregateError([scenarioError, error], `${scenario}: scenario and page cleanup failed`);
+        throw error;
+      }
+    }
     console.log(`Built Figma UI refresh passed: ${scenario}`);
   }
+  console.log(`Figma UI fixture pages released: ${releasedPages}; remaining pages: ${(await pageIds()).length}`);
   const compactScenarios = requested.length
     ? requested.filter((name) => ["selection-entry", "designer-experience", "native-vector-status", "visual-footer", "appearance-workspace", "texture-workspace", "foil-workspace", "card-workspace", "preset-effects", "workpiece-continuation", "linked-dependencies", "composition-layer-warp", "composition-surfaces", "composition-motion", "ready-scene-previews", "canvas-names", "preview-drag-chrome", "free-outline"].includes(name))
     : ["selection-entry", "designer-experience", "native-vector-status", "visual-footer", "appearance-workspace", "texture-workspace", "foil-workspace", "card-workspace", "preset-effects", "workpiece-continuation", "linked-dependencies", "composition-layer-warp", "composition-surfaces", "composition-motion", "ready-scene-previews", "canvas-names", "preview-drag-chrome", "free-outline"];
@@ -129,7 +153,7 @@ try {
       const result = await readPageResult(target.webSocketDebuggerUrl, {
         width: 300, height: 520, focus: true, url: `http://127.0.0.1:${address.port}/${scenario === "host-visible-layout" ? "host" : ""}?case=${scenario}&width=300`,
         screenshotDirectory: process.env.WORLDBEND_FIGMA_DRAG_EVIDENCE,
-        trustedInput: ["preview-drag-chrome","pointer-release-compat","foil-workspace","composition-motion","free-outline"].includes(scenario), timeoutMs: ["preview-drag-chrome","pointer-release-compat"].includes(scenario) ? 60_000 : 30_000,
+        trustedInput: ["preview-drag-chrome","pointer-release-compat","foil-workspace","composition-motion","free-outline"].includes(scenario), timeoutMs: ["preview-drag-chrome","pointer-release-compat","composition-motion"].includes(scenario) ? 60_000 : 30_000,
       });
       assert(!result.error, `${scenario} at 300 px: ${result.error}`);
       console.log(`Built Figma UI refresh passed: ${scenario} at 300 px`);
@@ -1487,7 +1511,17 @@ async function runFixture() {
       check(!scene("cancel").disabled,"busy state prevents cancellation");scene("cancel").click();
       await wait(()=>!scene("create").disabled,"cancel releases scene for retry");
       reply(held,"frame",{index:held.index});check(!scene("download").checkVisibility(),"late reply published cancelled work");
-      hold=false;scene("create").click();await wait(()=>scene("download").checkVisibility(),"complete native movie link");
+      // Every source frame is really prepared; the simulated host replies do
+      // not make a multi-frame job fit a single-control five-second deadline.
+      const expectedFrames=retained.task.motion.spec.frameCount;
+      let completedFrames=0,lastFrameAt=performance.now();
+      hold=false;scene("create").click();
+      await wait(()=>{
+        if(frames.length!==completedFrames){completedFrames=frames.length;lastFrameAt=performance.now();}
+        if(!scene("download").checkVisibility()&&performance.now()-lastFrameAt>5000)
+          throw Error("Scene frame stream stalled after "+completedFrames+"/"+expectedFrames+" frames; status="+scene("create").disabled);
+        return scene("download").checkVisibility();
+      },"complete native movie link",Math.max(5000,expectedFrames*250));
       check(frames.length===144&&frames.every((value,index)=>value===index),"complete scene skipped or repeated a canonical frame");
       check(JSON.stringify(beginTask.motion)===JSON.stringify(retained.task.motion),"scene animation changed the retained authoring programme");
       check(scene("download").download==="Complete scene.mp4"&&scene("download").href.startsWith("blob:"),"native movie bytes were not exposed as a file");
