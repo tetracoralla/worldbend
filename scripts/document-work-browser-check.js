@@ -81,7 +81,8 @@ export default async function checkDocumentWork(page,evidenceDirectory='.task-no
 
   await page.setViewportSize({width:390,height:844});
   await page.reload();await page.waitForFunction(()=>window.worldbendDocumentDemo?.getPlan()?.frames?.length===3);
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth===innerWidth),'Long-title mobile work must not overflow horizontally');
+  const mobileLayout=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,clientWidth:document.documentElement.clientWidth}));
+  assert(mobileLayout.scrollWidth<=mobileLayout.clientWidth,'Long-title mobile work must not overflow horizontally: '+JSON.stringify(mobileLayout));
   await page.screenshot({path:evidenceDirectory+'/document-work-mobile.png',fullPage:true});
   await page.setViewportSize({width:1440,height:940});
   await page.reload();await page.waitForFunction(()=>window.worldbendDocumentDemo?.getPlan()?.frames?.length===3);

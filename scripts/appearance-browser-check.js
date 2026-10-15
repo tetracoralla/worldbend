@@ -161,11 +161,19 @@ export default async function checkSpatialAppearance(page,evidenceDirectory='.ta
 
   await page.setViewportSize({width:390,height:844});
   await page.reload();await page.waitForFunction(()=>window.worldbendAppearance?.getPlans().length===3);
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth===innerWidth),'Mobile viewport must not overflow horizontally');
+  const layout=()=>page.evaluate(()=>({viewportWidth:innerWidth,clientWidth:document.documentElement.clientWidth,bodyWidth:document.body.clientWidth,scrollWidth:document.documentElement.scrollWidth}));
+  const fits=value=>value.scrollWidth<=Math.min(value.viewportWidth,value.clientWidth,value.bodyWidth);
+  metrics.mobileLayout=await layout();
+  assert(fits(metrics.mobileLayout),'Mobile viewport must not overflow horizontally: '+JSON.stringify(metrics.mobileLayout));
   await page.screenshot({path:evidenceDirectory+'/appearance-mobile.png',fullPage:true});
+  // Reserve a real scrollbar gutter as on platforms without overlay scrollbars.
+  await page.evaluate(()=>{const style=document.createElement('style');style.textContent='html{overflow-y:scroll}::-webkit-scrollbar{width:17px;height:17px}';document.head.append(style)});
+  metrics.mobileScrollbarLayout=await layout();
+  assert(fits(metrics.mobileScrollbarLayout),'Mobile scrollbar viewport must not overflow horizontally: '+JSON.stringify(metrics.mobileScrollbarLayout));
+  await page.screenshot({path:evidenceDirectory+'/appearance-mobile-scrollbar.png',fullPage:true});
   await page.setViewportSize({width:1440,height:980});
   await page.reload();await page.waitForFunction(()=>window.worldbendAppearance?.getPlans().length===3);
   await page.screenshot({path:evidenceDirectory+'/appearance-desktop.png',fullPage:true});
-  checks.push('responsive mobile and desktop fixtures render without overflow');
+  checks.push('responsive mobile, scrollbar and desktop fixtures render without overflow');
   return{outcome:'PASS',checks,metrics,fingerprints:(await read()).plans.map(plan=>plan.fingerprint)};
 }

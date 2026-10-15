@@ -169,7 +169,8 @@ export default async function checkEffects(page, evidenceDirectory='.task-notes'
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.waitForFunction(()=>window.worldbendStudy.getPlans().every(p=>!p.state.reducedMotion));
   await page.setViewportSize({width:390,height:844});
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth===innerWidth),'Mobile viewport must not overflow horizontally');
+  const mobileLayout=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,clientWidth:document.documentElement.clientWidth}));
+  assert(mobileLayout.scrollWidth<=mobileLayout.clientWidth,'Mobile viewport must not overflow horizontally: '+JSON.stringify(mobileLayout));
   await page.screenshot({path:evidenceDirectory+'/effects-mobile.png',fullPage:true});
   await page.setViewportSize({width:1440,height:980});
   await page.reload();await page.waitForFunction(()=>window.worldbendStudy?.getPlans().length===2);
