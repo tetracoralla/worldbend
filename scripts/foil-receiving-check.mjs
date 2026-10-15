@@ -1,3 +1,4 @@
+import {canvasReadbackScript} from './webgpu-readback.mjs';
 import {createQaHttpFailureBoundary} from "./qa-http-failure-boundary.mjs";
 // Real source MCP -> independent Web receiver; no Figma account/runtime,
 // framework or fixture shader is used by the receiving page.
@@ -48,6 +49,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>Worldbend Foil receivi
 <div class="row"><article id="a" class="surface"><h1>Objects in motion.</h1><button id="action">Continue</button></article><article id="b" class="surface"><h1>Quiet<br>reflection.</h1><span>Independent material timing</span></article></div>
 <div class="row"><div id="group-a">Shared A</div><div id="group-b">Shared B</div></div><p class="note">Editable tint, opacity and motion · original content and interaction retained</p>
 <script type="module">
+${canvasReadbackScript}
 import {attachFoil} from '/foil.js';import {attachFoilGroup} from '/foil-receiving.js';
 try {
  const p = await (await fetch('/plans.json')).json();
@@ -62,10 +64,7 @@ try {
 
  const first=await attachFoil(a,p.initial,{paused:true,respectReducedMotion:false,onError:error=>reports.push(error.message)});
  let second=await attachFoil(b,p.initial,{paused:true,respectReducedMotion:false});
- const pixels = element => {
-  const canvas=element.querySelector('canvas'), copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
-  const context=copy.getContext('2d');context.drawImage(canvas,0,0);return context.getImageData(0,0,copy.width,copy.height).data;
- };
+ const pixels = element => readGpuPixels(element.querySelector('canvas'));
  const equal = (a,b)=>a.length===b.length&&a.every((value,i)=>value===b[i]);
  first.seek(0);const start = await pixels(a);first.seek(2000);const later=await pixels(a);assert(!equal(start,later),'seek did not change actual Foil pixels');
  second.seek(0);const stationary=await pixels(b);assert(equal(start,stationary),'independent instance did not start at t=0: '+JSON.stringify({first:first.getState(),second:second.getState(),start:[...start.slice(0,16)],stationary:[...stationary.slice(0,16)],startNonzero:start.reduce((n,v)=>n+Number(v>0),0),stationaryNonzero:stationary.reduce((n,v)=>n+Number(v>0),0)}));

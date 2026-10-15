@@ -1,3 +1,4 @@
+import {canvasReadbackScript} from './webgpu-readback.mjs';
 // Canonical source-MCP artifacts -> independent built receiving project.
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -21,13 +22,14 @@ await withAppearancePlanner(async run=>{
   const extra=structuredClone(update.document);extra.expressions.find(e=>e.id==='poster').bindings.push({role:'content',slotId:'extra-poster',assetId:'field-notes'});plans.extra=await plan(extra);
 });
 const test=String.raw`
+${canvasReadbackScript}
 import {attachMaterialDocument} from '/dist/material-document.js';
 import {attachFoil} from '/dist/foil.js';import {attachTexture} from '/dist/texture.js';import {attachMeshGradient} from '/dist/mesh-gradient.js';
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const assert=(value,message)=>{if(!value)throw Error(message)};
 const rejected=async(work,message)=>{try{await work()}catch{return}throw Error(message)};
 const trusted=async(method,params,screenshot)=>{globalThis.__WORLDBEND_INPUT__={method,params,...(screenshot?{screenshot}:{})};while(!globalThis.__WORLDBEND_INPUT_DONE__)await wait(10);delete globalThis.__WORLDBEND_INPUT_DONE__};
-const pixels=host=>{const c=host.querySelector('canvas'),out=document.createElement('canvas');out.width=c.width;out.height=c.height;out.getContext('2d').drawImage(c,0,0);return [...out.getContext('2d').getImageData(0,0,out.width,out.height).data]};
+const pixels=host=>readGpuPixels(host.querySelector('canvas'));
 const equal=(a,b)=>a.length===b.length&&a.every((n,i)=>n===b[i]);
 try{
   for(let n=0;n<500&&!globalThis.worldbendExample?.getState().ready;n++)await wait(10);
@@ -41,13 +43,13 @@ try{
   const callbackErrors=[];const trap=event=>{if(event.message?.includes('host material reporter')){event.preventDefault();callbackErrors.push(event.message);}};addEventListener('error',trap);
   const session=await attachMaterialDocument(p.initial,{resolveSurface:b=>hosts.get(b.slotId),paused:true,onError:()=>{throw Error('host material reporter')}});session.setPaused(true);
   const nodes=()=>[...hosts].map(([id,h])=>[id,...h.querySelectorAll('canvas,svg,.worldbend-texture')]);
-  const original=nodes(),before=session.getState(),beforePixels=pixels(hosts.get('poster'));
+  const original=nodes(),before=session.getState(),beforePixels=await pixels(hosts.get('poster'));
   const invalid=structuredClone(p.next);invalid.deliveries.find(d=>d.material.family==='texture').material.delivery.material.grain=2;
   await rejected(()=>session.revise(invalid,before.guard),'A malformed late family was accepted');
   assert(session.getState().guard.documentFingerprint===before.guard.documentFingerprint,'Invalid candidate replaced accepted work');
   assert(original.every(([id,...items])=>items.every(n=>n.parentElement===hosts.get(id))),'Preflight removed existing resources');
   await session.revise(p.next,before.guard);
-  const afterPixels=pixels(hosts.get('poster'));assert(!equal(beforePixels,afterPixels),'The canonical material revision changed no actual pixels '+JSON.stringify({beforeNonzero:beforePixels.filter(n=>n!==0).length,afterNonzero:afterPixels.filter(n=>n!==0).length,state:session.getState().surfaces}));
+  const afterPixels=await pixels(hosts.get('poster'));assert(!equal(beforePixels,afterPixels),'The canonical material revision changed no actual pixels '+JSON.stringify({beforeNonzero:beforePixels.filter(n=>n!==0).length,afterNonzero:afterPixels.filter(n=>n!==0).length,state:session.getState().surfaces}));
   assert(original.every(([id,...items])=>items.every(n=>n.parentElement===hosts.get(id))),'A compatible revision remounted successful surfaces');
   assert(session.getState().surfaces.filter(s=>s.time!==undefined).every(s=>s.time===0),'A paused revision advanced or restarted clocks');
   await rejected(()=>session.revise(p.initial,before.guard),'An earlier Agent revision was accepted');
@@ -85,7 +87,7 @@ try{
   devices[1].destroy();await wait(30);assert(callbackErrors.length===0,'The material error reporter escaped the receiving boundary');assert(session.getState().surfaces.find(s=>s.family==='foil').status==='lost','Actual owned GPU device loss was hidden');
   await rejected(()=>session.revise(p.initial,beforeLoss),'Device loss did not invalidate the old runtime guard');
   await session.recover();assert(session.getState().surfaces.every(s=>s.status==='ready')&&hosts.get('poster').querySelector('canvas')===healthyMesh&&hosts.get('foil-seal').querySelector('canvas')===foilCanvas,'Device recovery discarded healthy work or failed to restore the owned renderer');
-  session.setPaused(true);assert(pixels(hosts.get('foil-seal')).some((n,i)=>i%4===3&&n>0),'Recovered GPU material rendered no pixels');
+  session.setPaused(true);assert((await pixels(hosts.get('foil-seal'))).some((n,i)=>i%4===3&&n>0),'Recovered GPU material rendered no pixels');
   hosts.get('poster').style.position='sticky';
   // A final destroy during preparation retires late acquisition and leaves host edits intact.
   requested=false;navigator.gpu.requestAdapter=()=>{requested=true;return new Promise(resolve=>release=resolve)};const last=session.revise(p.extra,session.getState().guard);for(let n=0;n<100&&!requested;n++)await wait(5);assert(requested,'Retirement fixture did not start acquisition');session.destroy();await rejected(()=>last,'Destroy failed to cancel pending work');navigator.gpu.requestAdapter=request;release(await request());await wait(20);

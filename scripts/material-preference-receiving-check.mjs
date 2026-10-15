@@ -1,3 +1,4 @@
+import {canvasReadbackScript} from './webgpu-readback.mjs';
 // Source-MCP canonical plans -> independently copied built Web material sessions.
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -24,11 +25,12 @@ for(const [family,input]of Object.entries(inputs)){
  const envelope=response.result?.structuredContent;if(!envelope?.ok)throw Error(JSON.stringify(response));plans[family]=envelope.result;
 }}finally{await client.close()}
 const test=`
+${canvasReadbackScript}
 import {attachMaterialPreference} from '/packages/web/dist/material-preference.js';
 import {resolveMaterialPreference} from '/packages/web/dist/index.js';
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),assert=(value,message)=>{if(!value)throw Error(message)};
 const trusted=async(method,params,screenshot)=>{globalThis.__WORLDBEND_INPUT__={method,params,...(screenshot?{screenshot}:{})};while(!globalThis.__WORLDBEND_INPUT_DONE__)await wait(10);delete globalThis.__WORLDBEND_INPUT_DONE__};
-const pixelData=host=>{const canvas=host.querySelector('canvas');if(!canvas)return null;const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;copy.getContext('2d').drawImage(canvas,0,0);return [...copy.getContext('2d').getImageData(0,0,copy.width,copy.height).data]};
+const pixelData=host=>{const canvas=host.querySelector('canvas');return canvas?readGpuPixels(canvas):null};
 const equal=(a,b)=>a?.length===b?.length&&a?.every((v,i)=>v===b[i]);
 const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;
 try{
@@ -56,10 +58,7 @@ try{
   policy.revision=3;policy.exposed=input.policy.exposed;session.revise(nextSource,policy,session.getState().guard);assert(session.getState().output.plan.delivery.material[key]===defaultValue,'policy restore did not restore saved intent');
   const bad=JSON.parse(saved);bad.preference.scope='other';try{session.restorePreference(JSON.stringify(bad),session.getState().guard);throw Error('wrong scope accepted')}catch(error){assert(error.message!=='wrong scope accepted','wrong scope was restored')}
   const keptState=JSON.stringify(session.getState());try{session.commit({[field]:{kind:'number',value:2}},session.getState().guard);throw Error('range accepted')}catch(error){assert(error.message!=='range accepted','out-of-range preference accepted')};assert(keptState===JSON.stringify(session.getState()),'invalid preference changed accepted state');
-  // Refresh the accepted state and snapshot each submission in the same task.
-  // WebGPU canvas textures expire after presentation; delayed reads can be empty.
-  session.setRuntime(session.getState().input.runtime,session.getState().guard);
-  const beforePixels=pixelData(host);session.commit({[field]:{kind:'number',value:.95}},session.getState().guard);const changedPixels=pixelData(host);
+  const beforePixels=await pixelData(host);session.commit({[field]:{kind:'number',value:.95}},session.getState().guard);const changedPixels=await pixelData(host);
   if(beforePixels)assert(beforePixels.some((value,index)=>index%4===3&&value>0)&&changedPixels.some((value,index)=>index%4===3&&value>0),family+' did not present visible GPU pixels');
   if(beforePixels)assert(!equal(beforePixels,changedPixels),family+' preference changed no actual GPU pixels');
   session.destroy();assert(content===host.firstChild&&!host.querySelector('canvas')&&!host.querySelector('.worldbend-texture'),'retirement damaged host content or kept material');

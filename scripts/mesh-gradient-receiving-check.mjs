@@ -1,3 +1,4 @@
+import {canvasReadbackScript} from './webgpu-readback.mjs';
 import {createQaHttpFailureBoundary} from "./qa-http-failure-boundary.mjs";
 // Real source MCP -> independent Web receiver; no Figma account/runtime,
 // framework or fixture shader is used by the receiving page.
@@ -53,6 +54,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>Worldbend Mesh-gradien
 <div class="row"><article id="a" class="surface"><h1>Objects in motion.</h1><button id="action">Continue</button></article><article id="b" class="surface"><h1>Quiet<br>reflection.</h1><span>Independent material timing</span></article></div>
 <div class="row"><div id="group-a">Shared A</div><div id="group-b">Shared B</div></div><p class="note">Editable tint, opacity and motion · original content and interaction retained</p>
 <script type="module">
+${canvasReadbackScript}
 import {attachMeshGradient} from '/mesh-gradient.js';import {attachMeshGradientGroup} from '/mesh-gradient-receiving.js';
 try {
  const p = await (await fetch('/plans.json')).json();
@@ -67,17 +69,14 @@ try {
 
  const first=await attachMeshGradient(a,p.initial,{paused:true,respectReducedMotion:false,onError:error=>reports.push(error.message)});
  let second=await attachMeshGradient(b,p.initial,{paused:true,respectReducedMotion:false});
- const pixels = element => {
-  const canvas=element.querySelector('canvas'), copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
-  const context=copy.getContext('2d');context.drawImage(canvas,0,0);return context.getImageData(0,0,copy.width,copy.height).data;
- };
+ const pixels = element => readGpuPixels(element.querySelector('canvas'));
  const equal = (a,b)=>a.length===b.length&&a.every((value,i)=>value===b[i]);
  first.seek(0);const start = await pixels(a);first.seek(2000);const later=await pixels(a);assert(!equal(start,later),'seek did not change actual mesh-gradient pixels');
  const boundary=p.initial.material.durationMs-(p.initial.material.phaseMs%p.initial.material.durationMs);
- first.seek(boundary-.01);const loopBefore=pixels(a);first.seek(boundary+.01);const loopAfter=pixels(a);
+ first.seek(boundary-.01);const loopBefore=await pixels(a);first.seek(boundary+.01);const loopAfter=await pixels(a);
  let loopDelta=0;for(let i=0;i<loopBefore.length;i++)loopDelta=Math.max(loopDelta,Math.abs(loopBefore[i]-loopAfter[i]));
  assert(loopDelta<=2,'mesh loop visibly reset: '+loopDelta);
- first.update(p.legacy);first.seek(boundary-.01);const oldBefore=pixels(a);first.seek(boundary+.01);const oldAfter=pixels(a);
+ first.update(p.legacy);first.seek(boundary-.01);const oldBefore=await pixels(a);first.seek(boundary+.01);const oldAfter=await pixels(a);
  let legacyDelta=0;for(let i=0;i<oldBefore.length;i++)legacyDelta=Math.max(legacyDelta,Math.abs(oldBefore[i]-oldAfter[i]));
  assert(first.getState().kernelId==='worldbend.mesh-gradient.rgba@0.1'&&legacyDelta>loopDelta,'legacy renderer silently changed');
  const profileClock=first.getState().time;first.update(p.initial);assert(first.getState().time===profileClock&&first.getState().paused,'profile switch changed the clock');
