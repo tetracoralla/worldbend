@@ -2,10 +2,10 @@
 // recipe, one exposure policy with both runtime resolutions, and the
 // preference-based update plans (current + stale) used to verify revision
 // guards and equal-to-default survival in a real browser.
-import assert from 'node:assert/strict';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertAppearanceReceiptMatches} from './appearance-receipt-assert.mjs';
 import {withAppearancePlanner} from './appearance-planner-client.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -60,7 +60,7 @@ await withAppearancePlanner(async run=>{
   await mkdir(output,{recursive:true});
   for(const [name,value] of Object.entries(files)){
     const text=JSON.stringify(value,null,2)+'\n',file=path.join(output,name);
-    if(check)assert.equal(await readFile(file,'utf8'),text,`Stale personalization receipt ${name}; regenerate with scripts/generate-appearance-personalization.mjs`);
+    if(check)assertAppearanceReceiptMatches(await readFile(file,'utf8'), value,`Stale personalization receipt ${name}; regenerate with scripts/generate-appearance-personalization.mjs`);
     else await writeFile(file,text);
   }
 });

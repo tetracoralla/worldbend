@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertAppearanceReceiptMatches} from './appearance-receipt-assert.mjs';
 import {withAppearancePlanner} from './appearance-planner-client.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const directory=path.join(root,'packages/web/examples/appearance-color-study');
@@ -27,7 +28,7 @@ await withAppearancePlanner(async run=>{
  const result={original,refracted,faithful,faithfulInput,exposure,fallbackExposure};
  await mkdir(directory,{recursive:true});
  const file=path.join(directory,'plans.json'),text=JSON.stringify(result,null,2)+'\n';
- if(check)assert.equal(await readFile(file,'utf8'),text,'Stale color study; regenerate the source receipts');
+ if(check)assertAppearanceReceiptMatches(await readFile(file,'utf8'), result,'Stale color study; regenerate the source receipts');
  else await writeFile(file,text);
 });
 console.log('Color study receipts '+(check?'match':'generated'));

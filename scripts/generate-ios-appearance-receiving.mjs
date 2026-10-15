@@ -1,7 +1,7 @@
-import assert from 'node:assert/strict';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertAppearanceReceiptMatches} from './appearance-receipt-assert.mjs';
 import {withAppearancePlanner} from './appearance-planner-client.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const example=path.join(root,'examples/ios-material-receiving');
@@ -53,7 +53,7 @@ await withAppearancePlanner(async run=>{
     await mkdir(folder,{recursive:true});
     for(const [name,value] of Object.entries(files)){
       const text=JSON.stringify(value,null,2)+'\n',file=path.join(folder,name);
-      if(check)assert.equal(await readFile(file,'utf8'),text,`Stale iOS receipt ${file}`);
+      if(check)assertAppearanceReceiptMatches(await readFile(file,'utf8'), value,`Stale iOS receipt ${file}`);
       else await writeFile(file,text);
     }
   }

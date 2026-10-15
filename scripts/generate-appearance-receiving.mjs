@@ -1,8 +1,8 @@
-import assert from 'node:assert/strict';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {assertAppearanceReceiptMatches} from './appearance-receipt-assert.mjs';
 import {withAppearancePlanner} from './appearance-planner-client.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -21,7 +21,7 @@ export async function generateAppearanceReceipts({check=false}={}) {
     for(const live of [previous.material,local1.material,null])updates.push(await run('appearance_update',{
       previous,next,live,expectedFingerprint:initial.fingerprint,
     }));
-    // Consumer behavior over the same Figma-derived source: the product
+    // Consumer stream E1/E2 over the same Figma-derived source: the product
     // exposes the concise clarity composite (no raw radius) plus visibility,
     // a saved frost preference rides the composite, and the consumer-path
     // update plan merges by explicit intent instead of value difference.
@@ -45,7 +45,7 @@ export async function generateAppearanceReceipts({check=false}={}) {
     await mkdir(output,{recursive:true});
     for(const [name,value] of Object.entries(files)) {
       const text=JSON.stringify(value,null,2)+'\n',file=path.join(output,name);
-      if(check)assert.equal(await readFile(file,'utf8'),text,`Stale receipt ${name}; regenerate the appearance example`);
+      if(check)assertAppearanceReceiptMatches(await readFile(file,'utf8'), value,`Stale receipt ${name}; regenerate the appearance example`);
       else await writeFile(file,text);
     }
     return files;

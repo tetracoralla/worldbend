@@ -1,11 +1,11 @@
 // Generate canonical receipts that pin the Web local evaluation mirror
 // (packages/web/src/appearance-local.ts) to the real core compile. Run with
 // --check in CI-style flows to fail on drift instead of silently regenerating.
-import assert from 'node:assert/strict';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {assertAppearanceReceiptMatches} from './appearance-receipt-assert.mjs';
 import {withAppearancePlanner} from './appearance-planner-client.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -100,7 +100,7 @@ export async function generateAppearanceParity({check = false} = {}) {
     };
     const text = JSON.stringify(fixture, null, 2) + '\n';
     if (check) {
-      assert.equal(await readFile(output, 'utf8'), text, 'Stale appearance parity fixture; regenerate with scripts/generate-appearance-parity.mjs');
+      assertAppearanceReceiptMatches(await readFile(output, 'utf8'), fixture, 'Stale appearance parity fixture; regenerate with scripts/generate-appearance-parity.mjs');
     } else {
       await mkdir(path.dirname(output), {recursive: true});
       await writeFile(output, text);
