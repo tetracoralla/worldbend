@@ -62,17 +62,20 @@ lists plus plan replay.
 
 The Figma package has bounded growth checks across supported compilers:
 
-- runtime entries: at most 2,162,688 bytes (2.0625 MiB);
+- runtime entries: at most 2,228,224 bytes (2.125 MiB);
 - complete archive: at most 1,310,720 bytes (1.25 MiB);
 - complete unpacked package: at most 2,752,512 bytes (2.625 MiB).
 
-These are growth tripwires, not performance or UX acceptance. Revisions need
-current package measurements and review of the user-visible change. These
-current ceilings cover the expanded scene, continuation, material and vector
-workspaces; `config/carrier-profiles.json` is their executable authority. The
-build reuses native material functions and the shared transform/Warp renderer
-rather than embedding a second material-preview engine. Byte-identical license
-files share storage while each dependency retains its full-text notice mapping.
+These ceilings bound distribution growth. They are engineering budgets; actual
+import, rendering, interaction and continued use require runtime checks too.
+The runtime allowance covers output variation across supported build toolchains;
+archive and unpacked limits remain independently enforced. A byte-for-byte build
+comparison requires matching toolchains. Changes to the ceilings require current
+measurements and inspection of their effect on the distributed package.
+
+The build reuses native material functions and the shared transform/Warp
+renderer. Byte-identical license files share storage while each dependency
+retains its full-text notice mapping.
 
 A single compiler's size must not become an accidental requirement for source
 users. Native Agent and Comfy sizes vary by target; their checks record bytes

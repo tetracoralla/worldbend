@@ -590,17 +590,17 @@ package limits. The configuration is closed and consumed by build, package,
 runtime-smoke, and built-artifact checks. It is not descriptive metadata that
 may drift independently from those paths.
 
-The expanded scene, continuation and material workspaces retain a bounded
-2.0625 MiB Figma runtime payload, 1.25 MiB archive and 2.625 MiB unpacked package.
-Procedural chooser thumbnails use small JPEG swatches; runtime checks retain
-the declared ceilings rather than treating additional features as unbounded.
-The Figma carrier uses the shared bridge with a `worldbend-wasm` build that
-disables the CSS core feature. The ABI keeps a closed `css_json` function so
-the shared TypeScript import remains stable, but that function returns
-`E_SCHEMA` and no Figma route may call it. The full Web and Agent builds retain
-CSS. Figma packages must contain only their declared manifest/main/UI runtime
-plus release documentation and dependency inventory; Agent or Comfy files are
-package failures.
+The Figma runtime has a 2.125 MiB growth budget, with independent ceilings of
+1.25 MiB for its archive and 2.625 MiB for the complete unpacked package.
+Runtime size can vary across supported build toolchains. Procedural chooser
+thumbnails use small JPEG swatches; package checks enforce all three ceilings.
+
+The Figma carrier uses the shared bridge and a `worldbend-wasm` designer build
+that includes the shared CSS emitter for Copy CSS. Its `css_json` entry emits
+`matrix3d` for supported projective transforms and returns `E_SCHEMA` for
+non-zero Warp. The generated-WASM check exercises both cases. Figma packages
+contain only their declared manifest/main/UI runtime, release documentation and
+dependency inventory; Agent or Comfy payloads fail package isolation checks.
 
 The Agent carrier packages the declared native executables, Capability
 projection, Product Skill, and legal inventory. HTML, CSS, Python, Figma, or

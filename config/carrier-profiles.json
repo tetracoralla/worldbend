@@ -87,7 +87,7 @@
           "dist/main.js",
           "dist/ui.html"
         ],
-        "maxRuntimeBytes": 2162688,
+        "maxRuntimeBytes": 2228224,
         "maxArchiveBytes": 1310720,
         "maxUnpackedBytes": 2752512,
         "forbiddenSuffixes": [
