@@ -1,0 +1,47 @@
+{
+  "name": "worldbend",
+  "version": "0.1.0+codex.20260921160400",
+  "description": "Explore spatial expressions, compare alternatives and replay validated recipes; native layered depth plus perspective for Web, Figma and images.",
+  "author": {
+    "name": "openAdam"
+  },
+  "keywords": [
+    "perspective",
+    "homography",
+    "corner-pin",
+    "transform",
+    "css",
+    "rendering",
+    "live-dom",
+    "cards",
+    "shared-plane",
+    "figma",
+    "editable-design",
+    "spatial-effects",
+    "parallax",
+    "reveal",
+    "fold",
+    "frost",
+    "recipes",
+    "visual-comparison"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Worldbend",
+    "shortDescription": "Explore spatial effects and deliver stable, reusable results.",
+    "longDescription": "Discover depth, shared-plane and folding-window expressions. Deliver layered-depth recipes into a native SwiftUI host, compare simple host motion, and replay the full catalog locally on the Web. Continue editable Figma perspective designs and reusable image mappings.",
+    "developerName": "openAdam",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use a native layered-depth recipe to make this SwiftUI stage respond spatially to drag input, compare it with simple host motion and recommend one.",
+      "Replay this saved spatial recipe with new content and verify its fingerprint.",
+      "Continue this selected editable Worldbend frame through the available Figma tool."
+    ]
+  },
+  "license": "Apache-2.0"
+}

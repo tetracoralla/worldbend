@@ -1,0 +1,147 @@
+{
+  "schema": "worldbend.spatial-document",
+  "version": "0.1",
+  "assets": [
+    {
+      "id": "product-screen",
+      "contentVersion": "week-01"
+    }
+  ],
+  "expressions": [
+    {
+      "kind": "static",
+      "id": "brand-brief",
+      "template": {
+        "schema": "worldbend.spatial-template",
+        "version": "0.1",
+        "operation": {
+          "kind": "rasterProgram",
+          "sourceSlot": "artwork",
+          "program": {
+            "schema": "worldbend.raster-program",
+            "version": "0.1",
+            "stages": [
+              {
+                "kind": "canvas",
+                "id": "brand-fit",
+                "spec": {
+                  "schema": "worldbend.canvas",
+                  "version": "0.1",
+                  "operation": {
+                    "kind": "contain",
+                    "output": {
+                      "width": 1200,
+                      "height": 800
+                    },
+                    "anchor": {
+                      "x": 0.5,
+                      "y": 0.5
+                    },
+                    "background": {
+                      "kind": "color",
+                      "space": "srgb8",
+                      "rgba": [
+                        244,
+                        243,
+                        237,
+                        255
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "output": {
+          "kind": "canvasSet",
+          "spec": {
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [
+              {
+                "id": "website-presentation",
+                "operation": {
+                  "kind": "contain",
+                  "output": {
+                    "width": 1200,
+                    "height": 800
+                  },
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "background": {
+                    "kind": "color",
+                    "space": "srgb8",
+                    "rgba": [
+                      244,
+                      243,
+                      237,
+                      255
+                    ]
+                  }
+                }
+              },
+              {
+                "id": "social-square",
+                "operation": {
+                  "kind": "contain",
+                  "output": {
+                    "width": 1080,
+                    "height": 1080
+                  },
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "background": {
+                    "kind": "color",
+                    "space": "srgb8",
+                    "rgba": [
+                      244,
+                      243,
+                      237,
+                      255
+                    ]
+                  }
+                }
+              },
+              {
+                "id": "social-wide",
+                "operation": {
+                  "kind": "contain",
+                  "output": {
+                    "width": 1200,
+                    "height": 628
+                  },
+                  "anchor": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "background": {
+                    "kind": "color",
+                    "space": "srgb8",
+                    "rgba": [
+                      244,
+                      243,
+                      237,
+                      255
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "artwork",
+          "assetId": "product-screen"
+        }
+      ]
+    }
+  ]
+}

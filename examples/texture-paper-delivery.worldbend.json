@@ -1,0 +1,27 @@
+{
+  "recipe": {
+    "schema": "worldbend.texture@0.1",
+    "version": "0.1",
+    "recipeId": "warm-paper",
+    "recipeVersion": 1,
+    "material": {
+      "visible": true,
+      "grain": 0.35,
+      "grainSize": 3,
+      "grainColor": "#8a7f72",
+      "etch": 1.5,
+      "etchSize": 4,
+      "clipToShape": true
+    }
+  },
+  "material": {
+    "visible": true,
+    "grain": 0.4,
+    "grainSize": 3,
+    "grainColor": "#8a7f72",
+    "etch": 2.5,
+    "etchSize": 5,
+    "clipToShape": true
+  },
+  "target": "web"
+}

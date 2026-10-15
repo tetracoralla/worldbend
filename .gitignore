@@ -1,0 +1,54 @@
+target/
+node_modules/
+.pnpm-store/
+dist/
+packages/*/dist/
+packages/*/demo-dist/
+packages/wasm/pkg/
+packages/wasm/pkg-figma/
+packages/wasm/pkg-perspective/
+packages/wasm/pkg-surface-window/
+packages/wasm/pkg-effects/
+plugins/worldbend/bin/
+plugins/worldbend/skills/worldbend/assets/web/
+.tools/
+.playwright-cli/
+.v2c/
+.video_agent/
+output/playwright/
+artifacts/
+.DS_Store
+*.log
+/bin/
+.task-notes/
+.codex/sessions/
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Transactional plugin packaging scratch and recovery copies.
+plugins/worldbend/.bin-stage-*/
+plugins/worldbend/.bin-backup-*/
+plugins/worldbend/.capabilities-stage-*/
+plugins/worldbend/.capabilities-backup-*/
+plugins/worldbend/.legal-stage-*/
+plugins/worldbend/.web-stage-*/
+plugins/worldbend/.web-backup-*/
+plugins/worldbend/.LICENSE.backup-*
+plugins/worldbend/.NOTICE.backup-*
+plugins/worldbend/.licenses.backup-*/
+plugins/worldbend/.sbom.backup-*/
+plugins/worldbend/.THIRD_PARTY_NOTICES.md.backup-*
+
+# SwiftUI receiver build and IDE state.
+packages/swiftui/.build/
+packages/swiftui/.swiftpm/
+**/xcuserdata/
+
+# Optional scene receiving example build
+packages/scene-three/example-dist/
+
+# Python example bytecode.
+__pycache__/

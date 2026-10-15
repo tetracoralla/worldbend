@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Worldbend · Paper texture handoff</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:40px;background:#10130f;color:#f4f1e8;font-family:Inter,system-ui,serif}h1{font-size:26px;margin:0 0 12px}p{color:#b7b09c;line-height:1.5}.comparison{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;max-width:1440px}h2{font-size:14px;letter-spacing:.1em}article{position:relative;height:560px;border-radius:18px;overflow:hidden;background:linear-gradient(0deg,#1c2415aa,transparent),url(assets/fronalpstock.jpg) center/cover}.card{position:absolute;inset:110px 24px auto;height:330px;border-radius:22px;background:#e9e4d4;color:#232019;padding:26px;display:flex;flex-direction:column;justify-content:space-between}.kicker{font-size:12px;letter-spacing:.18em}.headline{font-size:clamp(30px,4vw,52px);line-height:1.05;font-weight:640}.card>:not([aria-hidden="true"]){position:relative;z-index:1}.body-copy{color:#595348;font-size:14px;line-height:1.6;max-width:34ch}.byline{font-size:12px;letter-spacing:.06em}.grain .card{position:absolute}.plain .card{background:#e9e4d4}.toolbar{display:flex;gap:12px;flex-wrap:wrap;margin:25px 0}button{font:inherit;border:1px solid #b7b09c66;border-radius:24px;background:#2a2f21;color:inherit;padding:10px 20px;cursor:pointer}button:focus-visible{outline:3px solid #d8c98a}footer{margin-top:30px;font-size:12px}a{color:#e0d3a6}@media(max-width:760px){body{padding:20px}.comparison{grid-template-columns:1fr}article{height:540px}}
+</style>
+<h1>One card stock, three surfaces.</h1><p>The native texture recipe travels from Figma's Noise and Texture effects to this Web runtime. The delivered grain and etch approximate Figma; they do not share its noise engine.</p>
+<div class="toolbar"><button id="toggle">Hide texture</button><button id="restore">Reset</button><span id="status" role="status">Loading material…</span></div>
+<div class="comparison"></div>
+<footer>Photo: <a href="https://commons.wikimedia.org/wiki/File:Fronalpstock_big.jpg">Hannes Röst / Wikimedia Commons</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, cropped by CSS. See assets/NOTICE.md.</footer>
+<script type="module">
+import {attachTexture} from '../dist/texture.js';
+const plan=await (await fetch('./texture-paper-plan.json')).json();
+const grainPlan=await (await fetch('./texture-grain-plan.json')).json();
+const root=document.querySelector('.comparison');
+for(const [i,title] of ['Plain card','Grain only','Grain + etch'].entries()){
+ const section=document.createElement('section');section.innerHTML=`<h2>${title.toUpperCase()}</h2><article class="${i===2?'grain':'plain'}"><div class="card"><span class="kicker">FIELD NOTES / 047</span><div><div class="headline">ALPINE<br>EDITION</div><p class="body-copy">A paper stock that keeps its grain under every light. The same recipe reopens later with the designer's own edits preserved.</p></div><span class="byline">Printed surfaces · Web delivery · 2026</span></div></article>`;root.append(section);
+}
+const surface=root.querySelector('.grain .card');let visible=true;
+const handle=attachTexture(surface,plan);
+const grainHandle=attachTexture(root.querySelectorAll('.card')[1],grainPlan);
+document.querySelector('#status').textContent='Ready · grain tile + SVG bump etch';
+document.querySelector('#toggle').onclick=()=>{visible=!visible;handle.setVisible(visible);grainHandle.setVisible(visible);document.querySelector('#toggle').textContent=visible?'Hide texture':'Show texture';};
+document.querySelector('#restore').onclick=()=>{visible=true;handle.setVisible(undefined);handle.update(plan);grainHandle.setVisible(undefined);grainHandle.update(grainPlan);document.querySelector('#toggle').textContent='Hide texture';};
+if(new URL(location.href).searchParams.has('test'))window.nativeTextureFixture={handle,plan,surface,attachTexture};
+</script></html>

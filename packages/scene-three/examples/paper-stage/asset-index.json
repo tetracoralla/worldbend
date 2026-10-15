@@ -1,0 +1,11 @@
+{
+  "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653": "./assets/edition-1/cover.png",
+  "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb": "./assets/edition-2/cover.png",
+  "sha256:c07d014b1973c6cda78c90b0db43e7d5f57959e26debde1b2f36fd08ef2166f7": "./assets/edition-1/scene-c07d014b1973.glb",
+  "sha256:7e9d2327e779da8f89c894769c4b110e4f45342259dfb5ed7f8477a6e70130ed": "./assets/edition-2/scene-7e9d2327e779.glb",
+  "sha256:b5479065b3a9ac3f31e5b3c9ae4162d09e06cf3cc81392e787f084ab6eaed967": "./assets/edition-1/scene-b5479065b3a9.glb",
+  "sha256:716710dbd466dbbeb016b322a12300afd0921254779cfb54e591d32af24ad511": "./assets/edition-2/scene-716710dbd466.glb",
+  "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38": "./assets/edition-1/scene-bd6574f41323.glb",
+  "sha256:cf450c061c11ad4ec25b2d3a519cf787cf67e344f18516f73bb1d33663e300cd": "./assets/edition-2/scene-cf450c061c11.glb",
+  "sha256:d702f1a03a08ad65d5e3e0bd0baff03daf9aa414e175d8b0ff26ca08b81dadfa": "./assets/edition-3/scene-d702f1a03a08.glb"
+}

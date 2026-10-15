@@ -1,0 +1,98 @@
+{
+  "name": "@worldbend/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./material-preference": {
+      "types": "./dist/material-preference.d.ts",
+      "import": "./dist/material-preference.js"
+    },
+    "./mockup-motion": {
+      "types": "./dist/mockup-motion.d.ts",
+      "import": "./dist/mockup-motion.js"
+    },
+    "./perspective": {
+      "types": "./dist/perspective.d.ts",
+      "import": "./dist/perspective.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./surface-window": {
+      "types": "./dist/surface-window.d.ts",
+      "import": "./dist/surface-window.js"
+    },
+    "./effects": {
+      "types": "./dist/effects.d.ts",
+      "import": "./dist/effects.js"
+    },
+    "./appearance": {
+      "types": "./dist/appearance.d.ts",
+      "import": "./dist/appearance.js"
+    },
+    "./appearance-receiving": {
+      "types": "./dist/appearance-receiving.d.ts",
+      "import": "./dist/appearance-receiving.js"
+    },
+    "./texture": {
+      "types": "./dist/texture.d.ts",
+      "import": "./dist/texture.js"
+    },
+    "./card-state": {
+      "types": "./dist/card-state.d.ts",
+      "import": "./dist/card-state.js"
+    },
+    "./card": {
+      "types": "./dist/card-entry.d.ts",
+      "import": "./dist/card.js"
+    },
+    "./foil": {
+      "types": "./dist/foil.d.ts",
+      "import": "./dist/foil.js"
+    },
+    "./foil-receiving": {
+      "types": "./dist/foil-receiving.d.ts",
+      "import": "./dist/foil-receiving.js"
+    },
+    "./mesh-gradient": {
+      "types": "./dist/mesh-gradient.d.ts",
+      "import": "./dist/mesh-gradient.js"
+    },
+    "./mesh-gradient-receiving": {
+      "types": "./dist/mesh-gradient-receiving.d.ts",
+      "import": "./dist/mesh-gradient-receiving.js"
+    },
+    "./material-document": {
+      "types": "./dist/material-document.d.ts",
+      "import": "./dist/material-document.js"
+    },
+    "./spatial-document": {
+      "types": "./dist/spatial-document.d.ts",
+      "import": "./dist/spatial-document.js"
+    },
+    "./document-motion": {
+      "types": "./dist/document-motion.d.ts",
+      "import": "./dist/document-motion.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json && vite build --config vite.demo.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@worldbend/wasm": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
+  },
+  "license": "Apache-2.0"
+}

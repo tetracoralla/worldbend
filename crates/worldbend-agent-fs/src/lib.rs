@@ -1,0 +1,1779 @@
+//! Descriptor-scoped workspace file authority shared by every Agent carrier.
+//!
+//! A granted root is opened once, every descendant directory is acquired
+//! without following symlinks, and held source/output handles remain
+//! authoritative if visible pathnames are replaced before use.
+
+use cap_fs_ext::{
+    FollowSymlinks, OpenOptions, OpenOptionsFollowExt, OpenOptionsSyncExt, ambient_authority,
+};
+use cap_primitives::fs::{
+    DirOptions, create_dir, hard_link, open, open_ambient_dir, open_dir_nofollow, remove_dir,
+    remove_dir_all, remove_file, rename, stat,
+};
+use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::{
+    ffi::{OsStr, OsString},
+    fs::{self, File},
+    io::{Read, Seek, SeekFrom, Write},
+    path::{Component, Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
+use worldbend_core::{ErrorCode, TransformError, TransformResult};
+
+static NEXT_STAGING_FILE: AtomicU64 = AtomicU64::new(1);
+static NEXT_STAGING_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug)]
+pub struct WorkspaceRoot {
+    directory: File,
+}
+
+#[derive(Debug)]
+pub struct OutputTarget {
+    parent: File,
+    name: OsString,
+    overwrite: bool,
+}
+
+#[derive(Debug)]
+pub struct DirectoryOutputTarget {
+    parent: File,
+    name: OsString,
+}
+
+#[derive(Debug)]
+pub struct StagedDirectoryCommit {
+    parent: File,
+    staged_name: OsString,
+    final_name: OsString,
+    committed: bool,
+}
+
+/// A completely copied, verified and synced same-parent file awaiting its
+/// synchronous publication point. Dropping it publishes nothing.
+#[derive(Debug)]
+pub struct StagedFileCommit {
+    parent: File,
+    staged_name: OsString,
+    final_name: OsString,
+    overwrite: bool,
+    file: Option<File>,
+    committed: bool,
+}
+
+impl WorkspaceRoot {
+    pub fn open(path: &Path) -> std::io::Result<Self> {
+        Self::open_with_canonical_path(path).map(|(workspace, _)| workspace)
+    }
+
+    pub fn open_with_canonical_path(path: &Path) -> std::io::Result<(Self, PathBuf)> {
+        let canonical = fs::canonicalize(path)?;
+        let directory = open_ambient_dir(&canonical, ambient_authority())?;
+        if !directory.metadata()?.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotADirectory,
+                "workspace root must resolve to a directory",
+            ));
+        }
+        Ok((Self { directory }, canonical))
+    }
+
+    pub fn open_source(&self, relative: &str) -> TransformResult<File> {
+        let components = validate_relative_path(relative)?;
+        let (parent, name) = self.open_parent(&components)?;
+        reject_symlink(&parent, &name, components.len() - 1)?;
+
+        let mut options = OpenOptions::new();
+        // A FIFO opened read-only can block before descriptor metadata is
+        // available. Acquire every candidate without blocking, then make the
+        // held descriptor's regular-file identity authoritative. A pathname
+        // stat alone would leave a replace-between-check-and-open race.
+        options.read(true).follow(FollowSymlinks::No).nonblock(true);
+        let file = open(&parent, Path::new(&name), &options).map_err(|error| {
+            classify_open_error(
+                &parent,
+                &name,
+                components.len() - 1,
+                "source file is not accessible",
+                error,
+            )
+        })?;
+        let metadata = file.metadata().map_err(|error| {
+            TransformError::new(ErrorCode::PathOutsideRoot, "source file is not accessible")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if !metadata.is_file() {
+            return Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "source must be a regular file inside the granted workspace",
+            ));
+        }
+        Ok(file)
+    }
+
+    pub fn prepare_output(&self, relative: &str, overwrite: bool) -> TransformResult<OutputTarget> {
+        let components = validate_relative_path(relative)?;
+        let (name, _) = components.split_last().ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "path must name a file inside the granted workspace",
+            )
+        })?;
+        if !Path::new(&name)
+            .extension()
+            .and_then(OsStr::to_str)
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+        {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "render output path must use a .png extension",
+            ));
+        }
+
+        self.prepare_file_output_components(components, overwrite)
+    }
+
+    /// Acquire one single-file output of a format owned by the caller's
+    /// closed operation contract. This retains the descriptor-confined,
+    /// no-symlink publication boundary without imposing the legacy PNG-only
+    /// transform restriction on production media and vector carriers.
+    pub fn prepare_file_output(
+        &self,
+        relative: &str,
+        overwrite: bool,
+    ) -> TransformResult<OutputTarget> {
+        let components = validate_relative_path(relative)?;
+        self.prepare_file_output_components(components, overwrite)
+    }
+
+    fn prepare_file_output_components(
+        &self,
+        components: Vec<OsString>,
+        overwrite: bool,
+    ) -> TransformResult<OutputTarget> {
+        let (parent, name) = self.open_parent(&components)?;
+
+        match stat(&parent, Path::new(&name), FollowSymlinks::No) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(path_symlink(components.len() - 1));
+                }
+                if !metadata.is_file() {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "output destination must be a regular file",
+                    ));
+                }
+                if !overwrite {
+                    return Err(TransformError::new(
+                        ErrorCode::DestinationExists,
+                        "destination already exists; set overwrite to true to replace it or choose a new output path",
+                    ));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "failed to inspect output destination",
+                )
+                .with_details(json!({ "reason": error.to_string() })));
+            }
+        }
+
+        let probe_name = create_staging_file(&parent)?.0;
+        remove_file(&parent, Path::new(&probe_name)).map_err(|error| {
+            TransformError::new(ErrorCode::Render, "failed to remove output preflight file")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+
+        Ok(OutputTarget {
+            parent,
+            name,
+            overwrite,
+        })
+    }
+
+    /// Acquire one not-yet-existing output directory under the descriptor
+    /// grant. The returned target can copy a controller-private directory into
+    /// a same-parent hidden directory, then expose one synchronous no-replace
+    /// commit after response and cancellation preflight.
+    pub fn prepare_output_directory(
+        &self,
+        relative: &str,
+    ) -> TransformResult<DirectoryOutputTarget> {
+        let components = validate_relative_path(relative)?;
+        let (parent, name) = self.open_parent(&components)?;
+        match stat(&parent, Path::new(&name), FollowSymlinks::No) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(path_symlink(components.len() - 1));
+            }
+            Ok(_) => {
+                return Err(TransformError::new(
+                    ErrorCode::DestinationExists,
+                    "output directory already exists; choose a new outputDirectory because directory publication does not overwrite or merge",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "failed to inspect output directory",
+                )
+                .with_details(json!({ "reason": error.to_string() })));
+            }
+        }
+
+        let probe = create_staging_directory(&parent)?;
+        remove_dir(&parent, Path::new(&probe))
+            .map_err(render_io("failed to remove output preflight directory"))?;
+        Ok(DirectoryOutputTarget { parent, name })
+    }
+
+    fn open_parent(&self, components: &[OsString]) -> TransformResult<(File, OsString)> {
+        let Some((name, parents)) = components.split_last() else {
+            return Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "path must name a file inside the granted workspace",
+            ));
+        };
+        let mut current = self.directory.try_clone().map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                "workspace grant could not be duplicated",
+            )
+            .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        for (index, component) in parents.iter().enumerate() {
+            reject_symlink(&current, component, index)?;
+            current = open_dir_nofollow(&current, Path::new(component)).map_err(|error| {
+                classify_open_error(
+                    &current,
+                    component,
+                    index,
+                    "path component is not an accessible workspace directory",
+                    error,
+                )
+            })?;
+        }
+        Ok((current, name.clone()))
+    }
+}
+
+impl OutputTarget {
+    /// Stage a controller-owned artifact through the held workspace directory.
+    /// Cancellable IO and receipt verification finish before `commit`, so an
+    /// asynchronous timeout cannot detach a copier which later publishes.
+    pub fn stage_from_with_cancel(
+        &self,
+        staged: &Path,
+        expected_bytes: u64,
+        expected_sha256: &str,
+        maximum_bytes: u64,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedFileCommit> {
+        check_cancelled(is_cancelled)?;
+        if maximum_bytes == 0 || expected_bytes > maximum_bytes {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "file staging exceeds the byte ceiling",
+            ));
+        }
+        if expected_sha256.len() != 64
+            || !expected_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "file staging requires a complete verified digest",
+            ));
+        }
+        let source_parent = open_ambient_dir(
+            staged
+                .parent()
+                .filter(|path| !path.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new(".")),
+            ambient_authority(),
+        )
+        .map_err(render_io("private file staging directory is inaccessible"))?;
+        let source_name = staged.file_name().ok_or_else(|| {
+            TransformError::new(ErrorCode::Internal, "private staging path must name a file")
+        })?;
+        let mut options = OpenOptions::new();
+        options.read(true).follow(FollowSymlinks::No).nonblock(true);
+        let mut source = open(&source_parent, Path::new(source_name), &options)
+            .map_err(render_io("private staged file is inaccessible"))?;
+        let metadata = source
+            .metadata()
+            .map_err(render_io("private staged file metadata is inaccessible"))?;
+        if !metadata.is_file() || metadata.len() != expected_bytes {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "staged file does not match its byte receipt",
+            ));
+        }
+        let parent = self
+            .parent
+            .try_clone()
+            .map_err(render_io("file staging authority could not be retained"))?;
+        let (staged_name, file) = create_staging_file(&parent)?;
+        let mut prepared = StagedFileCommit {
+            parent,
+            staged_name,
+            final_name: self.name.clone(),
+            overwrite: self.overwrite,
+            file: Some(file),
+            committed: false,
+        };
+        let destination = prepared.file.as_mut().expect("owned staging file");
+        let mut digest = Sha256::new();
+        let mut copied = 0_u64;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            check_cancelled(is_cancelled)?;
+            let remaining = expected_bytes.saturating_sub(copied);
+            let read_limit = remaining.saturating_add(1).min(buffer.len() as u64) as usize;
+            let count = source
+                .read(&mut buffer[..read_limit])
+                .map_err(render_io("failed to read staged file"))?;
+            if count == 0 {
+                break;
+            }
+            copied += count as u64;
+            if copied > expected_bytes {
+                return Err(TransformError::new(
+                    ErrorCode::Internal,
+                    "staged file grew beyond its byte receipt",
+                ));
+            }
+            destination
+                .write_all(&buffer[..count])
+                .map_err(render_io("failed to copy staged file"))?;
+            digest.update(&buffer[..count]);
+        }
+        if copied != expected_bytes
+            || !hex::encode(digest.finalize()).eq_ignore_ascii_case(expected_sha256)
+        {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "staged file bytes do not match their digest receipt",
+            ));
+        }
+        check_cancelled(is_cancelled)?;
+        destination
+            .flush()
+            .map_err(render_io("failed to flush staged file"))?;
+        destination
+            .sync_all()
+            .map_err(render_io("failed to sync staged file"))?;
+        check_cancelled(is_cancelled)?;
+        Ok(prepared)
+    }
+
+    pub fn publish_from(&self, staged: &Path) -> TransformResult<()> {
+        let mut source = File::open(staged).map_err(|error| {
+            TransformError::new(ErrorCode::Render, "staged render is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if !source.metadata().is_ok_and(|metadata| metadata.is_file()) {
+            return Err(TransformError::new(
+                ErrorCode::Render,
+                "staged render must be a regular file",
+            ));
+        }
+        source
+            .seek(SeekFrom::Start(0))
+            .map_err(render_io("failed to rewind staged render"))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            source
+                .set_permissions(fs::Permissions::from_mode(0o644))
+                .map_err(render_io("failed to set output permissions"))?;
+        }
+
+        // Private staging is controller-owned, so open its parent once and
+        // publish the already-synced artifact directly when both directories
+        // share a filesystem. This removes a full output-sized copy from the
+        // ordinary Agent path while retaining descriptor authority at the
+        // workspace destination.
+        let staged_parent_path = staged.parent().unwrap_or_else(|| Path::new("."));
+        let staged_name = staged.file_name().ok_or_else(|| {
+            TransformError::new(ErrorCode::Render, "staged render path has no file name")
+        })?;
+        let staged_parent = open_ambient_dir(staged_parent_path, ambient_authority())
+            .map_err(render_io("failed to open private render staging"))?;
+        let direct_result = if self.overwrite {
+            rename(
+                &staged_parent,
+                Path::new(staged_name),
+                &self.parent,
+                Path::new(&self.name),
+            )
+        } else {
+            hard_link(
+                &staged_parent,
+                Path::new(staged_name),
+                &self.parent,
+                Path::new(&self.name),
+            )
+        };
+        match direct_result {
+            Ok(()) => {
+                if !self.overwrite {
+                    let _ = remove_file(&staged_parent, Path::new(staged_name));
+                }
+                let _ = sync_directory(&self.parent);
+                return Ok(());
+            }
+            Err(error) if is_cross_device(&error) => {}
+            Err(error) => {
+                let code = if !self.overwrite && error.kind() == std::io::ErrorKind::AlreadyExists {
+                    ErrorCode::DestinationExists
+                } else {
+                    ErrorCode::Render
+                };
+                return Err(
+                    TransformError::new(code, "failed to publish rendered output")
+                        .with_details(json!({ "reason": error.to_string() })),
+                );
+            }
+        }
+
+        let (temporary_name, mut temporary) = create_staging_file(&self.parent)?;
+        let publish = (|| -> TransformResult<()> {
+            std::io::copy(&mut source, &mut temporary)
+                .map_err(render_io("failed to stage rendered output"))?;
+            temporary
+                .flush()
+                .map_err(render_io("failed to flush staged output"))?;
+            temporary
+                .sync_all()
+                .map_err(render_io("failed to sync staged output"))?;
+            drop(temporary);
+
+            if self.overwrite {
+                rename(
+                    &self.parent,
+                    Path::new(&temporary_name),
+                    &self.parent,
+                    Path::new(&self.name),
+                )
+                .map_err(render_io("failed to atomically publish rendered output"))?;
+            } else {
+                hard_link(
+                    &self.parent,
+                    Path::new(&temporary_name),
+                    &self.parent,
+                    Path::new(&self.name),
+                )
+                .map_err(|error| {
+                    let code = if error.kind() == std::io::ErrorKind::AlreadyExists {
+                        ErrorCode::DestinationExists
+                    } else {
+                        ErrorCode::Render
+                    };
+                    TransformError::new(code, "failed to publish rendered output without overwrite")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })?;
+                // The output side effect is committed. Cleanup is best-effort so
+                // it cannot turn success into an error that hides publication.
+                let _ = remove_file(&self.parent, Path::new(&temporary_name));
+            }
+            let _ = sync_directory(&self.parent);
+            Ok(())
+        })();
+
+        if publish.is_err() {
+            let _ = remove_file(&self.parent, Path::new(&temporary_name));
+        }
+        publish
+    }
+}
+
+impl StagedFileCommit {
+    /// The caller checks its cancellation token and deadline immediately before
+    /// this synchronous operation. All long-running copy/hash work is finished.
+    pub fn commit(mut self) -> TransformResult<()> {
+        drop(self.file.take());
+        if self.overwrite {
+            rename(
+                &self.parent,
+                Path::new(&self.staged_name),
+                &self.parent,
+                Path::new(&self.final_name),
+            )
+        } else {
+            hard_link(
+                &self.parent,
+                Path::new(&self.staged_name),
+                &self.parent,
+                Path::new(&self.final_name),
+            )
+        }
+        .map_err(|error| {
+            let code = if !self.overwrite && error.kind() == std::io::ErrorKind::AlreadyExists {
+                ErrorCode::DestinationExists
+            } else {
+                ErrorCode::Render
+            };
+            TransformError::new(code, "failed to atomically publish staged file")
+                .with_details(json!({"reason":error.to_string()}))
+        })?;
+        self.committed = true;
+        if !self.overwrite {
+            let _ = remove_file(&self.parent, Path::new(&self.staged_name));
+        }
+        let _ = sync_directory(&self.parent);
+        Ok(())
+    }
+}
+
+impl Drop for StagedFileCommit {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        if !self.committed {
+            let _ = remove_file(&self.parent, Path::new(&self.staged_name));
+            let _ = sync_directory(&self.parent);
+        }
+    }
+}
+
+impl DirectoryOutputTarget {
+    /// Copy a complete controller-private, flat PNG output set into a hidden
+    /// directory beside the final destination. The caller supplies the
+    /// operation-specific file ceiling; this filesystem layer must not impose
+    /// Canvas limits on Timeline or other directory-producing operations.
+    pub fn stage_from(
+        self,
+        source_directory: &Path,
+        max_files: usize,
+    ) -> TransformResult<StagedDirectoryCommit> {
+        self.stage_flat_files_from_with_cancel(source_directory, max_files, &["png"], &|| false)
+    }
+
+    /// Cancellable form of [`Self::stage_from`]. The predicate is polled
+    /// before each file, between bounded copy chunks, and before filesystem
+    /// sync. Cancellation removes the same-parent hidden directory before the
+    /// method returns; the final commit remains a separate synchronous step.
+    pub fn stage_from_with_cancel(
+        self,
+        source_directory: &Path,
+        max_files: usize,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedDirectoryCommit> {
+        self.stage_flat_files_from_with_cancel(source_directory, max_files, &["png"], is_cancelled)
+    }
+
+    /// Stage one flat, closed file set using the caller-owned format contract.
+    /// Extensions are matched case-insensitively without a leading dot; paths,
+    /// links, count bounds, cancellation, sync, and atomic commit remain owned
+    /// by this filesystem boundary.
+    pub fn stage_flat_files_from_with_cancel(
+        self,
+        source_directory: &Path,
+        max_files: usize,
+        allowed_extensions: &[&str],
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedDirectoryCommit> {
+        if max_files == 0 {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "directory staging file limit must be positive",
+            ));
+        }
+        if allowed_extensions.is_empty()
+            || allowed_extensions.iter().any(|extension| {
+                extension.is_empty()
+                    || extension.len() > 16
+                    || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            })
+        {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "directory staging requires a closed extension allowlist",
+            ));
+        }
+        let metadata = fs::symlink_metadata(source_directory)
+            .map_err(render_io("private output directory is not accessible"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(TransformError::new(
+                ErrorCode::Render,
+                "private output must be a real directory",
+            ));
+        }
+        let staged_name = create_staging_directory(&self.parent)?;
+        let staged_directory = match open_dir_nofollow(&self.parent, Path::new(&staged_name)) {
+            Ok(directory) => directory,
+            Err(error) => {
+                let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+                return Err(render_io(
+                    "failed to open same-parent output staging directory",
+                )(error));
+            }
+        };
+        let staged = (|| -> TransformResult<()> {
+            let mut file_count = 0_usize;
+            for entry in fs::read_dir(source_directory)
+                .map_err(render_io("failed to inspect private output directory"))?
+            {
+                check_cancelled(is_cancelled)?;
+                file_count += 1;
+                if file_count > max_files {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "staged output contains too many files",
+                    )
+                    .with_details(json!({ "maximum": max_files })));
+                }
+                let entry = entry.map_err(render_io("failed to inspect staged output entry"))?;
+                let file_type = entry
+                    .file_type()
+                    .map_err(render_io("failed to inspect staged output entry type"))?;
+                if file_type.is_symlink() || !file_type.is_file() {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "staged output must contain only regular files",
+                    ));
+                }
+                let name = entry.file_name();
+                if !Path::new(&name)
+                    .extension()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|extension| {
+                        allowed_extensions
+                            .iter()
+                            .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+                    })
+                {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "staged output file extension is not permitted by the operation contract",
+                    ));
+                }
+                let mut source =
+                    File::open(entry.path()).map_err(render_io("failed to open staged output"))?;
+                let mut options = OpenOptions::new();
+                options
+                    .write(true)
+                    .create_new(true)
+                    .follow(FollowSymlinks::No);
+                let mut destination = open(&staged_directory, Path::new(&name), &options)
+                    .map_err(render_io("failed to create same-parent staged output"))?;
+                copy_with_cancel(&mut source, &mut destination, is_cancelled)?;
+                check_cancelled(is_cancelled)?;
+                destination
+                    .flush()
+                    .map_err(render_io("failed to flush staged output"))?;
+                destination
+                    .sync_all()
+                    .map_err(render_io("failed to sync staged output"))?;
+            }
+            if file_count == 0 {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "staged output must contain at least one permitted file",
+                ));
+            }
+            check_cancelled(is_cancelled)?;
+            sync_directory(&staged_directory)
+                .map_err(render_io("failed to sync output staging directory"))?;
+            Ok(())
+        })();
+        if let Err(error) = staged {
+            let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+            return Err(error);
+        }
+        Ok(StagedDirectoryCommit {
+            parent: self.parent,
+            staged_name,
+            final_name: self.name,
+            committed: false,
+        })
+    }
+
+    /// Copy a controller-private PNG tree with exactly one directory level
+    /// into hidden same-parent staging. This is the publication shape used by
+    /// Variation Jobs: `<item-id>/<output-id>.png`. Both component kinds are
+    /// restricted to the same stable ASCII identifier grammar as the core
+    /// contract, and links or deeper descendants are rejected. A continue
+    /// policy job where every item failed legitimately publishes an empty
+    /// tree, so `allow_empty` relaxes only the root emptiness guard; item
+    /// directories that do exist must still contain at least one PNG.
+    pub fn stage_one_level_tree_from_with_cancel(
+        self,
+        source_directory: &Path,
+        max_directories: usize,
+        max_files: usize,
+        allow_empty: bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> TransformResult<StagedDirectoryCommit> {
+        if max_directories == 0 || max_files == 0 {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "tree staging directory and file limits must be positive",
+            ));
+        }
+        let metadata = fs::symlink_metadata(source_directory)
+            .map_err(render_io("private output directory is not accessible"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(TransformError::new(
+                ErrorCode::Render,
+                "private output must be a real directory",
+            ));
+        }
+        let staged_name = create_staging_directory(&self.parent)?;
+        let staged_directory = match open_dir_nofollow(&self.parent, Path::new(&staged_name)) {
+            Ok(directory) => directory,
+            Err(error) => {
+                let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+                return Err(render_io(
+                    "failed to open same-parent output staging directory",
+                )(error));
+            }
+        };
+        let staged = (|| -> TransformResult<()> {
+            let mut directory_count = 0_usize;
+            let mut file_count = 0_usize;
+            for entry in fs::read_dir(source_directory)
+                .map_err(render_io("failed to inspect private output directory"))?
+            {
+                check_cancelled(is_cancelled)?;
+                directory_count += 1;
+                if directory_count > max_directories {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "staged output contains too many item directories",
+                    )
+                    .with_details(json!({ "maximum": max_directories })));
+                }
+                let entry = entry.map_err(render_io("failed to inspect staged output entry"))?;
+                let file_type = entry
+                    .file_type()
+                    .map_err(render_io("failed to inspect staged output entry type"))?;
+                if file_type.is_symlink() || !file_type.is_dir() {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "tree-staged output root must contain only item directories",
+                    ));
+                }
+                let item_name = entry.file_name();
+                validate_staged_id_component(&item_name, "item directory")?;
+                create_dir(&staged_directory, Path::new(&item_name), &DirOptions::new())
+                    .map_err(render_io("failed to create staged item directory"))?;
+                let staged_item = open_dir_nofollow(&staged_directory, Path::new(&item_name))
+                    .map_err(render_io("failed to open staged item directory"))?;
+                let mut item_file_count = 0_usize;
+                for file in fs::read_dir(entry.path())
+                    .map_err(render_io("failed to inspect private item directory"))?
+                {
+                    check_cancelled(is_cancelled)?;
+                    file_count += 1;
+                    item_file_count += 1;
+                    if file_count > max_files {
+                        return Err(TransformError::new(
+                            ErrorCode::Render,
+                            "staged output contains too many files",
+                        )
+                        .with_details(json!({ "maximum": max_files })));
+                    }
+                    let file = file.map_err(render_io("failed to inspect staged output file"))?;
+                    let file_type = file
+                        .file_type()
+                        .map_err(render_io("failed to inspect staged output file type"))?;
+                    if file_type.is_symlink() || !file_type.is_file() {
+                        return Err(TransformError::new(
+                            ErrorCode::Render,
+                            "item directories must contain only regular PNG files",
+                        ));
+                    }
+                    let file_name = file.file_name();
+                    validate_staged_png_component(&file_name)?;
+                    let mut source = File::open(file.path())
+                        .map_err(render_io("failed to open staged output"))?;
+                    let mut options = OpenOptions::new();
+                    options
+                        .write(true)
+                        .create_new(true)
+                        .follow(FollowSymlinks::No);
+                    let mut destination = open(&staged_item, Path::new(&file_name), &options)
+                        .map_err(render_io("failed to create same-parent staged output"))?;
+                    copy_with_cancel(&mut source, &mut destination, is_cancelled)?;
+                    check_cancelled(is_cancelled)?;
+                    destination
+                        .flush()
+                        .map_err(render_io("failed to flush staged output"))?;
+                    destination
+                        .sync_all()
+                        .map_err(render_io("failed to sync staged output"))?;
+                }
+                if item_file_count == 0 {
+                    return Err(TransformError::new(
+                        ErrorCode::Render,
+                        "each staged item directory must contain at least one PNG",
+                    ));
+                }
+                sync_directory(&staged_item)
+                    .map_err(render_io("failed to sync staged item directory"))?;
+            }
+            if !allow_empty && (directory_count == 0 || file_count == 0) {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "tree-staged output must contain at least one item and PNG",
+                ));
+            }
+            check_cancelled(is_cancelled)?;
+            sync_directory(&staged_directory)
+                .map_err(render_io("failed to sync output staging directory"))?;
+            Ok(())
+        })();
+        if let Err(error) = staged {
+            let _ = remove_dir_all(&self.parent, Path::new(&staged_name));
+            return Err(error);
+        }
+        Ok(StagedDirectoryCommit {
+            parent: self.parent,
+            staged_name,
+            final_name: self.name,
+            committed: false,
+        })
+    }
+}
+
+fn validate_staged_id_component(name: &OsStr, kind: &'static str) -> TransformResult<()> {
+    let valid = name.to_str().is_some_and(|value| {
+        (1..=64).contains(&value.len())
+            && value.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_alphanumeric() || (index > 0 && matches!(byte, b'_' | b'-'))
+            })
+    });
+    if valid {
+        return Ok(());
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        format!("staged {kind} does not use the closed identifier grammar"),
+    ))
+}
+
+fn validate_staged_png_component(name: &OsStr) -> TransformResult<()> {
+    let path = Path::new(name);
+    let is_png = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+    let valid_stem = path
+        .file_stem()
+        .is_some_and(|stem| validate_staged_id_component(stem, "PNG filename").is_ok());
+    if is_png && valid_stem {
+        return Ok(());
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        "staged output filenames must be <output-id>.png",
+    ))
+}
+
+fn copy_with_cancel(
+    source: &mut File,
+    destination: &mut File,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        check_cancelled(is_cancelled)?;
+        let count = source
+            .read(&mut buffer)
+            .map_err(render_io("failed to read staged output"))?;
+        if count == 0 {
+            return Ok(());
+        }
+        destination
+            .write_all(&buffer[..count])
+            .map_err(render_io("failed to copy staged output"))?;
+    }
+}
+
+fn check_cancelled(is_cancelled: &(dyn Fn() -> bool + Sync)) -> TransformResult<()> {
+    if is_cancelled() {
+        Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "output staging copy was cancelled",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+// cap-primitives deliberately uses O_PATH for descriptor-confined directory
+// traversal on Linux. O_PATH is the right authority handle, but Linux rejects
+// fsync on it with EBADF. Reopen `.` through the already-held descriptor with
+// read access before syncing so durability does not weaken path confinement.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn sync_directory(directory: &File) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    open(directory, Path::new("."), &options)?.sync_all()
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn sync_directory(directory: &File) -> std::io::Result<()> {
+    directory.sync_all()
+}
+
+impl StagedDirectoryCommit {
+    /// Commit the complete output set with one same-parent atomic no-replace
+    /// directory rename. No asynchronous work occurs after this call begins.
+    pub fn commit(mut self) -> TransformResult<()> {
+        atomic_rename_directory_noreplace(&self.parent, &self.staged_name, &self.final_name)
+            .map_err(|error| {
+                let code = if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::DirectoryNotEmpty
+                ) {
+                    ErrorCode::DestinationExists
+                } else {
+                    ErrorCode::Render
+                };
+                TransformError::new(code, "failed to atomically commit Canvas output directory")
+                    .with_details(json!({ "reason": error.to_string() }))
+            })?;
+        self.committed = true;
+        let _ = sync_directory(&self.parent);
+        Ok(())
+    }
+}
+
+impl Drop for StagedDirectoryCommit {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = remove_dir_all(&self.parent, Path::new(&self.staged_name));
+            let _ = sync_directory(&self.parent);
+        }
+    }
+}
+
+fn is_cross_device(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::CrossesDevices
+}
+
+pub fn copy_source_to_private_staging(
+    source: File,
+    destination: &Path,
+    max_bytes: u64,
+) -> TransformResult<String> {
+    copy_source_to_private_staging_with_cancel(source, destination, max_bytes, &|| false)
+}
+
+pub fn copy_source_to_private_staging_with_cancel(
+    mut source: File,
+    destination: &Path,
+    max_bytes: u64,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<String> {
+    check_cancelled(is_cancelled)?;
+    let metadata = source.metadata().map_err(|error| {
+        TransformError::new(ErrorCode::PathOutsideRoot, "source file is not accessible")
+            .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    if metadata.len() > max_bytes {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "encoded source exceeds configured byte limit",
+        )
+        .with_details(json!({ "sourceBytes": metadata.len(), "maximum": max_bytes })));
+    }
+    let mut target =
+        File::create(destination).map_err(render_io("failed to create private source staging"))?;
+    source
+        .seek(SeekFrom::Start(0))
+        .map_err(render_io("failed to rewind source image"))?;
+    let mut copied = 0_u64;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        check_cancelled(is_cancelled)?;
+        let remaining = max_bytes.saturating_add(1).saturating_sub(copied);
+        if remaining == 0 {
+            break;
+        }
+        let read_len = buffer.len().min(remaining as usize);
+        let count = source
+            .read(&mut buffer[..read_len])
+            .map_err(render_io("failed to read source into private staging"))?;
+        if count == 0 {
+            break;
+        }
+        target
+            .write_all(&buffer[..count])
+            .map_err(render_io("failed to copy source into private staging"))?;
+        hasher.update(&buffer[..count]);
+        copied = copied.saturating_add(count as u64);
+    }
+    if copied > max_bytes {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "encoded source exceeds configured byte limit",
+        ));
+    }
+    target
+        .flush()
+        .map_err(render_io("failed to flush private source staging"))?;
+    check_cancelled(is_cancelled)?;
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn validate_relative_path(value: &str) -> TransformResult<Vec<OsString>> {
+    let windows_prefix = value.as_bytes().get(1) == Some(&b':')
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic);
+    if value.is_empty()
+        || value.contains('\0')
+        || value.contains("://")
+        || value.starts_with('\\')
+        || windows_prefix
+    {
+        return Err(TransformError::new(
+            ErrorCode::PathOutsideRoot,
+            "path must be a non-empty relative filesystem path, not a URI or platform path",
+        ));
+    }
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        return Err(TransformError::new(
+            ErrorCode::PathOutsideRoot,
+            "absolute Agent paths are not allowed",
+        ));
+    }
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(name) => components.push(name.to_owned()),
+            Component::CurDir => {}
+            _ => {
+                return Err(TransformError::new(
+                    ErrorCode::PathOutsideRoot,
+                    "parent, root, and platform-prefix path components are not allowed",
+                ));
+            }
+        }
+    }
+    if components.is_empty() {
+        return Err(TransformError::new(
+            ErrorCode::PathOutsideRoot,
+            "path must name a file inside the granted workspace",
+        ));
+    }
+    Ok(components)
+}
+
+fn reject_symlink(parent: &File, name: &OsStr, index: usize) -> TransformResult<()> {
+    match stat(parent, Path::new(name), FollowSymlinks::No) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(path_symlink(index)),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(TransformError::new(
+            ErrorCode::PathOutsideRoot,
+            "path component could not be inspected",
+        )
+        .with_details(json!({ "componentIndex": index, "reason": error.to_string() }))),
+    }
+}
+
+fn classify_open_error(
+    parent: &File,
+    name: &OsStr,
+    index: usize,
+    message: &'static str,
+    error: std::io::Error,
+) -> TransformError {
+    if stat(parent, Path::new(name), FollowSymlinks::No)
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return path_symlink(index);
+    }
+    let io_kind = if error.kind() == std::io::ErrorKind::NotFound {
+        "notFound"
+    } else {
+        "other"
+    };
+    TransformError::new(ErrorCode::PathOutsideRoot, message).with_details(json!({
+        "componentIndex": index,
+        "ioKind": io_kind,
+        "reason": error.to_string()
+    }))
+}
+
+fn path_symlink(index: usize) -> TransformError {
+    TransformError::new(
+        ErrorCode::PathSymlink,
+        "Agent path traversal may not cross a symbolic link",
+    )
+    .with_details(json!({ "componentIndex": index }))
+}
+
+fn create_staging_file(parent: &File) -> TransformResult<(OsString, File)> {
+    for _ in 0..32 {
+        let sequence = NEXT_STAGING_FILE.fetch_add(1, Ordering::Relaxed);
+        let name = OsString::from(format!(
+            ".worldbend-publish-{}-{sequence}.tmp",
+            std::process::id()
+        ));
+        let mut options = OpenOptions::new();
+        options
+            .write(true)
+            .create_new(true)
+            .follow(FollowSymlinks::No);
+        match open(parent, Path::new(&name), &options) {
+            Ok(file) => return Ok((name, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "output directory is not writable",
+                )
+                .with_details(json!({ "reason": error.to_string() })));
+            }
+        }
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        "could not allocate a unique output staging file",
+    ))
+}
+
+fn create_staging_directory(parent: &File) -> TransformResult<OsString> {
+    for _ in 0..32 {
+        let sequence = NEXT_STAGING_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let name = OsString::from(format!(
+            ".worldbend-directory-{}-{sequence}.tmp",
+            std::process::id()
+        ));
+        match create_dir(parent, Path::new(&name), &DirOptions::new()) {
+            Ok(()) => return Ok(name),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "output directory is not writable",
+                )
+                .with_details(json!({ "reason": error.to_string() })));
+            }
+        }
+    }
+    Err(TransformError::new(
+        ErrorCode::Render,
+        "could not allocate a unique Canvas staging directory",
+    ))
+}
+
+#[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple"))]
+fn atomic_rename_directory_noreplace(
+    parent: &File,
+    old_name: &OsStr,
+    new_name: &OsStr,
+) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::{fd::AsRawFd, unix::ffi::OsStrExt};
+
+    let old_name = CString::new(old_name.as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid old name"))?;
+    let new_name = CString::new(new_name.as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid new name"))?;
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let status = unsafe {
+        libc::renameat2(
+            parent.as_raw_fd(),
+            old_name.as_ptr(),
+            parent.as_raw_fd(),
+            new_name.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    #[cfg(target_vendor = "apple")]
+    let status = unsafe {
+        libc::renameatx_np(
+            parent.as_raw_fd(),
+            old_name.as_ptr(),
+            parent.as_raw_fd(),
+            new_name.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn atomic_rename_directory_noreplace(
+    parent: &File,
+    old_name: &OsStr,
+    new_name: &OsStr,
+) -> std::io::Result<()> {
+    // `std::fs::rename` on Windows fails when the destination directory
+    // exists; cap-primitives resolves both names from the held parent handle.
+    rename(parent, Path::new(old_name), parent, Path::new(new_name))
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_vendor = "apple",
+    windows
+)))]
+fn atomic_rename_directory_noreplace(
+    _parent: &File,
+    _old_name: &OsStr,
+    _new_name: &OsStr,
+) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic no-replace directory rename is unavailable on this platform",
+    ))
+}
+
+fn render_io(message: &'static str) -> impl FnOnce(std::io::Error) -> TransformError {
+    move |error| {
+        TransformError::new(ErrorCode::Render, message)
+            .with_details(json!({ "reason": error.to_string() }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn descriptor_scoped_directory_handles_support_durable_sync() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        sync_directory(&workspace.directory).unwrap();
+    }
+
+    #[test]
+    fn rejects_absolute_parent_uri_and_cross_platform_prefixes() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        for value in [
+            "/tmp/source.png",
+            "../source.png",
+            "https://example.com/a.png",
+            r"C:\source.png",
+            r"\\server\share\source.png",
+        ] {
+            assert_eq!(
+                workspace.open_source(value).unwrap_err().code,
+                ErrorCode::PathOutsideRoot
+            );
+        }
+    }
+
+    #[test]
+    fn opens_regular_source_and_preflights_output() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("assets")).unwrap();
+        fs::write(root.path().join("assets/source.png"), b"png").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let mut source = workspace.open_source("assets/source.png").unwrap();
+        let mut bytes = Vec::new();
+        source.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"png");
+        workspace
+            .prepare_output("assets/output.png", false)
+            .unwrap();
+        assert_eq!(
+            workspace
+                .prepare_output("assets/output.svg", false)
+                .unwrap_err()
+                .code,
+            ErrorCode::Schema
+        );
+        workspace
+            .prepare_file_output("assets/output.svg", false)
+            .unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_fifo_without_waiting_for_a_writer_and_then_recovers() {
+        use std::{
+            ffi::CString,
+            os::unix::ffi::OsStrExt,
+            sync::{Arc, mpsc},
+            time::Duration,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("blocked.fifo");
+        let fifo_name = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        fs::write(root.path().join("source.png"), b"png").unwrap();
+        let workspace = Arc::new(WorkspaceRoot::open(root.path()).unwrap());
+        let (sent, received) = mpsc::channel();
+        let worker = Arc::clone(&workspace);
+        let handle = std::thread::spawn(move || {
+            sent.send(worker.open_source("blocked.fifo").map(|_| ()))
+                .unwrap();
+        });
+
+        let result = match received.recv_timeout(Duration::from_millis(250)) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Release a regressed blocking open so the test fails without
+                // leaving a permanently blocked process or thread behind.
+                let writer = fs::OpenOptions::new().write(true).open(&fifo).unwrap();
+                drop(writer);
+                let _ = received.recv_timeout(Duration::from_secs(1));
+                handle.join().unwrap();
+                panic!("opening a FIFO waited for a writer before rejecting its type");
+            }
+            Err(error) => panic!("FIFO result channel failed: {error}"),
+        };
+        handle.join().unwrap();
+        assert_eq!(result.unwrap_err().code, ErrorCode::PathOutsideRoot);
+
+        let mut regular = workspace.open_source("source.png").unwrap();
+        let mut bytes = Vec::new();
+        regular.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"png");
+    }
+
+    #[test]
+    fn canvas_directory_commit_is_atomic_and_no_replace() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("story.png"), b"story").unwrap();
+        fs::write(private.path().join("square.png"), b"square").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        workspace
+            .prepare_output_directory("outputs/complete")
+            .unwrap()
+            .stage_from(private.path(), 16)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert_eq!(
+            fs::read(root.path().join("outputs/complete/story.png")).unwrap(),
+            b"story"
+        );
+
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("new.png"), b"new").unwrap();
+        let target = workspace.prepare_output_directory("outputs/raced").unwrap();
+        let commit = target.stage_from(private.path(), 16).unwrap();
+        fs::create_dir(root.path().join("outputs/raced")).unwrap();
+        fs::write(root.path().join("outputs/raced/owner.txt"), b"owner").unwrap();
+        assert_eq!(
+            commit.commit().unwrap_err().code,
+            ErrorCode::DestinationExists
+        );
+        assert_eq!(
+            fs::read(root.path().join("outputs/raced/owner.txt")).unwrap(),
+            b"owner"
+        );
+        assert!(!root.path().join("outputs/raced/new.png").exists());
+    }
+
+    #[test]
+    fn directory_staging_uses_the_callers_operation_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        for index in 0..17 {
+            fs::write(private.path().join(format!("frame-{index:06}.png")), b"png").unwrap();
+        }
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        let error = workspace
+            .prepare_output_directory("too-small")
+            .unwrap()
+            .stage_from(private.path(), 16)
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Render);
+        assert_eq!(error.details.unwrap()["maximum"], json!(16));
+        assert!(!root.path().join("too-small").exists());
+
+        workspace
+            .prepare_output_directory("timeline")
+            .unwrap()
+            .stage_from(private.path(), 240)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert_eq!(
+            fs::read_dir(root.path().join("timeline")).unwrap().count(),
+            17
+        );
+    }
+
+    #[test]
+    fn dropping_canvas_commit_cleans_same_parent_staging() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("one.png"), b"one").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let commit = workspace
+            .prepare_output_directory("outputs/final")
+            .unwrap()
+            .stage_from(private.path(), 16)
+            .unwrap();
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .any(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+        drop(commit);
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+        assert!(!root.path().join("outputs/final").exists());
+    }
+
+    #[test]
+    fn private_source_copy_hashes_while_streaming_without_a_second_read() {
+        let root = tempfile::tempdir().unwrap();
+        let source_path = root.path().join("source.bin");
+        let staged_path = root.path().join("staged.bin");
+        fs::write(&source_path, b"hello").unwrap();
+        let digest =
+            copy_source_to_private_staging(File::open(&source_path).unwrap(), &staged_path, 1024)
+                .unwrap();
+        assert_eq!(
+            digest,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+        assert_eq!(fs::read(staged_path).unwrap(), b"hello");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn held_source_and_output_parent_survive_path_replacement_without_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("assets")).unwrap();
+        fs::write(root.path().join("assets/source.png"), b"inside").unwrap();
+        fs::write(outside.path().join("source.png"), b"outside").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let mut source = workspace.open_source("assets/source.png").unwrap();
+        let output = workspace
+            .prepare_output("assets/output.png", false)
+            .unwrap();
+
+        fs::rename(root.path().join("assets"), root.path().join("held-assets")).unwrap();
+        symlink(outside.path(), root.path().join("assets")).unwrap();
+
+        let mut bytes = Vec::new();
+        source.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"inside");
+        let staged = tempfile::NamedTempFile::new().unwrap();
+        fs::write(staged.path(), b"rendered").unwrap();
+        output.publish_from(staged.path()).unwrap();
+        assert_eq!(
+            fs::read(root.path().join("held-assets/output.png")).unwrap(),
+            b"rendered"
+        );
+        assert!(!outside.path().join("output.png").exists());
+    }
+
+    #[test]
+    fn staged_file_cancellation_and_bad_receipts_preserve_the_existing_output() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let source = private.path().join("result.mp4");
+        let bytes = vec![11; 256 * 1024];
+        fs::write(&source, &bytes).unwrap();
+        let digest = hex::encode(Sha256::digest(&bytes));
+        let final_path = root.path().join("movie.mp4");
+        fs::write(&final_path, b"old movie").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let output = workspace.prepare_file_output("movie.mp4", true).unwrap();
+        let calls = AtomicUsize::new(0);
+        let error = output
+            .stage_from_with_cancel(&source, bytes.len() as u64, &digest, 1024 * 1024, &|| {
+                calls.fetch_add(1, Ordering::SeqCst) >= 2
+            })
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert_eq!(fs::read(&final_path).unwrap(), b"old movie");
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+        let error = output
+            .stage_from_with_cancel(
+                &source,
+                bytes.len() as u64,
+                &"00".repeat(32),
+                1024 * 1024,
+                &|| false,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+        let ready = output
+            .stage_from_with_cancel(&source, bytes.len() as u64, &digest, 1024 * 1024, &|| false)
+            .unwrap();
+        assert_eq!(fs::read(&final_path).unwrap(), b"old movie");
+        drop(ready);
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+        output
+            .stage_from_with_cancel(&source, bytes.len() as u64, &digest, 1024 * 1024, &|| false)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert_eq!(fs::read(final_path).unwrap(), bytes);
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+        assert_eq!(fs::read(source).unwrap(), bytes);
+    }
+
+    #[test]
+    fn staged_file_commit_refuses_a_destination_created_after_preflight() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::NamedTempFile::new().unwrap();
+        fs::write(private.path(), b"candidate").unwrap();
+        let digest = hex::encode(Sha256::digest(b"candidate"));
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let output = workspace.prepare_file_output("movie.mp4", false).unwrap();
+        let ready = output
+            .stage_from_with_cancel(private.path(), 9, &digest, 1024, &|| false)
+            .unwrap();
+        fs::write(root.path().join("movie.mp4"), b"new user file").unwrap();
+        assert_eq!(
+            ready.commit().unwrap_err().code,
+            ErrorCode::DestinationExists
+        );
+        assert_eq!(
+            fs::read(root.path().join("movie.mp4")).unwrap(),
+            b"new user file"
+        );
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staged_file_commit_keeps_held_directory_authority_after_path_replacement() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let private = tempfile::NamedTempFile::new().unwrap();
+        fs::write(private.path(), b"candidate").unwrap();
+        let digest = hex::encode(Sha256::digest(b"candidate"));
+        fs::create_dir(root.path().join("media")).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let output = workspace
+            .prepare_file_output("media/movie.mp4", false)
+            .unwrap();
+        let ready = output
+            .stage_from_with_cancel(private.path(), 9, &digest, 1024, &|| false)
+            .unwrap();
+        fs::rename(root.path().join("media"), root.path().join("held-media")).unwrap();
+        symlink(outside.path(), root.path().join("media")).unwrap();
+        ready.commit().unwrap();
+        assert_eq!(
+            fs::read(root.path().join("held-media/movie.mp4")).unwrap(),
+            b"candidate"
+        );
+        assert!(!outside.path().join("movie.mp4").exists());
+        assert_eq!(
+            fs::read_dir(root.path().join("held-media"))
+                .unwrap()
+                .count(),
+            1
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn held_canvas_output_parent_survives_path_replacement_without_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let target = workspace.prepare_output_directory("outputs/final").unwrap();
+        fs::rename(
+            root.path().join("outputs"),
+            root.path().join("held-outputs"),
+        )
+        .unwrap();
+        symlink(outside.path(), root.path().join("outputs")).unwrap();
+
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("one.png"), b"one").unwrap();
+        target
+            .stage_from(private.path(), 16)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert_eq!(
+            fs::read(root.path().join("held-outputs/final/one.png")).unwrap(),
+            b"one"
+        );
+        assert!(!outside.path().join("final").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_ancestors_and_final_entries() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("source.png"), b"outside").unwrap();
+        symlink(outside.path(), root.path().join("linked")).unwrap();
+        symlink(
+            outside.path().join("source.png"),
+            root.path().join("output.png"),
+        )
+        .unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        assert_eq!(
+            workspace.open_source("linked/source.png").unwrap_err().code,
+            ErrorCode::PathSymlink
+        );
+        assert_eq!(
+            workspace
+                .prepare_output("output.png", true)
+                .unwrap_err()
+                .code,
+            ErrorCode::PathSymlink
+        );
+    }
+
+    #[test]
+    fn cancellation_during_canvas_copy_removes_same_parent_staging() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("large.png"), vec![7_u8; 512 * 1024]).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let calls = AtomicUsize::new(0);
+        let error = workspace
+            .prepare_output_directory("outputs/final")
+            .unwrap()
+            .stage_from_with_cancel(private.path(), 16, &|| {
+                calls.fetch_add(1, Ordering::SeqCst) >= 3
+            })
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(!root.path().join("outputs/final").exists());
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+    }
+
+    #[test]
+    fn one_level_tree_staging_preserves_item_directories_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::create_dir(private.path().join("sku-a")).unwrap();
+        fs::create_dir(private.path().join("sku-b")).unwrap();
+        fs::write(private.path().join("sku-a/hero.png"), b"a").unwrap();
+        fs::write(private.path().join("sku-b/hero.png"), b"b").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, false, &|| false)
+            .unwrap()
+            .commit()
+            .unwrap();
+
+        assert_eq!(
+            fs::read(root.path().join("outputs/job/sku-a/hero.png")).unwrap(),
+            b"a"
+        );
+        assert_eq!(
+            fs::read(root.path().join("outputs/job/sku-b/hero.png")).unwrap(),
+            b"b"
+        );
+    }
+
+    #[test]
+    fn one_level_tree_staging_can_allow_an_empty_publication() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        let error = workspace
+            .prepare_output_directory("outputs/blocked")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, false, &|| false)
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Render);
+        assert!(!root.path().join("outputs/blocked").exists());
+
+        workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, true, &|| false)
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert!(root.path().join("outputs/job").is_dir());
+        assert_eq!(
+            fs::read_dir(root.path().join("outputs/job"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn one_level_tree_rejects_deeper_or_noncontract_entries_and_cleans_staging() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::create_dir(private.path().join("sku-a")).unwrap();
+        fs::create_dir(private.path().join("sku-a/deeper")).unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+
+        let error = workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(private.path(), 2, 2, false, &|| false)
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Render);
+        assert!(!root.path().join("outputs/job").exists());
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+    }
+}

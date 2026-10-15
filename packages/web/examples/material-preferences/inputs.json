@@ -1,0 +1,266 @@
+{
+  "texture": {
+    "family": "texture",
+    "source": {
+      "recipe": {
+        "schema": "worldbend.texture@0.1",
+        "version": "0.1",
+        "recipeId": "field-notes-texture",
+        "recipeVersion": 1,
+        "material": {
+          "visible": true,
+          "grain": 0.28,
+          "grainSize": 2,
+          "grainColor": "#847967",
+          "etch": 2,
+          "etchSize": 6,
+          "clipToShape": true
+        }
+      },
+      "material": {
+        "visible": true,
+        "grain": 0.28,
+        "grainSize": 2,
+        "grainColor": "#847967",
+        "etch": 2,
+        "etchSize": 6,
+        "clipToShape": true
+      },
+      "target": "web",
+      "nativeExtras": {}
+    },
+    "policy": {
+      "schema": "worldbend.material-policy@0.1",
+      "policyId": "reading-room",
+      "revision": 1,
+      "scopes": [
+        "book-cover"
+      ],
+      "exposed": [
+        {
+          "field": "grain",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "field": "grain-color"
+        },
+        {
+          "field": "visible"
+        }
+      ]
+    },
+    "preference": {
+      "schema": "worldbend.material-preference@0.1",
+      "revision": 0,
+      "scope": "book-cover",
+      "recipeId": "field-notes-texture",
+      "fields": {}
+    },
+    "runtime": {
+      "rendererAvailable": true,
+      "motionAllowed": true
+    }
+  },
+  "foil": {
+    "family": "foil",
+    "source": {
+      "recipe": {
+        "schema": "worldbend.foil@0.1",
+        "version": "0.1",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 1,
+        "material": {
+          "visible": true,
+          "baseColor": {
+            "r": 0.72,
+            "g": 0.71,
+            "b": 0.68,
+            "a": 1
+          },
+          "highlightColor": {
+            "r": 0.98,
+            "g": 0.92,
+            "b": 0.78,
+            "a": 1
+          },
+          "lightAngle": 120,
+          "intensity": 0.6,
+          "roughness": 0.45,
+          "flowSpeed": 0.25
+        }
+      },
+      "material": {
+        "visible": true,
+        "baseColor": {
+          "r": 0.72,
+          "g": 0.71,
+          "b": 0.68,
+          "a": 1
+        },
+        "highlightColor": {
+          "r": 0.98,
+          "g": 0.92,
+          "b": 0.78,
+          "a": 1
+        },
+        "lightAngle": 120,
+        "intensity": 0.6,
+        "roughness": 0.45,
+        "flowSpeed": 0.25
+      },
+      "target": "web"
+    },
+    "policy": {
+      "schema": "worldbend.material-policy@0.1",
+      "policyId": "reading-room",
+      "revision": 1,
+      "scopes": [
+        "book-cover"
+      ],
+      "exposed": [
+        {
+          "field": "roughness",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "field": "base-color"
+        },
+        {
+          "field": "flow-speed",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "field": "visible"
+        }
+      ]
+    },
+    "preference": {
+      "schema": "worldbend.material-preference@0.1",
+      "revision": 0,
+      "scope": "book-cover",
+      "recipeId": "field-notes-foil",
+      "fields": {}
+    },
+    "runtime": {
+      "rendererAvailable": true,
+      "motionAllowed": true
+    }
+  },
+  "mesh-gradient": {
+    "family": "mesh-gradient",
+    "source": {
+      "recipe": {
+        "schema": "worldbend.mesh-gradient@0.1",
+        "version": "0.1",
+        "recipeId": "field-notes-mesh-gradient",
+        "recipeVersion": 1,
+        "material": {
+          "visible": true,
+          "colorTl": {
+            "r": 0.18,
+            "g": 0.42,
+            "b": 0.92,
+            "a": 1
+          },
+          "colorTr": {
+            "r": 0.55,
+            "g": 0.22,
+            "b": 0.86,
+            "a": 1
+          },
+          "colorBl": {
+            "r": 0.12,
+            "g": 0.72,
+            "b": 0.68,
+            "a": 1
+          },
+          "colorBr": {
+            "r": 0.95,
+            "g": 0.55,
+            "b": 0.22,
+            "a": 1
+          },
+          "warp": 0.35,
+          "softness": 0.55,
+          "durationMs": 8000,
+          "phaseMs": 0,
+          "flowSpeed": 0.45
+        }
+      },
+      "material": {
+        "visible": true,
+        "colorTl": {
+          "r": 0.18,
+          "g": 0.42,
+          "b": 0.92,
+          "a": 1
+        },
+        "colorTr": {
+          "r": 0.55,
+          "g": 0.22,
+          "b": 0.86,
+          "a": 1
+        },
+        "colorBl": {
+          "r": 0.12,
+          "g": 0.72,
+          "b": 0.68,
+          "a": 1
+        },
+        "colorBr": {
+          "r": 0.95,
+          "g": 0.55,
+          "b": 0.22,
+          "a": 1
+        },
+        "warp": 0.35,
+        "softness": 0.55,
+        "durationMs": 8000,
+        "phaseMs": 0,
+        "flowSpeed": 0.45
+      },
+      "target": "web",
+      "kernelProfile": "worldbend.mesh-gradient.rgba@0.2"
+    },
+    "policy": {
+      "schema": "worldbend.material-policy@0.1",
+      "policyId": "reading-room",
+      "revision": 1,
+      "scopes": [
+        "book-cover"
+      ],
+      "exposed": [
+        {
+          "field": "softness",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "field": "color-tl"
+        },
+        {
+          "field": "flow-speed",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "field": "visible"
+        }
+      ]
+    },
+    "preference": {
+      "schema": "worldbend.material-preference@0.1",
+      "revision": 0,
+      "scope": "book-cover",
+      "recipeId": "field-notes-mesh-gradient",
+      "fields": {}
+    },
+    "runtime": {
+      "rendererAvailable": true,
+      "motionAllowed": true
+    }
+  }
+}

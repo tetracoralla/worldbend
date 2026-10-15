@@ -1,0 +1,447 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pluginRoot = path.join(root, "plugins", "worldbend");
+const marketplacePath = path.join(root, ".agents", "plugins", "marketplace.json");
+const install = process.argv.includes("--install");
+const runtimeSmoke = process.argv.includes("--runtime-smoke");
+const executableSuffix = process.platform === "win32" ? ".exe" : "";
+
+const manifest = JSON.parse(
+  await readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
+);
+const workspacePackage = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
+assert.equal(marketplace.name, "worldbend-local");
+assert.equal(marketplace.plugins?.[0]?.name, "worldbend");
+assert.deepEqual(marketplace.plugins[0].source, {
+  source: "local",
+  path: "./plugins/worldbend",
+});
+
+// Host-owned projections use a namespaced marketplace. Resolve the actual
+// enabled Worldbend, not an inactive historical worldbend-local installation.
+const currentListing = await runJson("codex", ["plugin", "list", "--json"]);
+const enabledWorldbend = (currentListing.installed ?? []).filter(candidate => candidate.name === manifest.name && candidate.enabled);
+assert(enabledWorldbend.length <= 1, "Multiple Worldbend plugins are enabled; resolve their ownership before checking");
+if (install && enabledWorldbend[0]?.marketplaceName?.startsWith("agent-host-")) {
+  throw new Error("Agent Host owns the active Worldbend installation. Build package:agent-host and use component preview/import to update it; do not install a competing independent plugin.");
+}
+let installedPath;
+if (install) {
+  let registered;
+  try {
+    registered = await runJson("codex", ["plugin", "marketplace", "add", root, "--json"]);
+  } catch (error) {
+    // A managed host (for example an Agent Host Suite projection) may own the
+    // registration from its own projected copy of this marketplace. The repo
+    // cannot re-point that registration; the layout-aware resolution below
+    // verifies the registered runtime the host will actually execute.
+    if (!String(error.message).includes("already added")) throw error;
+    console.log(
+      "marketplace is already registered by the host from its projection; verifying the registered runtime instead of re-adding",
+    );
+  }
+  if (registered) {
+    assert.equal(registered.marketplaceName, marketplace.name);
+    if (registered.installedRoot !== undefined) {
+      const registeredRoot = await realpath(registered.installedRoot);
+      if (registeredRoot !== (await realpath(root))) {
+        // A managed host may project the registered marketplace into its own
+        // location instead of registering the checkout in place. That is
+        // acceptable as long as the projection carries this marketplace's
+        // manifest; the runtime root is still resolved from the live CLI below.
+        const projected = existsSync(
+          path.join(registeredRoot, ".agents", "plugins", "marketplace.json"),
+        );
+        assert(
+          projected,
+          `marketplace registered from an unrecognized location: ${registeredRoot}`,
+        );
+        console.log(`marketplace projected by the host at ${registeredRoot}`);
+      }
+    }
+
+    const installed = await runJson("codex", [
+      "plugin",
+      "add",
+      `worldbend@${marketplace.name}`,
+      "--json",
+    ]);
+    assert.equal(installed.version, manifest.version);
+    installedPath = installed.installedPath;
+  }
+} else {
+  const codexRoot = process.env.CODEX_HOME
+    ? path.resolve(process.env.CODEX_HOME)
+    : path.join(homedir(), ".codex");
+  installedPath = path.join(
+    codexRoot,
+    "plugins",
+    "cache",
+    marketplace.name,
+    manifest.name,
+    manifest.version,
+  );
+}
+
+const listing = await runJson("codex", [
+  "plugin",
+  "list",
+  "--json",
+]);
+const activeEntries = (listing.installed ?? []).filter(candidate => candidate.name === manifest.name && candidate.enabled);
+assert.equal(activeEntries.length, 1, "Exactly one Worldbend installation must be enabled");
+const entry = activeEntries[0];
+assert(entry.marketplaceName === marketplace.name || entry.marketplaceName?.startsWith("agent-host-"), "Worldbend is not installed from a supported owned marketplace");
+if (entry.marketplaceName !== marketplace.name) installedPath = undefined;
+assert.equal(entry.version, manifest.version);
+assert.equal(entry.enabled, true);
+if (entry.source?.path !== undefined) {
+  const sourcePath = await realpath(entry.source.path).catch(() => undefined);
+  if (sourcePath !== undefined && sourcePath !== (await realpath(pluginRoot))) {
+    // Accept a host-projected registration when it carries this plugin's
+    // manifest; reject anything else rather than guessing.
+    const projection = await readFile(
+      path.join(sourcePath, ".codex-plugin", "plugin.json"),
+      "utf8",
+    )
+      .then(JSON.parse)
+      .catch(() => undefined);
+    assert(
+      projection?.name === manifest.name && projection?.version === manifest.version,
+      `installed plugin source is not the staged distribution: ${sourcePath}`,
+    );
+  }
+}
+
+// Standard Codex installs into $CODEX_HOME/plugins/cache/<marketplace>/
+// <plugin>/<version>. A managed host may instead register a projected
+// marketplace whose plugin directory carries only the Skill and a rewritten
+// .mcp.json that points at the real runtime copy. Resolve the root that the
+// host will actually execute from instead of assuming one layout.
+let hostManagedLayout = false;
+function looksLikePluginRoot(directory) {
+  return (
+    typeof directory === "string" &&
+    existsSync(path.join(directory, "bin", `worldbend-mcp${executableSuffix}`))
+  );
+}
+if (!looksLikePluginRoot(installedPath)) {
+  const candidates = [entry.source?.path].filter(Boolean);
+  let resolved;
+  for (const candidate of candidates) {
+    if (looksLikePluginRoot(candidate)) {
+      resolved = candidate;
+      break;
+    }
+    try {
+      const mcpConfig = JSON.parse(await readFile(path.join(candidate, ".mcp.json"), "utf8"));
+      for (const server of Object.values(mcpConfig.mcpServers ?? {})) {
+        const runtimeRoot =
+          server.cwd && looksLikePluginRoot(server.cwd)
+            ? server.cwd
+            : typeof server.command === "string" && looksLikePluginRoot(
+                path.dirname(path.dirname(server.command)),
+              )
+            ? path.dirname(path.dirname(server.command))
+            : undefined;
+        if (runtimeRoot) {
+          resolved = runtimeRoot;
+          hostManagedLayout = server.cwd !== undefined || server.command !== undefined;
+          break;
+        }
+      }
+    } catch {
+      // Not a projected layout candidate; keep searching.
+    }
+    if (resolved) break;
+  }
+  assert(
+    resolved,
+    `could not resolve the installed Worldbend runtime root (tried ${installedPath})`,
+  );
+  installedPath = resolved;
+}
+const installedPathReal = await realpath(installedPath);
+if (!hostManagedLayout) {
+  assert.equal(path.basename(installedPathReal), manifest.version);
+  assert.equal(path.basename(path.dirname(installedPathReal)), manifest.name);
+  assert.equal(
+    path.basename(path.dirname(path.dirname(installedPathReal))),
+    marketplace.name,
+  );
+}
+
+const sourceFiles = await inventory(pluginRoot);
+const installedFiles = hostManagedLayout
+  ? (await inventory(installedPath)).filter((file) => file.path !== ".mcp.json")
+  : await inventory(installedPath);
+const comparableSource = hostManagedLayout
+  ? sourceFiles.filter((file) => file.path !== ".mcp.json")
+  : sourceFiles;
+assert.deepEqual(
+  installedFiles,
+  comparableSource,
+  hostManagedLayout
+    ? "the managed host runtime copy (excluding its rewritten .mcp.json) predates the staged build; refresh the host projection/package copy, then rerun"
+    : "installed plugin bytes differ from the staged source distribution",
+);
+if (hostManagedLayout) {
+  console.log(
+    "host-managed layout: byte comparison excludes the rewritten .mcp.json; the runtime smoke validates the resolved copy",
+  );
+}
+
+const cli = path.join(installedPath, "bin", `worldbend${executableSuffix}`);
+const mcp = path.join(installedPath, "bin", `worldbend-mcp${executableSuffix}`);
+const capabilityRoot = path.join(installedPath, "capabilities");
+const provider = JSON.parse(
+  await readFile(path.join(capabilityRoot, "provider.json"), "utf8"),
+);
+const implementation = provider.implementations?.[0];
+assert(implementation, "installed Capability provider manifest is missing");
+const capability = resolveProviderExecutable(
+  capabilityRoot,
+  implementation.adapter.command,
+);
+const schemaProbe = resolveProviderExecutable(
+  capabilityRoot,
+  implementation.transportSchemaProbe.command,
+);
+assert.equal(
+  (await run(cli, ["--version"])).stdout.trim(),
+  `worldbend ${workspacePackage.version}`,
+);
+assert.equal(
+  (await run(mcp, ["--version"])).stdout.trim(),
+  `worldbend-mcp ${workspacePackage.version}`,
+);
+assert.equal(
+  (await run(capability, ["--version"])).stdout.trim(),
+  `worldbend-capability ${workspacePackage.version}`,
+);
+assert.equal(
+  (await run(schemaProbe, ["--version"])).stdout.trim(),
+  `worldbend-transport-schema-probe ${workspacePackage.version}`,
+);
+
+const schemaResponse = JSON.parse(
+  (
+    await run(schemaProbe, [], {
+      cwd: capabilityRoot,
+      env: { OPENADAM_PROVIDER_ROOT: installedPath },
+      input: `${JSON.stringify({
+        id: "transport-schema",
+        capabilityId: implementation.capabilityId,
+        capabilityVersion: implementation.capabilityVersion,
+      })}\n`,
+    })
+  ).stdout,
+);
+assert.equal(schemaResponse.ok, true);
+assert.deepEqual(
+  schemaResponse.bindings.map((binding) => binding.operationId),
+  ["inspect", "render"],
+);
+
+const fixtureRoot = await mkdtemp(path.join(tmpdir(), "worldbend-installed-check-"));
+try {
+  const specPath = path.join(fixtureRoot, "input.projective.json");
+  await writeFile(specPath, JSON.stringify(makePixelSpec()));
+  const capabilityInspect = JSON.parse(
+    (
+      await run(capability, [], {
+        cwd: capabilityRoot,
+        env: { OPENADAM_CAPABILITY_WORKSPACE_ROOT: fixtureRoot },
+        input: `${JSON.stringify({
+          id: "installed-check",
+          operationId: "inspect",
+          input: { spec: makeCapabilitySpec() },
+        })}\n`,
+      })
+    ).stdout,
+  );
+  assert.equal(capabilityInspect.ok, true, JSON.stringify(capabilityInspect.error));
+  assert.equal(capabilityInspect.result.bounds.width, 100);
+  const durations = [];
+  let result;
+  for (let index = 0; index < 25; index += 1) {
+    const started = performance.now();
+    const response = await run(cli, [
+      "compose",
+      "--spec",
+      specPath,
+      "--rotate",
+      "90",
+      "--json",
+    ]);
+    durations.push(performance.now() - started);
+    result = JSON.parse(response.stdout);
+  }
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.result.canvas, {
+    origin: { x: 25, y: -25 },
+    size: { width: 50, height: 100 },
+  });
+  const warped = JSON.parse((await run(cli, [
+    "compose",
+    "--spec",
+    specPath,
+    "--warp",
+    "arc",
+    "--warp-amount",
+    "0.75",
+    "--json",
+  ])).stdout);
+  assert.equal(warped.ok, true);
+  assert.deepEqual(warped.result.spec.content.warp, { preset: "arc", amount: 0.75 });
+
+  durations.sort((left, right) => left - right);
+  console.log(
+    JSON.stringify({
+      installedPlugin: "PASS",
+      version: manifest.version,
+      files: sourceFiles.length,
+      directRoute: {
+        operation: "compose",
+        modelCalls: 0,
+        modelTokens: 0,
+        samples: durations.length,
+        p50Ms: percentile(durations, 0.5),
+        p95Ms: percentile(durations, 0.95),
+      },
+    }),
+  );
+} finally {
+  await rm(fixtureRoot, { recursive: true, force: true });
+}
+
+if (runtimeSmoke) {
+  await run(process.execPath, [
+    path.join(root, "scripts", "mcp-runtime-smoke.mjs"),
+    "--plugin-root",
+    installedPath,
+  ], { inherit: true, timeout: 120_000 });
+  const consumer = await mkdtemp(path.join(tmpdir(), 'worldbend-installed-spatial-'));
+  try {
+    await writeFile(path.join(consumer, 'package.json'), '{"private":true,"type":"module"}');
+    await run('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+      path.join(installedPath, 'skills/worldbend/assets/web/worldbend-web.tgz')], {cwd:consumer});
+    const sdkRoot=path.join(consumer, 'node_modules/@worldbend/web');
+    for (const file of ['stage.html','stage.js','stage-native.js','effects.html','effects-demo.js','appearance.html','appearance-demo.js'])
+      assert((await stat(path.join(sdkRoot, 'examples', file))).isFile(), 'Installed authoring entry is missing');
+    assert((await stat(path.join(sdkRoot, 'SPATIAL_APPEARANCE_CONTRACT.md'))).isFile(), 'Installed spatial-appearance contract is missing');
+    for (const script of ['effects-smoke.mjs','surface-window-smoke.mjs'])
+      await run(process.execPath, [path.join(root,'scripts',script), '--bin-root', path.join(installedPath,'bin'), '--sdk-root', sdkRoot], {inherit:true,timeout:120_000});
+  } finally {await rm(consumer, {recursive:true,force:true});}
+}
+
+async function inventory(directory) {
+  const files = [];
+  await visit(directory, "", files);
+  return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+async function visit(directory, relative, files) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const childRelative = path.join(relative, entry.name);
+    const child = path.join(directory, entry.name);
+    assert.equal(entry.isSymbolicLink(), false, `${childRelative} may not be a symbolic link`);
+    if (entry.isDirectory()) {
+      await visit(child, childRelative, files);
+    } else {
+      assert.equal(entry.isFile(), true, `${childRelative} must be a regular file`);
+      const metadata = await stat(child);
+      const content = await readFile(child);
+      files.push({
+        path: childRelative,
+        bytes: metadata.size,
+        executable: process.platform === "win32" ? null : (metadata.mode & 0o111) !== 0,
+        sha256: createHash("sha256").update(content).digest("hex"),
+      });
+    }
+  }
+}
+
+function percentile(sorted, fraction) {
+  return Number(sorted[Math.ceil(sorted.length * fraction) - 1].toFixed(3));
+}
+
+function makePixelSpec() {
+  return {
+    version: "0.1",
+    schema: "worldbend.transform",
+    content: { fit: "stretch" },
+    destination: {
+      space: "pixel",
+      reference: { width: 100, height: 50 },
+      quad: {
+        tl: { x: 0, y: 0 },
+        tr: { x: 100, y: 0 },
+        br: { x: 100, y: 50 },
+        bl: { x: 0, y: 50 },
+      },
+    },
+  };
+}
+
+function makeCapabilitySpec() {
+  return {
+    ...makePixelSpec(),
+    schema: "projective.transform",
+  };
+}
+
+function resolveProviderExecutable(base, relative) {
+  assert.equal(path.isAbsolute(relative), false, "provider executable must be relative");
+  const resolved = path.resolve(base, relative);
+  assert(
+    resolved.startsWith(`${installedPath}${path.sep}`),
+    "provider executable must stay inside the installed distribution",
+  );
+  return process.platform === "win32" ? `${resolved}.exe` : resolved;
+}
+
+async function runJson(command, args) {
+  const response = await run(command, args);
+  return JSON.parse(response.stdout);
+}
+
+function run(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd ?? root,
+      env: { ...process.env, ...options.env },
+      stdio: options.inherit
+        ? "inherit"
+        : [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      timeout: options.timeout ?? 30_000,
+      killSignal: "SIGKILL",
+    });
+    let stdout = "";
+    let stderr = "";
+    if (!options.inherit) {
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      if (options.input !== undefined) child.stdin.end(options.input);
+    }
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else if (signal === "SIGKILL") reject(new Error(`${command} timed out`));
+      else reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
+    });
+  });
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Worldbend · Field notes scene</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f2ea;color:#182725;font-family:Arial,sans-serif}header{display:flex;justify-content:space-between;margin:28px 4vw 0;padding-bottom:20px;border-bottom:1px solid #cecfc3;font-size:13px;letter-spacing:.09em}header span:last-child{letter-spacing:0;color:#52625d}main{max-width:1400px;margin:0 auto;padding:42px 4vw 50px;display:grid;grid-template-columns:minmax(0,1fr) 255px;gap:40px;align-items:center}.scene{background:#e9e5db;min-width:0;box-shadow:0 15px 35px #233a2510}aside{padding:10px 0}small{font-size:12px;letter-spacing:.09em;color:#52625d}h1{font-size:39px;line-height:1.08;letter-spacing:-1.6px;margin:18px 0 36px}button{font:inherit;color:inherit;background:transparent;border:1px solid #667a6c;padding:12px 16px;text-align:left;cursor:pointer;border-radius:2px;min-height:44px}button:focus-visible,input:focus-visible{outline:3px solid #267c87;outline-offset:3px}button:disabled{opacity:.45;cursor:default}#play{background:#182725;color:#f5f2ea;border-color:#182725;width:100%;font-weight:600}label{display:block;font-size:13px;margin:26px 0 10px}.progress{display:flex;gap:15px;align-items:center}input{width:100%;accent-color:#267c87;min-height:32px}output{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:35px}.actions{border-top:1px solid #cecfc3;margin-top:28px;padding-top:22px;display:grid;gap:12px}#status{min-height:38px;font-size:13px;line-height:1.45;margin-top:18px;color:#52625d}.footer{margin:0 4vw 28px;padding-top:18px;border-top:1px solid #cecfc3;font-size:12px;color:#52625d;display:flex;justify-content:space-between}@media(max-width:760px){header{margin:20px 20px 0;font-size:11px}main{grid-template-columns:1fr;gap:30px;padding:25px 20px}aside{padding:0}h1{font-size:32px;margin:12px 0 24px}.actions{grid-template-columns:1fr 1fr}.footer{margin:0 20px 25px}}
+</style></head><body>
+<header><span>WORLDBEND / FIELD NOTES</span><span>Spatial receiving study</span></header>
+<main><div id="scene" class="scene" role="img" aria-label="A book jacket and spine in a warm gallery setting"></div>
+<aside><small>BOOK / 01</small><h1>Across the<br>ordinary.</h1><button id="play" disabled>Play scene</button>
+<label for="position">Position</label><div class="progress"><input id="position" type="range" min="0" max="1000" value="0" aria-label="Scene position" disabled><output id="time">0.0 s</output></div>
+<div class="actions"><button id="artwork" disabled>Next artwork</button><button id="timing" disabled>Slower rhythm</button></div>
+<p id="status" role="status">Preparing scene…</p></aside></main>
+<div class="footer"><span>Original artwork · editable source</span><span>Stills / motion / continued use</span></div>
+<script type="module">
+import {attachMockupMotion} from '../../dist/mockup-motion.js';
+import {artwork} from './artwork.js';
+const host=document.getElementById('scene'),play=document.getElementById('play'),position=document.getElementById('position'),time=document.getElementById('time'),next=document.getElementById('artwork'),timing=document.getElementById('timing'),status=document.getElementById('status');
+let controller, alternate=false, slow=false, updating=false;
+let spec=await (await fetch('./scene.json')).json(), sources=artwork();
+const display=state=>{play.textContent=state.paused?'Play scene':'Pause';play.disabled=state.reducedMotion||state.status!=='ready';position.value=String(Math.round(state.timeMs/state.durationMs*1000));time.textContent=(state.timeMs/1000).toFixed(1)+' s'};
+try{
+ controller=await attachMockupMotion(host,spec,sources,{paused:true,onChange:display,onError:error=>status.textContent=error.message});
+ position.disabled=next.disabled=timing.disabled=false;status.textContent=controller.getState().reducedMotion?'Motion reduced · position remains available':'2026 / 10';
+ play.onclick=()=>controller.getState().paused?controller.play():controller.pause();
+ position.oninput=()=>{const requested=Number(position.value);controller.pause();controller.seek(requested/1000*controller.getState().durationMs)};
+ const update=async(kind)=>{if(updating)return;updating=true;next.disabled=timing.disabled=true;try{
+   const nextSpec=structuredClone(spec);if(kind==='timing')nextSpec.timebase={numerator:slow?32:24,denominator:1};
+   const nextSources=kind==='artwork'?artwork(!alternate):sources;
+   await controller.update(nextSpec,nextSources,{expectedRevision:controller.getState().revision});
+   spec=nextSpec;sources=nextSources;if(kind==='artwork')alternate=!alternate;else slow=!slow;
+   status.textContent=(alternate?'2027 / 02':'2026 / 10')+(slow?' · 4 seconds':' · 3 seconds');
+   next.textContent=alternate?'Original artwork':'Next artwork';timing.textContent=slow?'Original rhythm':'Slower rhythm';
+ }catch(error){status.textContent=error.message}finally{updating=false;next.disabled=timing.disabled=false}};
+ next.onclick=()=>update('artwork');timing.onclick=()=>update('timing');
+ globalThis.sceneStudy={controller,artwork,get sources(){return sources},get spec(){return spec},host,update};
+}catch(error){status.textContent=error.message;globalThis.sceneStudyError=error.stack}
+window.addEventListener('pagehide',()=>controller?.destroy(),{once:true});
+</script></body></html>

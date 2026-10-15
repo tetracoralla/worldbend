@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Worldbend</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: light;
+        color: var(--figma-color-text, #1e1e1e);
+        background: var(--figma-color-bg, #fff);
+        --wb-canvas-bg: #e7e9ed;
+        --wb-canvas-check: rgb(0 0 0 / 3.5%);
+        --wb-canvas-text: #505761;
+        --wb-canvas-reference: rgb(0 0 0 / 24%);
+        --wb-handle-fill: #fff;
+        --wb-control-bg: var(--figma-color-bg-secondary, #f3f3f3);
+        --wb-control-hover: var(--figma-color-bg-hover, #ececec);
+        --wb-control-radius: 8px;
+        --wb-motion: 120ms ease-out;
+        font: 12px/1.45 Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not(.figma-light) {
+          color-scheme: dark;
+          --wb-canvas-bg: #202226;
+          --wb-canvas-check: rgb(255 255 255 / 3.5%);
+          --wb-canvas-text: #c7cbd2;
+          --wb-canvas-reference: rgb(255 255 255 / 34%);
+          --wb-handle-fill: #fff;
+        }
+      }
+      :root.figma-light {
+        color-scheme: light;
+        --wb-canvas-bg: #e7e9ed;
+        --wb-canvas-check: rgb(0 0 0 / 3.5%);
+        --wb-canvas-text: #505761;
+        --wb-canvas-reference: rgb(0 0 0 / 24%);
+        --wb-handle-fill: #fff;
+      }
+      :root.figma-dark {
+        color-scheme: dark;
+        --wb-canvas-bg: #202226;
+        --wb-canvas-check: rgb(255 255 255 / 3.5%);
+        --wb-canvas-text: #c7cbd2;
+        --wb-canvas-reference: rgb(255 255 255 / 34%);
+        --wb-handle-fill: #fff;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { position: relative; margin: 0; width: min(100%, var(--wb-visible-width, 100%)); height: min(100%, var(--wb-visible-height, 100%)); overflow: hidden; background: var(--figma-color-bg-secondary, #f5f5f5); }
+      body[data-i18n-ready="false"] > * { visibility: hidden; }
+      #workspace-navigation { position: absolute; z-index: 40; inset: 0 0 auto; height: 50px; display: flex; align-items: center; gap: 4px; padding: 7px 14px; border-bottom: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
+      .horizontal-strip-viewport { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+      .horizontal-strip-viewport::-webkit-scrollbar { display: none; }
+      #workspace-strip-viewport { flex: 1; }
+      #workspace-items { width: max-content; display: flex; align-items: center; gap: 3px; }
+      .workspace-tab, #more-options, .strip-arrow { position: relative; width: 36px; height: 36px; display: grid; flex: none; border-color: transparent; border-radius: 9px; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); background: transparent; transition: color var(--wb-motion), background var(--wb-motion), transform var(--wb-motion); }
+      .workspace-tab { width: auto; display: flex; gap: 5px; padding: 0 7px; }
+      .workspace-name { font-weight: 500; white-space: nowrap; }
+      @media (max-width: 390px) { .workspace-tab { padding: 0 8px; gap: 5px; } .workspace-tab .ui-icon { display: none; } }
+      .workspace-tab .ui-icon { width: 18px; height: 18px; }
+      .workspace-tab:not(:disabled):hover, .workspace-tab:focus-visible, #more-options:hover, #more-options:focus-visible { color: var(--figma-color-text, #333); background: var(--wb-control-hover); }
+      .workspace-tab[aria-selected="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .workspace-tab .action-tooltip { display: none; }
+      .strip-arrow { width: 24px; border-radius: 5px; color: var(--figma-color-text-secondary, #777); }
+      .strip-arrow .ui-icon { width: 14px; height: 14px; }
+      .strip-arrow--backward .ui-icon { transform: rotate(180deg); }
+      .strip-arrow:not(:disabled):hover { background: var(--figma-color-bg-hover, #f0f0f0); }
+      .strip-arrow:disabled { opacity: .24; }
+      #control-dock {
+        border-bottom: 1px solid var(--figma-color-border, rgb(0 0 0 / 12%));
+        background: var(--figma-color-bg, #fff);
+      }
+      #control-dock { position: relative; z-index: 20; width: 100%; flex: none; padding: 12px 18px 14px; }
+      #dock-primary { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 4px; min-height: 38px; }
+      #operation-cluster { position: relative; grid-column: 1 / -1; display: flex; min-width: 0; align-items: center; gap: 3px; }
+      #mode-strip-viewport { flex: 1; }
+      #more-options .ui-icon { width: 18px; height: 18px; }
+      #linked-results-trigger { flex: none; min-height: 32px; padding: 0 10px; border-color: transparent; border-radius: 8px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); white-space: nowrap; }
+      #linked-results-trigger[hidden], #linked-results-popover[hidden] { display: none; }
+      #linked-results-popover { position: absolute; z-index: 31; top: 45px; right: 14px; width: min(280px, calc(100% - 28px)); max-height: calc(100vh - 58px); overflow-y: auto; padding: 8px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 12px; background: var(--figma-color-bg, #fff); box-shadow: 0 12px 32px rgb(0 0 0 / 20%); }
+      #linked-results-list { display: grid; gap: 2px; }
+      #linked-results-list .menu-option { overflow: hidden; padding-right: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      #linked-results-more { margin: 8px 8px 4px; color: var(--figma-color-text-secondary, #777); font-size: 11px; }
+      #more-options[aria-expanded="true"] { border-radius: 7px; color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      #more-options[aria-expanded="true"] .action-tooltip { opacity: 0; }
+      .ui-icon { display: inline-grid; width: 16px; height: 16px; flex: none; place-items: center; color: inherit; pointer-events: none; }
+      .ui-icon svg { display: block; width: 100%; height: 100%; }
+      #settings-popover { position: absolute; z-index: 30; top: 45px; right: 14px; width: min(232px, calc(100% - 28px)); max-height: calc(100vh - 58px); overflow-y: auto; padding: 8px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 12px; background: var(--figma-color-bg, #fff); box-shadow: 0 12px 32px rgb(0 0 0 / 20%); }
+      #settings-popover[hidden] { display: none; }
+      #settings-popover[data-workspace="global"] #settings-title { margin-top: 4px; border-top: 0; padding-top: 0; }
+      .menu-section-title { margin: 4px 8px 2px; color: var(--figma-color-text-secondary, #777); font-size: 11px; font-weight: 500; }
+      .menu-section-title:not(:first-child) { margin-top: 10px; border-top: 1px solid var(--figma-color-border, #e5e5e5); padding-top: 8px; }
+      .menu-option { position: relative; width: 100%; display: block; min-height: 36px; border: 0; border-radius: 8px; padding: 8px 30px 8px 10px; background: transparent; text-align: left; transition: background var(--wb-motion), color var(--wb-motion); }
+      .menu-option:hover, .menu-option:focus-visible { background: var(--figma-color-bg-hover, #f0f0f0); }
+      .menu-check { position: absolute; top: 50%; right: 9px; width: 14px; height: 14px; opacity: 0; transform: translateY(-50%); }
+      .menu-option[aria-checked="true"] .menu-check { opacity: 1; }
+      .menu-option small { display: block; margin-top: 1px; color: var(--figma-color-text-secondary, #777); font-size: 10px; }
+      #settings-title { margin: 4px 8px 2px; color: var(--figma-color-text-secondary, #777); font-size: 11px; font-weight: 500; }
+      #selection-state { position: absolute; inset: 50px 0 0; display: flex; overflow: auto; padding: 24px; color: var(--figma-color-text-secondary, #777); text-align: center; }
+      #selection-state[hidden] { display: none; }
+      .selection-content { width: min(100%, 400px); margin: auto; }
+      #selection-title { margin: 0; color: var(--figma-color-text, #1e1e1e); font-size: 18px; line-height: 1.4; font-weight: 600; letter-spacing: -.25px; text-wrap: balance; }
+      #selection-detail { max-width: 360px; margin: 10px auto 0; line-height: 1.7; text-wrap: pretty; }
+      #selection-continue { margin: 26px 0 0; font-size: 11px; line-height: 1.6; text-wrap: balance; }
+      .selection-demo { display: flex; align-items: center; justify-content: center; gap: 20px; width: 100%; height: 184px; margin: 0 auto 26px; color: var(--figma-color-text-brand, #0d99ff); pointer-events: none; }
+      .selection-paper { position: relative; flex: 0 0 106px; height: 134px; border: 1px solid currentColor; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 18px rgb(0 0 0 / 5%); }
+      .selection-paper svg { width: 100%; height: 100%; display: block; }
+      .selection-paper::before, .selection-paper::after, .selection-paper i::before, .selection-paper i::after { position: absolute; width: 5px; height: 5px; border: 1px solid currentColor; background: var(--figma-color-bg, #fff); content: ""; }
+      .selection-paper::before { top: -3px; left: -3px; }
+      .selection-paper::after { top: -3px; right: -3px; }
+      .selection-paper i::before { bottom: -3px; left: -3px; }
+      .selection-paper i::after { bottom: -3px; right: -3px; }
+      .selection-paper--after { transform: perspective(360px) rotateY(-24deg) rotateX(16deg) rotateZ(10deg); background: var(--figma-color-bg-selected, #e8f3ff); box-shadow: 6px 12px 22px rgb(0 0 0 / 7%); }
+      .selection-demo-arrow { flex: 0 0 26px; width: 26px; color: var(--figma-color-text-tertiary, #aaa); }
+      .selection-spinner { display: none; width: 22px; height: 22px; margin: 0 auto 18px; border: 2px solid var(--figma-color-border, #e5e5e5); border-top-color: var(--figma-color-text-brand, #0d99ff); border-radius: 50%; animation: selection-spin 900ms linear infinite; }
+      #selection-state:not([data-state="empty"]) .selection-demo { display: none; }
+      #selection-state[data-state="loading"] .selection-spinner { display: block; }
+      #selection-state[data-state="loading"] #selection-title { color: var(--figma-color-text-secondary, #777); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+      @keyframes selection-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .selection-spinner { animation: none; } }
+      @media (max-height: 420px) { .selection-demo { height: 132px; margin-bottom: 14px; } .selection-paper { scale: .8; } #selection-continue { margin-top: 16px; } }
+      /* Figma plugin windows can be as narrow as 300 px; the fixed-size
+         before/after papers overflow below 360 px without a compact width. */
+      @media (max-width: 359px) { .selection-demo { gap: 14px; height: 148px; margin-bottom: 18px; } .selection-paper { flex-basis: 88px; height: 111px; } .selection-demo-arrow { flex-basis: 18px; } }
+      #native-recover { margin-top: 20px; min-height: 36px; padding: 8px 18px; }
+      #native-recover[hidden] { display: none; }
+      #controls { position: absolute; inset: 50px 0 0; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+      #controls[hidden] { display: none; }
+      #controls[data-loading="true"] #control-dock, #controls[data-loading="true"] #action-dock { opacity: .55; }
+      .task-workspace { position: absolute; inset: 50px 0 0; display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--figma-color-bg-secondary, #f5f5f5); }
+      .task-workspace[hidden] { display: none; }
+      .canvas-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 7px 18px; border-bottom: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
+      .canvas-back, .designer-back { display: none !important; }
+      .canvas-back .ui-icon, .designer-back .ui-icon { transform: rotate(180deg); }
+      .canvas-heading { min-width: 0; }
+      .canvas-heading h1, .canvas-heading p { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .canvas-heading h1 { font-size: 13px; font-weight: 600; }
+      .canvas-heading p { color: var(--figma-color-text-secondary, #777); font-size: 10px; }
+      .canvas-variants { display: flex; flex: none; align-items: center; gap: 5px; min-height: 44px; overflow-x: auto; padding: 6px 18px; border-bottom: 1px solid var(--figma-color-border, #e5e5e5); background: var(--figma-color-bg, #fff); }
+      .canvas-variants button { min-width: max-content; border-color: transparent; color: var(--figma-color-text-secondary, #777); font-variant-numeric: tabular-nums; }
+      .canvas-variants button[aria-selected="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); font-weight: 600; }
+      .canvas-body { display: grid; grid-template-columns: minmax(0, 1fr) 220px; min-width: 0; min-height: 0; flex: 1; }
+      .canvas-preview { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; padding: 32px; place-items: center; background-color: var(--wb-canvas-bg); background-image: linear-gradient(45deg, var(--wb-canvas-check) 25%, transparent 25%, transparent 75%, var(--wb-canvas-check) 75%), linear-gradient(45deg, var(--wb-canvas-check) 25%, transparent 25%, transparent 75%, var(--wb-canvas-check) 75%); background-position: 0 0, 8px 8px; background-size: 16px 16px; }
+      .canvas-source-hud { position: absolute; z-index: 2; top: 12px; left: 14px; max-width: calc(100% - 28px); overflow: hidden; padding: 3px 6px; border-radius: 4px; color: var(--wb-canvas-text); background: var(--wb-canvas-bg); font-size: 11px; line-height: 16px; text-overflow: ellipsis; text-shadow: none; white-space: nowrap; pointer-events: none; }
+      .canvas-preview-raster { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; box-shadow: 0 8px 24px rgb(0 0 0 / 28%); }
+      .canvas-inspector { min-width: 0; overflow: auto; padding: 16px; border-left: 1px solid var(--figma-color-border, #e5e5e5); background: var(--figma-color-bg, #fff); }
+      .canvas-size-row, .canvas-quad-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .canvas-size-row label, .canvas-quad-fields label, .canvas-field { display: grid; gap: 6px; margin-bottom: 13px; color: var(--figma-color-text-secondary, #777); }
+      .canvas-size-row input, .canvas-quad-fields input, .canvas-field select, .canvas-field input { width: 100%; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 6px 9px; color: var(--figma-color-text, #1e1e1e); background: var(--wb-control-bg); font: inherit; transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion); }
+      :is(.canvas-size-row input, .canvas-quad-fields input, .canvas-field select, .canvas-field input):not(:disabled):hover { border-color: var(--figma-color-border, #d6d6d6); background: var(--figma-color-bg, #fff); }
+      :is(.canvas-size-row input, .canvas-quad-fields input, .canvas-field select, .canvas-field input):focus { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 16%, transparent); outline: none; }
+      .canvas-size-row input, .canvas-quad-fields input { font-variant-numeric: tabular-nums; text-align: right; }
+      .canvas-size-row input:invalid, .canvas-quad-fields input:invalid, .canvas-field input:invalid { border-color: var(--figma-color-border-danger-strong, #f24822); }
+      [hidden] { display: none !important; }
+      .designer-workspace { position: absolute; inset: 50px 0 0; display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--figma-color-bg-secondary, #f5f5f5); }
+      .designer-header { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 10px; min-height: 48px; padding: 8px 18px; border-bottom: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
+      .designer-header h1 { min-width: 0; overflow: hidden; margin: 0; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      .designer-back { width: 32px; height: 32px; display: grid; padding: 0; place-items: center; }
+      .designer-body { display: grid; grid-template-columns: minmax(0, 1fr) 240px; min-width: 0; min-height: 0; flex: 1; }
+      /* At a narrow plugin window the side inspector would squeeze the canvas
+         away; stack the preview above it so painting stays visible. */
+      @media (max-width: 480px) {
+        .designer-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(140px, 1fr) minmax(0, 1.4fr); }
+        .designer-inspector { min-height: 0; border-left: none; border-top: 1px solid var(--figma-color-border, #e5e5e5); }
+      }
+      .designer-preview { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; padding: 32px; place-items: center; background-color: var(--wb-canvas-bg); background-image: linear-gradient(45deg, var(--wb-canvas-check) 25%, transparent 25%, transparent 75%, var(--wb-canvas-check) 75%), linear-gradient(45deg, var(--wb-canvas-check) 25%, transparent 25%, transparent 75%, var(--wb-canvas-check) 75%); background-position: 0 0, 8px 8px; background-size: 16px 16px; }
+      .designer-preview canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; box-shadow: 0 8px 24px rgb(0 0 0 / 28%); }
+      .direct-point-layer { position: absolute; inset: 0; pointer-events: none; }
+      .direct-point { position: absolute; width: 32px; min-width: 0; height: 32px; min-height: 0; margin: -16px 0 0 -16px; border: 0; border-radius: 50%; padding: 0; background: transparent; pointer-events: auto; touch-action: none; }
+      .direct-point::after { position: absolute; inset: 10px; content: ""; border: 2px solid var(--figma-color-border-brand-strong, #0d99ff); border-radius: 50%; background: var(--wb-handle-fill); }
+      .direct-point[aria-pressed="true"]::after { background: var(--figma-color-bg-brand, #0d99ff); border-color: var(--figma-color-bg, #fff); }
+      .direct-point--curve::after { border-radius: 2px; }
+      .direct-point--handle::after { inset: 11px; }
+      .direct-point--anchor::after { background: var(--figma-color-bg-brand, #0d99ff); border-radius: 2px; }
+      .direct-point-lattice { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+      .direct-point-lattice line { stroke: var(--figma-color-border-brand-strong, #0d99ff); stroke-width: 1; stroke-opacity: .45; }
+      .direct-point:focus-visible { outline: 2px solid var(--figma-color-bg, #fff); outline-offset: -4px; }
+      .designer-inspector { min-width: 0; overflow: auto; padding: 16px; border-left: 1px solid var(--figma-color-border, #e5e5e5); background: var(--figma-color-bg, #fff); }
+      .designer-tool-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 13px; }
+      .designer-tool-row button { min-height: 32px; padding: 6px 7px; color: var(--figma-color-text-secondary, #777); }
+      .designer-tool-row button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); font-weight: 600; }
+      .designer-density-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 8px; }
+      .designer-density-row button { min-height: 32px; padding: 6px 7px; color: var(--figma-color-text-secondary, #777); }
+      .designer-density-row button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); font-weight: 600; }
+      .designer-motion { margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--figma-color-border,#e5e5e5); }
+      .designer-motion summary { margin-bottom:8px; cursor:pointer; color:var(--figma-color-text,#1e1e1e); }
+      .designer-motion .designer-check { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+      .designer-motion-transport { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:6px 8px; margin-bottom:12px; }
+      .designer-motion-transport input { width:100%; min-width:0; }
+      .designer-motion-transport output { grid-column:1/-1; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--figma-color-text-secondary,#777); }
+      .designer-field { display: grid; gap: 6px; margin-bottom: 13px; color: var(--figma-color-text-secondary, #777); }
+      .designer-field input:not([type="checkbox"]):not([type="range"]), .designer-field select { width: 100%; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 6px 9px; color: var(--figma-color-text, #1e1e1e); background: var(--wb-control-bg); font: inherit; transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion); }
+      :is(.designer-field input:not([type="checkbox"]):not([type="range"]), .designer-field select):not(:disabled):hover { border-color: var(--figma-color-border, #d6d6d6); background: var(--figma-color-bg, #fff); }
+      :is(.designer-field input:not([type="checkbox"]):not([type="range"]), .designer-field select):focus { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 16%, transparent); outline: none; }
+      .designer-field input[type="range"] { width: 100%; }
+      .designer-range-pair { display: grid; grid-template-columns: minmax(72px, 1fr) 80px; gap: 8px; align-items: center; }
+      .designer-range-pair .transform-slider { min-width: 0; }
+      .designer-range-pair input[type="number"] { appearance: textfield; text-align: right; font-variant-numeric: tabular-nums; }
+      .designer-range-pair input[type="number"]::-webkit-inner-spin-button { appearance: none; margin: 0; }
+      .designer-field input[type="checkbox"] { position: relative; width: 32px; height: 18px; margin: 0 7px 0 0; appearance: none; -webkit-appearance: none; border: 0; border-radius: 99px; background: var(--figma-color-border, #c9c9c9); vertical-align: -5px; transition: background var(--wb-motion); }
+      .designer-field input[type="checkbox"]::after { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 24%); content: ""; transition: transform var(--wb-motion); }
+      .designer-field input[type="checkbox"]:checked { background: var(--figma-color-bg-brand, #0d99ff); }
+      .designer-field input[type="checkbox"]:checked::after { transform: translateX(14px); }
+      .designer-field input[type="checkbox"]:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 2px; }
+      .designer-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .designer-disclosure { margin-bottom: 13px; }
+      .designer-disclosure summary { padding: 8px 0; cursor: pointer; color: var(--figma-color-text, #1e1e1e); }
+      .designer-disclosure summary:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 2px; border-radius: var(--wb-control-radius); }
+      .designer-disclosure[open] summary { margin-bottom: 6px; }
+      .designer-action-stack { display: grid; gap: 7px; margin-bottom: 10px; }
+      /* The Agent-choice actions stay full width so each decision reads on one line. */
+      [data-role="agent-conflict-actions"] { grid-template-columns: minmax(0, 1fr); }
+      .designer-hint { margin: 0 0 13px; color: var(--figma-color-text-secondary, #777); font-size: 11px; line-height: 16px; }
+      .appearance-controls { display: grid; gap: 20px; }
+      .appearance-workspace .designer-header { grid-template-columns: minmax(0, 1fr) auto; }
+      .material-body { flex: 1; min-height: 0; overflow-y: auto; padding: 24px; }
+      .material-applied { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; flex: none; }
+      .material-applied:empty { display: none; }
+      .material-current { display: grid; flex: 1 1 280px; min-width: 0; grid-template-columns: 18px minmax(0, 1fr) auto 28px; align-items: center; gap: 8px; min-height: 36px; }
+      .material-current span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+      .material-current button { padding: 5px 8px; min-height: 30px; }
+      .material-current input { margin: 0; }
+      .material-filter { display: flex; flex: none; gap: 8px; margin-bottom: 16px; }
+      .material-filter button { padding: 6px 12px; border-radius: 16px; background: transparent; }
+      .material-filter button[aria-pressed="true"] { background: var(--figma-color-bg-selected, #e8f3ff); color: var(--figma-color-text-brand, #0d99ff); }
+      .material-catalog { display: flex; flex: none; overflow-x: auto; gap: 12px; padding: 2px 2px 12px; margin-bottom: 18px; }
+      .material-card-slot { flex: 0 0 108px; }
+      .material-view { display: flex; flex: 1 0 280px; height: 280px; min-height: 280px; max-height: 420px; gap: 24px; }
+      .material-stage { display: flex; flex: 1; min-width: 0; min-height: 240px; padding: 20px; border-radius: 12px; background: var(--figma-color-bg-secondary,#f2f3f5); align-items: center; justify-content: center; }
+      .material-stage-images { display: flex; gap: 16px; width: 100%; height: 100%; min-height: 0; align-items: center; justify-content: center; }
+      .material-stage-images img { flex: 1; min-width: 0; max-width: 100%; width: 0; height: 100%; max-height: 420px; object-fit: contain; }
+      .material-stage[data-pending="true"] img { opacity: .55; }
+      .material-stage-empty { margin: 0; font-size: 12px; color: var(--figma-color-text-secondary,#777); }
+      .material-body { display: flex; flex-direction: column; }
+
+      .window-resize { position: absolute; right: 2px; bottom: 2px; z-index: 25; width: 16px; height: 16px; padding: 0; border: 0; background: transparent; cursor: nwse-resize; touch-action: none; }
+      .window-resize::after { content: ''; display: block; width: 9px; height: 9px; margin: 3px; background: repeating-linear-gradient(135deg,transparent 0 3px,var(--figma-color-text-tertiary,#999) 3px 4px); clip-path: polygon(100% 0,100% 100%,0 100%); }
+      .window-resize:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong,#0d99ff); }
+      .material-card-slot { position: relative; min-width: 0; }
+      .material-card-slot[hidden] { display: none; }
+      .material-delete { position: absolute; top: 6px; left: 6px; width: 28px; height: 28px; padding: 0; opacity: 0; background: var(--figma-color-bg, #fff); }
+      .material-card-slot:hover .material-delete, .material-card-slot:focus-within .material-delete { opacity: 1; }
+      .material-card { width: 100%; position: relative; display: flex; min-width: 0; flex-direction: column; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 10px; text-align: left; background: var(--figma-color-bg, #fff); }
+      .material-card img { display: block; width: 100%; aspect-ratio: 1.40625; object-fit: cover; }
+      .material-card span { max-width: 100%; padding: 10px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+      .material-card[aria-pressed="true"] { border-color: var(--figma-color-border-brand-strong, #0d99ff); }
+      .material-card[data-applied="true"]::after { content: '✓'; position: absolute; right: 8px; top: 8px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--figma-color-bg, white); color: var(--figma-color-text-brand, #0d99ff); }
+      .material-card-custom { min-height: 100px; justify-content: center; }
+      .material-tuning { flex: 0 0 260px; height: 100%; min-height: 0; max-height: 100%; overflow-y: auto; padding-left: 20px; border-left: 1px solid var(--figma-color-border, #e5e5e5); }
+      .material-tuning header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      .material-tuning h2 { font-size: 12px; margin: 0; }
+      .material-tuning header button { width: 28px; height: 28px; padding: 0; }
+      .material-save { display: flex; gap: 8px; margin-top: 14px; }
+      .material-save input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--figma-color-border, #ddd); border-radius: 6px; background: var(--figma-color-bg, #fff); color: var(--figma-color-text, #222); }
+      .material-save button { flex: none; padding: 8px 10px; }
+      .appearance-workspace .appearance-status { max-height: none; padding: 0; margin-top: 12px; }
+      .material-issue { margin: 0; }
+      .appearance-workspace .designer-footer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .material-feedback { flex: 1 1 100%; font-size: 11px; color: var(--figma-color-text-secondary, #777); }
+      .material-feedback[data-state="failed"] { color: var(--figma-color-text-danger, #d12e2e); }
+      @media (max-width: 560px) { .material-body { padding: 16px; } .material-stage { padding: 12px; flex: none; height: 280px; } .material-view { flex: none; height: auto; max-height: none; flex-direction: column; } .material-tuning { flex: none; height: auto; max-height: 420px; border-left: 0; padding: 16px 0 0; border-top: 1px solid var(--figma-color-border,#ddd); } }
+      .appearance-workspace .designer-footer [data-role="apply"] { margin-left: auto; }
+      .appearance-controls input[data-mixed="true"] { color: var(--figma-color-text-secondary, #777); }
+      .preset-workspace { display:flex; flex-direction:column; min-height:0; }
+      .preset-choices { display:flex; flex-wrap:wrap; gap:8px; padding:0 24px 16px; }
+      .preset-choices button { border-radius:18px; padding:8px 14px; border:1px solid var(--figma-color-border, #ddd); background:transparent; }
+      .preset-choices button[aria-pressed="true"] { background:var(--figma-color-bg-brand, #0d99ff); color:var(--figma-color-text-onbrand, #fff); }
+      .preset-preview { flex:1; min-height:100px; margin:0 24px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:12px; background:var(--wb-canvas-bg); }
+      .preset-preview canvas { max-width:90%; max-height:100%; object-fit:contain; }
+      .preset-adjust { padding:16px 24px 0; }
+      .preset-adjust label { display:flex; align-items:center; gap:16px; }
+      .preset-adjust input { flex:1; }
+      .preset-adjust p { font-size:12px; color:var(--figma-color-text-secondary, #777); }
+      .preset-workspace .designer-footer { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+      .preset-workspace .designer-footer [data-role="apply"] { margin-left:auto; }
+      .card-workspace .designer-header { grid-template-columns: minmax(0, 1fr) auto; }
+      .card-body { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 20px 24px; overflow: auto; }
+      .card-stage-wrap { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+      .card-stage { position: relative; flex: 1 1 auto; min-height: 240px; display: grid; place-items: center; border-radius: 12px; background: var(--figma-color-bg-secondary, #f2f3f5); overflow: hidden; perspective-origin: 50% 50%; }
+      .card-stage img { position: absolute; object-fit: fill; width: auto; height: auto; will-change: transform; }
+      .card-raster-preview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      .card-stage.has-raster-preview img { opacity: 0; }
+      .card-stage img[hidden] { display: none; }
+      .card-stage-status { margin: 0; min-height: 16px; font-size: 11px; color: var(--figma-color-text-secondary, #777); }
+      .card-stage-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .card-scrub { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 140px; min-width: 0; font-size: 11px; color: var(--figma-color-text-secondary, #777); }
+      .card-scrub input { flex: 1; min-width: 0; }
+      .card-controls { flex: 0 0 250px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-height: 0; }
+      .card-control-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+      .card-control-group h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; color: var(--figma-color-text-secondary, #777); }
+      .card-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .card-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--figma-color-text-secondary, #777); }
+      .card-field input, .card-field select { width: 100%; }
+      .card-checkbox { flex-direction: row; align-items: center; }
+      .card-views { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+      .card-view { display: flex; gap: 6px; align-items: center; }
+      .card-view > button:first-child { flex: 1; min-width: 0; text-align: left; }
+      .card-precision { grid-column: 1 / -1; }
+      .card-precision summary { cursor: pointer; padding: 6px 0; color: var(--figma-color-text-secondary, #777); }
+      .card-stage img { cursor: grab; }
+      .card-stage:focus-visible { outline: 2px solid var(--figma-color-border-brand, #0d99ff); outline-offset: 2px; }
+      .card-feedback { flex: 1 1 100%; font-size: 11px; color: var(--figma-color-text-secondary, #777); }
+      .card-workspace .designer-footer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .card-workspace .designer-footer [data-role="apply"] { margin-left: auto; }
+      @media (max-width: 560px) { .card-body { flex-direction: column; } .card-controls { flex: none; } .card-stage { min-height: 220px; } }
+      .appearance-controls .designer-field { margin: 0; }
+      .material-control-group { min-width: 0; padding: 0; margin: 0; border: 0; }
+      .material-control-group legend { font-size: 11px; font-weight: 600; color: var(--figma-color-text-secondary,#777); margin-bottom: 12px; }
+      .material-group-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+      .material-group-fields > [data-wide="true"] { grid-column: 1 / -1; }
+      .material-control-group:not([hidden]) ~ .material-control-group { border-top: 1px solid var(--figma-color-border,#ddd); padding-top: 16px; }
+      .material-tuning header { position: sticky; top: 0; z-index: 2; padding-bottom: 8px; background: var(--figma-color-bg-secondary,#f2f3f5); }
+      .material-save { padding-top: 16px; border-top: 1px solid var(--figma-color-border,#ddd); }
+      .appearance-field input[aria-invalid="true"] { border-color: var(--figma-color-border-danger, #f24822); }
+      .appearance-visible, .appearance-clip { grid-auto-flow: column; grid-auto-columns: max-content; justify-content: start; align-items: center; gap: 7px; }
+      .appearance-status { display: grid; gap: 6px; align-content: start; width: 100%; max-height: 120px; overflow: auto; margin: 0; padding: 10px 16px; color: var(--figma-color-text-secondary, #777); font-size: 11px; line-height: 16px; }
+      .spatial-role-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 7px; }
+      #spatial-workspace .designer-preview canvas { touch-action: none; cursor: grab; }
+      #spatial-workspace .designer-preview canvas:active { cursor: grabbing; }
+      .designer-tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 11px; }
+      .designer-tabs button { min-width: max-content; min-height: 32px; border-color: transparent; border-radius: 8px; padding: 6px 9px; color: var(--figma-color-text-secondary, #777); }
+      .designer-tabs button[aria-selected="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .designer-segment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 10px; background: var(--wb-control-bg); }
+      .designer-segment button { min-width: 0; min-height: 30px; padding: 5px 7px; color: var(--figma-color-text-secondary, #777); background: transparent; white-space: nowrap; }
+      .designer-segment button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 9%); font-weight: 600; }
+      .designer-publication { display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end; }
+      .designer-publication select { max-width:150px;min-height:30px; }
+      .designer-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
+      .template-workspace .designer-body { grid-template-columns: minmax(0, 1fr); }
+      .template-workspace .designer-preview { display: block; overflow: auto; padding: 20px 22px; background: var(--figma-color-bg-secondary, #f5f5f5); }
+      .plane-thumbnail { width: 32px; height: 26px; object-fit: contain; flex: none; border-radius: 3px; background: var(--wb-control-bg); }
+      [data-role="planes"] button { min-width: 0; display: flex; align-items: center; gap: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+      [data-role="planes"] button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      [data-role="planes"] { flex-direction: column; align-items: stretch; }
+      .template-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; max-width: 800px; margin: 0 auto; }
+      .template-item { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 5px; min-height: 54px; padding: 11px 13px; border-color: transparent; border-radius: 10px; text-align: left; background: var(--figma-color-bg, #fff); box-shadow: 0 1px 2px rgb(0 0 0 / 5%); transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion), transform var(--wb-motion); }
+      .template-item:hover { border-color: var(--figma-color-border, #d6d6d6); box-shadow: 0 4px 12px rgb(0 0 0 / 8%); transform: translateY(-1px); }
+      .template-item[aria-pressed="true"] { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .template-empty { grid-column: 1 / -1; }
+      .template-item-preview { display: block; height: 96px; border-radius: 6px; background: var(--wb-control-bg); color: var(--figma-color-text-brand, #0d99ff); }
+      .template-item-preview svg { width: 100%; height: 100%; }
+      .template-item-name { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      .template-item-detail { min-width: 0; color: var(--figma-color-text-secondary, #777); font-size: 10px; white-space: normal; overflow-wrap: anywhere; }
+      .scene-preview-retry { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); }
+      .template-empty { min-height: 300px; display: grid; align-content: center; justify-items: center; gap: 10px; color: var(--figma-color-text-secondary, #777); }
+      .template-empty p { margin: 0; }
+      .designer-error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; margin: 0; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
+      .canvas-segment { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 12px; }
+      .canvas-segment button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .canvas-operation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+      .canvas-operation-grid button { min-width: 0; min-height: 32px; padding: 6px 7px; color: var(--figma-color-text-secondary, #777); white-space: nowrap; }
+      .canvas-operation-grid button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); font-weight: 600; }
+      .canvas-anchor-grid { display: grid; grid-template-columns: repeat(3, 30px); grid-template-rows: repeat(3, 30px); gap: 4px; }
+      .canvas-anchor-grid button { width: 30px; min-height: 30px; height: 30px; padding: 0; border-color: transparent; background: transparent; }
+      .canvas-anchor-grid button::after { content: ""; display: block; width: 6px; height: 6px; margin: auto; border-radius: 50%; background: var(--figma-color-icon-secondary, #999); }
+      .canvas-anchor-grid button[aria-pressed="true"] { background: var(--figma-color-bg-selected, #e8f3ff); }
+      .canvas-anchor-grid button[aria-pressed="true"]::after { background: var(--figma-color-border-brand-strong, #0d99ff); }
+      .canvas-color { width: 100%; height: 36px; margin: -6px 0 12px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 4px; background: var(--wb-control-bg); }
+      .canvas-remove { width: 100%; color: var(--figma-color-text-danger, #d32f2f); }
+      .canvas-template-save { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px; }
+      #canvas-template-name { min-width: 0; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 6px 9px; color: var(--figma-color-text, #1e1e1e); background: var(--wb-control-bg); font: inherit; }
+      #canvas-save-template { width: 36px; height: 36px; display: grid; border-color: transparent; padding: 0; place-items: center; color: var(--figma-color-text-secondary, #777); }
+      #canvas-save-template:hover { color: var(--figma-color-text, #333); background: var(--figma-color-bg-hover, #f0f0f0); }
+      #canvas-save-template .action-tooltip { top: auto; right: 0; bottom: calc(100% + 7px); left: auto; transform: translate(0, 2px); }
+      #canvas-save-template:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
+      .canvas-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
+      .canvas-footer-actions { display: flex; gap: 8px; }
+      #canvas-error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; margin: 0; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
+      #mode-switch { width: max-content; display: flex; align-items: center; gap: 4px; }
+      #distort-kind { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border-radius: 10px; background: var(--wb-control-bg); }
+      #distort-kind[hidden] { display: none; }
+      .mode-button { min-height: 36px; border-color: transparent; border-radius: 8px; padding: 7px 11px; color: var(--figma-color-text-secondary, #777); background: transparent; font-size: 12px; white-space: nowrap; transition: color var(--wb-motion), background var(--wb-motion); }
+      .mode-button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); box-shadow: none; font-weight: 600; }
+      #action-dock { position: relative; z-index: 20; width: 100%; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--figma-color-border, rgb(0 0 0 / 10%)); background: var(--figma-color-bg, #fff); }
+      #action-dock button { min-height: 36px; padding: 7px 14px; font-size: 12px; white-space: nowrap; }
+      #session-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+      #apply { padding-inline: 18px; font-weight: 600; }
+      #output-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+      .native-guidance { margin: 0; font-size: 11px; line-height: 1.5; color: var(--figma-color-text-secondary, #777); }
+      #native-source-editing { position:absolute; inset:0; z-index:30; display:grid; place-content:center; gap:10px; padding:32px; text-align:center; background:var(--figma-color-bg,#fff); }
+      #native-source-editing[hidden] { display:none; }
+      #native-source-editing strong { font-size:16px; font-weight:600; }
+      #native-source-editing p { max-width:340px; margin:0; font-size:13px; line-height:1.6; color:var(--figma-color-text-secondary,#777); }
+      body.native-source-mode #workspace-navigation, body.native-source-mode #controls > header, body.native-source-mode .window-resize { display:none; }
+      body.native-source-mode #native-source-editing { padding:18px 24px; gap:8px; }
+      body.native-source-mode #native-source-editing strong { font-size:14px; }
+      body.native-source-mode #native-source-editing p { font-size:12px; line-height:1.5; }
+      body.native-source-mode #controls #editor { padding:0; }
+      body.native-source-mode #controls { inset:0; }
+      body.native-source-mode #editor > :not(#native-source-editing) { display:none; }
+      body.native-source-mode #action-dock { justify-content:flex-end; padding:10px 18px; }
+      body.native-source-mode #session-actions { display:none; }
+      #open-effect-listing { min-height: 30px; margin-top: 8px; padding: 0; border: 0; color: var(--figma-color-text-brand, #0d99ff); background: transparent; font: inherit; font-size: 11px; text-align: left; }
+      #open-effect-listing[hidden] { display: none; }
+      @media (max-width: 420px) {
+        #action-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px 10px; padding: 10px 12px; }
+        #controls #editor { padding: 44px 32px 50px; }
+        #session-actions { grid-column: 1; grid-row: 1; }
+        #output-actions { display: contents; }
+        #native-help { grid-column: 2; grid-row: 1; justify-self: end; }
+        #action-apply-editable, #action-apply-vector { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+        #output-actions:has(#action-apply-vector:not([hidden])) #action-apply-editable { grid-column: 1; }
+        #output-actions:has(#action-apply-editable:not([hidden])) #action-apply-vector { grid-column: 2; }
+        #action-apply-copy { grid-column: 1 / -1; grid-row: 3; width: 100%; }
+        #apply { grid-column: 1 / -1; grid-row: 3; width: 100%; }
+        #output-actions:has(#action-apply-copy:not([hidden])) #apply { grid-row: 4; }
+        #action-dock button { min-width: 0; min-height: 34px; padding-inline: 10px; }
+      }
+      #status:empty { display: none; }
+      .contextual-help { display: inline-grid; flex: none; width: 28px; height: 28px; min-height: 28px; padding: 0; place-items: center; border: 0; border-radius: 6px; color: var(--figma-color-text-secondary, #777); background: transparent; }
+      .contextual-help[hidden], .contextual-help-panel[hidden] { display: none; }
+      .contextual-help:hover, .contextual-help:focus-visible { color: var(--figma-color-text, #222); background: var(--wb-control-hover); }
+      .contextual-help:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 2px; }
+      .contextual-help-panel { position: fixed; z-index: 100; width: max-content; max-height: calc(100vh - 16px); overflow: auto; padding: 12px; border: 1px solid var(--figma-color-border, #d6d6d6); border-radius: 8px; background: var(--figma-color-bg, #fff); color: var(--figma-color-text, #222); box-shadow: 0 6px 24px rgb(0 0 0 / 20%); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+      .designer-header:has(.contextual-help) { grid-template-columns: minmax(0, 1fr) auto; }
+      .designer-header .contextual-help { margin-left: auto; }
+      #error { display: flex; align-items: center; gap: 8px; }
+      #error-text { min-width: 0; flex: 1; }
+      #error-dismiss { flex: none; width: 24px; height: 24px; padding: 0; border-color: transparent; background: transparent; font-size: 16px; line-height: 1; }
+      #error[hidden] { display: none; }
+      .menu-shortcuts { margin: 4px 10px 8px; color: var(--figma-color-text-tertiary, #999); font-size: 10px; line-height: 1.45; }
+      .inspector-divider { margin: 2px 0 12px; border-top: 1px solid var(--figma-color-border, #e5e5e5); }
+      #context-controls { margin-top: 10px; border-top: 1px solid var(--figma-color-border, #e5e5e5); padding: 12px 2px 2px; }
+      #distort-options { position: absolute; z-index: 3; top: 10px; right: 12px; display: flex; align-items: center; }
+      #distort-options[hidden] { display: none; }
+      #editor:has(#distort-options:not([hidden])) #source-name { max-width: calc(100% - 148px); }
+      #transform-options { position: relative; }
+      #transform-options[hidden] { display: none; }
+      #transform-default-controls { display: grid; gap: 10px; }
+      .transform-group-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 32px; gap: 10px; align-items: center; }
+      .transform-action-column-spacer { width: 32px; height: 1px; }
+      #transform-command-cluster { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; }
+      .distort-kind-button { min-height: 24px; border-color: transparent; border-radius: 6px; padding: 2px 8px; color: var(--figma-color-text-secondary, #777); background: transparent; font-size: 11px; white-space: nowrap; transition: color var(--wb-motion), background var(--wb-motion); }
+      .distort-kind-button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 1px 3px rgb(0 0 0 / 9%); font-weight: 600; }
+      #warp-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      #warp-options[hidden] { display: none; }
+      #warp-mesh-continue { grid-column: 1 / -1; width: max-content; min-height: 32px; border: 0; padding: 0 2px; color: var(--figma-color-text-secondary, #777); background: transparent; font: inherit; text-align: left; }
+      #warp-mesh-continue:not(:disabled):hover, #warp-mesh-continue:not(:disabled):focus-visible { color: var(--figma-color-text-brand, #0d99ff); }
+      #rectify-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      #rectify-options[hidden] { display: none; }
+      .rectify-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 34px; }
+
+      .warp-picker { position: relative; grid-column: 2 / -1; min-width: 0; }
+      #warp-picker-trigger { width: 100%; height: 36px; text-align: left; padding: 5px 12px; background: var(--wb-control-bg); border-color: transparent; }
+      #warp-picker-trigger::after { content: ""; float: right; width: 6px; height: 6px; border-right: 1px solid; border-bottom: 1px solid; transform: translateY(4px) rotate(45deg); }
+      .warp-picker-options { position: fixed; z-index: 60; width: min(360px, calc(100vw - 16px)); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 8px; overflow: auto; border: 1px solid var(--figma-color-border, #ddd); border-radius: 12px; background: var(--figma-color-bg, #fff); box-shadow: 0 8px 32px #0003; }
+      .warp-picker-options[hidden] { display: none; }
+      .warp-picker-options button { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; border-color: transparent; background: var(--wb-control-bg); }
+      .warp-picker-options button svg { display: block; width: 100%; height: 48px; color: var(--figma-color-text-brand, #0d99ff); }
+      .warp-picker-options button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+      .warp-picker-options button[aria-pressed="true"] { border-color: var(--figma-color-border-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .warp-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) 72px; gap: 8px; align-items: center; min-height: 34px; }
+      #warp-preset { grid-column: 2 / -1; width: 100%; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 5px 9px; color: inherit; background: var(--wb-control-bg); font: inherit; }
+      #warp-preset:hover { border-color: var(--figma-color-border, #d6d6d6); background: var(--figma-color-bg, #fff); }
+      #warp-preset:focus { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 16%, transparent); outline: none; }
+      .transform-row { display: grid; grid-template-columns: 42px minmax(80px, 1fr) 64px; gap: 6px; align-items: center; min-height: 34px; }
+      .transform-label { min-width: 0; overflow: hidden; color: var(--figma-color-text-secondary, #777); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .transform-slider { --range-progress: 50%; width: 100%; height: 34px; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; cursor: ew-resize; }
+      .transform-slider::-webkit-slider-runnable-track { height: 3px; border-radius: 99px; background: linear-gradient(to right, var(--figma-color-bg-brand, #0d99ff) 0 var(--range-progress), var(--figma-color-border, #d6d6d6) var(--range-progress) 100%); }
+      .transform-slider::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7.5px; appearance: none; -webkit-appearance: none; border: 3px solid var(--figma-color-bg, #fff); border-radius: 50%; background: var(--figma-color-bg-brand, #0d99ff); box-shadow: 0 0 0 1px var(--figma-color-border-brand-strong, #0d99ff), 0 2px 5px rgb(0 0 0 / 16%); transition: transform var(--wb-motion), box-shadow var(--wb-motion); }
+      .transform-slider:not(:disabled):active::-webkit-slider-thumb { transform: scale(1.08); box-shadow: 0 0 0 2px color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 28%, transparent), 0 2px 7px rgb(0 0 0 / 20%); }
+      .transform-slider:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 1px; border-radius: 4px; }
+      .transform-slider:disabled { cursor: default; opacity: .45; }
+      .transform-value { position: relative; display: block; min-width: 0; }
+      .transform-number { width: 100%; height: 36px; border: 1px solid transparent; border-radius: var(--wb-control-radius); padding: 6px 20px 6px 8px; color: var(--figma-color-text, #1e1e1e); background: var(--wb-control-bg); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; transition: border-color var(--wb-motion), background var(--wb-motion), box-shadow var(--wb-motion); }
+      /* No numeric field in this UI wants native spin buttons. */
+      input[type="number"]::-webkit-inner-spin-button { display: none; }
+      .transform-number:hover { border-color: var(--figma-color-border, #d6d6d6); background: var(--figma-color-bg, #fff); }
+      .transform-number:focus { border-color: var(--figma-color-border-brand-strong, #0d99ff); background: var(--figma-color-bg, #fff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 16%, transparent); outline: none; }
+      .transform-number:invalid, .transform-number[aria-invalid="true"] { border-color: var(--figma-color-border-danger-strong, #f24822); }
+      .transform-unit { position: absolute; top: 8px; right: 7px; color: var(--figma-color-text-tertiary, #999); font-size: 10px; pointer-events: none; }
+      .advanced-toggle { display: flex; align-items: center; gap: 5px; width: fit-content; min-height: 32px; border-color: transparent; padding: 5px 6px; color: var(--figma-color-text-secondary, #777); font-size: 12px; }
+      #placement-toggle { justify-self: start; }
+      #transform-options[data-placement-open="true"] > #transform-default-controls { display: none; }
+      #advanced-placement { position: relative; width: 100%; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 18px; padding: 14px; border: 1px solid transparent; border-radius: 10px; background: var(--wb-control-bg); }
+      #advanced-placement[hidden] { display: none; }
+      #placement-close { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; display: grid; border-color: transparent; padding: 0; place-items: center; color: var(--figma-color-icon-secondary, #777); }
+      .pivot-block { display: flex; flex-direction: column; gap: 7px; }
+      .pivot-grid { display: grid; grid-template-columns: repeat(3, 28px); grid-template-rows: repeat(3, 28px); gap: 4px; justify-content: start; }
+      .pivot-grid button { width: 28px; min-height: 28px; height: 28px; padding: 0; border-color: transparent; background: transparent; }
+      .pivot-grid button::after { content: ""; display: block; width: 6px; height: 6px; margin: auto; border-radius: 50%; background: var(--figma-color-icon-secondary, #999); }
+      .pivot-grid button[aria-pressed="true"] { background: var(--figma-color-bg-selected, #e8f3ff); }
+      .pivot-grid button[aria-pressed="true"]::after { background: var(--figma-color-border-brand-strong, #0d99ff); }
+      .position-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; padding-top: 22px; }
+      .position-row { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 6px; align-items: center; min-height: 32px; }
+      #link-scale { width: 32px; height: 32px; padding: 0; color: var(--figma-color-text-secondary, #777); }
+      #link-scale[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      #transform-actions { display: flex; align-items: center; gap: 3px; }
+      .transform-icon-button { position: relative; width: 30px; height: 32px; display: grid; flex: none; border-color: transparent; padding: 0; place-items: center; color: var(--figma-color-icon-secondary, #777); background: transparent; }
+      .transform-icon-button:hover { color: var(--figma-color-icon, #333); background: var(--figma-color-bg-hover, #f0f0f0); }
+      .transform-icon-button[aria-pressed="true"] { color: var(--figma-color-text-brand, #0d99ff); background: var(--figma-color-bg-selected, #e8f3ff); }
+      .action-tooltip { position: absolute; z-index: 40; top: calc(100% + 7px); left: 50%; max-width: 160px; border-radius: 4px; padding: 4px 6px; color: #fff; background: rgb(30 30 30 / 94%); box-shadow: 0 2px 8px rgb(0 0 0 / 20%); font-size: 10px; font-weight: 500; line-height: 1.25; opacity: 0; pointer-events: none; transform: translate(-50%, -2px); transition: opacity 80ms ease-out, transform 80ms ease-out; white-space: nowrap; }
+      .icon-tooltip-host { position: relative; }
+      :is(.transform-icon-button, .icon-tooltip-host):is(:hover, :focus-visible) .action-tooltip { opacity: 1; transform: translate(-50%, 0); }
+      .transform-icon-button:last-child .action-tooltip { right: 0; left: auto; transform: translate(0, -2px); }
+      .transform-icon-button:last-child:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
+      #more-options .action-tooltip { right: 0; left: auto; transform: translate(0, -2px); }
+      #more-options:is(:hover, :focus-visible) .action-tooltip { transform: translate(0, 0); }
+      #error { position: absolute; z-index: 24; right: 18px; bottom: 72px; left: 18px; max-height: 72px; margin: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--figma-color-border-danger-strong, #f24822); border-radius: 9px; color: var(--figma-color-text-danger, #d32f2f); background: var(--figma-color-bg, #fff); box-shadow: 0 4px 14px rgb(0 0 0 / 16%); }
+      #editor { --edge-pan-left: transparent; --edge-pan-right: transparent; --edge-pan-top: transparent; --edge-pan-bottom: transparent; position: relative; min-width: 0; min-height: 0; flex: 1; padding: 32px; background: var(--wb-canvas-bg); overflow: hidden; }
+      #editor::after { position: absolute; z-index: 1; inset: 0; content: ""; background: linear-gradient(to right, var(--edge-pan-left), transparent 46px), linear-gradient(to left, var(--edge-pan-right), transparent 46px), linear-gradient(to bottom, var(--edge-pan-top), transparent 46px), linear-gradient(to top, var(--edge-pan-bottom), transparent 46px); opacity: .72; pointer-events: none; transition: opacity 100ms ease-out; }
+      #editor[data-edge-pan-x="left"] { --edge-pan-left: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #editor[data-edge-pan-x="right"] { --edge-pan-right: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #editor[data-edge-pan-y="top"] { --edge-pan-top: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #editor[data-edge-pan-y="bottom"] { --edge-pan-bottom: color-mix(in srgb, var(--figma-color-bg-brand, #0d99ff) 15%, transparent); }
+      #output-size { position: absolute; z-index: 2; right: 14px; bottom: 12px; display: grid; justify-items: end; max-width: calc(100% - 28px); padding: 3px 6px; border-radius: 4px; color: var(--wb-canvas-text); background: var(--wb-canvas-bg); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 16px; text-shadow: none; pointer-events: none; }
+      #output-size[hidden] { display: none; }
+      #output-size-flow { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #output-size-note { color: var(--figma-color-text-brand, #0d99ff); font-size: 10px; }
+      #output-size[data-blocked="true"] #output-size-note { color: var(--figma-color-text-danger, #d32f2f); }
+      #source-name { position: absolute; z-index: 2; top: 12px; left: 14px; max-width: calc(100% - 28px); overflow: hidden; padding: 3px 6px; border-radius: 4px; color: var(--wb-canvas-text); background: var(--wb-canvas-bg); font-size: 11px; line-height: 16px; text-overflow: ellipsis; text-shadow: none; white-space: nowrap; pointer-events: none; }
+      #source-name:empty { display: none; }
+      /* Keep the artwork's geometry fixed while its surrounding chrome steps
+         aside. Visibility also removes these controls from hit testing/tabbing. */
+      #editor:is([data-panning="true"], :has(.worldbend-editor[data-dragging="true"])) :is(#distort-options, #source-name, #output-size),
+      .canvas-preview:has(.worldbend-editor[data-dragging="true"]) .canvas-source-hud { visibility: hidden; pointer-events: none; }
+      .worldbend-editor { position: relative; width: fit-content; max-width: 100%; max-height: 100%; }
+      .worldbend-editor:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 3px; }
+      .worldbend-editor__canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
+      /* A neutral transparency mat keeps dark and light artwork readable in
+         either host theme. CSS presentation never enters exported pixels. */
+      .worldbend-editor__canvas, .canvas-preview canvas, .designer-preview canvas {
+        background-color: #b8b8b8;
+        background-image: conic-gradient(#ababab 25%, transparent 0 50%, #ababab 0 75%, transparent 0);
+        background-size: 16px 16px;
+      }
+      .worldbend-editor__overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+      .worldbend-editor__reference { fill: none; stroke: var(--wb-canvas-reference); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+      .worldbend-editor__grid-line { fill: none; stroke: var(--figma-color-border-brand-strong, #0d99ff); stroke-width: 1; stroke-opacity: .42; vector-effect: non-scaling-stroke; }
+      .worldbend-editor__polygon { fill: none; stroke: var(--figma-color-border-brand-strong, #0d99ff); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+      .worldbend-editor__handle { position: absolute; z-index: 3; left: 0; top: 0; width: 32px; min-width: 0; height: 32px; min-height: 0; margin: 0; padding: 0; transform: translate3d(var(--worldbend-control-x, 0), var(--worldbend-control-y, 0), 0) translate(-50%, -50%) scale(var(--worldbend-viewport-control-scale, 1)); transform-origin: center; border: 0; border-radius: 50%; background: transparent; cursor: move; touch-action: none; will-change: transform; }
+      .worldbend-editor__handle::after { position: absolute; inset: 10px; content: ""; border: 2px solid var(--figma-color-border-brand-strong, #0d99ff); border-radius: 50%; background: var(--wb-handle-fill); box-shadow: 0 1px 3px rgb(0 0 0 / 28%); }
+      .worldbend-editor[data-dragging="true"] .worldbend-editor__handle[data-active="true"] { z-index: 3; cursor: grabbing; }
+      .worldbend-editor[data-dragging="true"] .worldbend-editor__handle[data-active="true"]::after { border-color: var(--figma-color-bg, #fff); background: var(--figma-color-bg-brand, #0d99ff); box-shadow: 0 0 0 2px var(--figma-color-border-brand-strong, #0d99ff), 0 2px 8px rgb(0 0 0 / 24%); }
+      .worldbend-editor__handle:focus-visible { outline: 2px solid var(--figma-color-bg, #fff); outline-offset: -4px; }
+      .worldbend-editor__handle:focus-visible::after { box-shadow: 0 0 0 2px var(--figma-color-border-brand-strong, #0d99ff); }
+      .worldbend-editor[data-disabled="true"] .worldbend-editor__handle { cursor: default; }
+      .worldbend-editor__handle:not(:disabled) { cursor: move; }
+      .worldbend-editor__handle--edge::after { inset: 13px; border-radius: 2px; }
+      .worldbend-editor[data-mode="transform"] .worldbend-editor__handle[data-handle="tl"]:not(:disabled), .worldbend-editor[data-mode="transform"] .worldbend-editor__handle[data-handle="br"]:not(:disabled) { cursor: nwse-resize; }
+      .worldbend-editor[data-mode="transform"] .worldbend-editor__handle[data-handle="tr"]:not(:disabled), .worldbend-editor[data-mode="transform"] .worldbend-editor__handle[data-handle="bl"]:not(:disabled) { cursor: nesw-resize; }
+      .worldbend-editor__handle[data-handle="top"]:not(:disabled), .worldbend-editor__handle[data-handle="bottom"]:not(:disabled) { cursor: ns-resize; }
+      .worldbend-editor__handle[data-handle="left"]:not(:disabled), .worldbend-editor__handle[data-handle="right"]:not(:disabled) { cursor: ew-resize; }
+      .worldbend-editor__pivot { position: absolute; left: 0; top: 0; z-index: 2; width: 32px; min-width: 0; height: 32px; min-height: 0; margin: 0; padding: 0; transform: translate3d(var(--worldbend-control-x, 0), var(--worldbend-control-y, 0), 0) translate(-50%, -50%) scale(var(--worldbend-viewport-control-scale, 1)); transform-origin: center; border: 0; border-radius: 50%; background: transparent; cursor: crosshair; touch-action: none; will-change: transform; }
+      .worldbend-editor__pivot::after { position: absolute; inset: 8px; content: ""; border: 1.5px solid var(--figma-color-border-brand-strong, #0d99ff); border-radius: 50%; background: linear-gradient(var(--figma-color-border-brand-strong, #0d99ff), var(--figma-color-border-brand-strong, #0d99ff)) center / 1px 12px no-repeat, linear-gradient(90deg, var(--figma-color-border-brand-strong, #0d99ff), var(--figma-color-border-brand-strong, #0d99ff)) center / 12px 1px no-repeat, var(--figma-color-bg, #fff); }
+      .worldbend-editor__pivot:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: -3px; }
+      #editor[data-zone="move"] .worldbend-editor__canvas { cursor: move; }
+      #editor[data-zone="rotate"] .worldbend-editor__canvas { cursor: grab; }
+      #editor[data-pan="true"] { cursor: grab; }
+      #editor[data-pan="true"] .worldbend-editor__canvas { cursor: grab; }
+      .worldbend-editor[data-valid="false"] .worldbend-editor__polygon { stroke: var(--figma-color-border-danger-strong, #f24822); }
+      .worldbend-editor[data-valid="false"] .worldbend-editor__handle::after { border-color: var(--figma-color-border-danger-strong, #f24822); }
+      .worldbend-editor[data-valid="false"] .worldbend-editor__canvas { opacity: .35; }
+      button { min-height: 34px; border: 1px solid transparent; border-radius: var(--wb-control-radius); background: var(--wb-control-bg); color: inherit; padding: 7px 12px; font: inherit; transition: background var(--wb-motion), border-color var(--wb-motion), box-shadow var(--wb-motion), color var(--wb-motion), transform var(--wb-motion); }
+      button:not(:disabled):not([aria-disabled="true"]) { cursor: pointer; }
+      button:not(:disabled):not([aria-disabled="true"]):not(.primary):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):not(#warp-mesh-continue):not(#open-effect-listing):hover { background: var(--wb-control-hover); }
+      button:not(:disabled):not([aria-disabled="true"]):not(.worldbend-editor__handle):not(.worldbend-editor__pivot):not(.direct-point):not(#warp-mesh-continue):not(#open-effect-listing):active { transform: translateY(.5px); }
+      button:disabled, button[aria-disabled="true"] { opacity: .45; }
+      button[aria-disabled="true"] { cursor: default; }
+      button:focus-visible { outline: 2px solid var(--figma-color-border-brand-strong, #0d99ff); outline-offset: 2px; }
+      button.primary { color: #fff; background: var(--figma-color-bg-brand, #0d99ff); border-color: transparent; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
+      button.primary:not(:disabled):hover { background: var(--figma-color-bg-brand-hover, #0587e6); box-shadow: 0 3px 8px rgb(13 153 255 / 22%); }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+      }
+    </style>
+  </head>
+  <body data-i18n-ready="false">
+    <nav id="workspace-navigation" aria-label="Workspaces">
+      <button id="workspace-backward" class="strip-arrow strip-arrow--backward" type="button" aria-label="Previous tools" hidden>
+        <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </button>
+      <div id="workspace-strip-viewport" class="horizontal-strip-viewport">
+        <div id="workspace-items" role="tablist" aria-orientation="horizontal">
+          <button id="workspace-tab-perspective" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="perspective" aria-controls="controls" aria-selected="true" aria-label="Perspective"><span class="ui-icon" data-icon-id="icon-park:perspective" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 28V36L31 38.6M44 28L4 32M44 28V20M4 32V44L17 41.4M4 32V16M44 20V12L31 9.4M44 20L4 16M4 16V4L17 6.6M31 9.4V38.6M31 9.4L17 6.6M31 38.6L17 41.4M17 6.6V41.4" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Perspective</span></button>
+          <button id="workspace-tab-mesh" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="mesh" aria-controls="mesh-workspace" aria-selected="false" aria-label="Mesh"><span class="ui-icon" data-icon-id="icon-park:grid-nine" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="38" height="38" rx="2" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 18H43M5 30H43M17 5V43M30 5V43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span><span class="workspace-name" aria-hidden="true">Mesh</span></button>
+          <button id="workspace-tab-surface" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="surface" aria-controls="surface-workspace" aria-selected="false" aria-label="Pin Warp"><span class="ui-icon" data-icon-id="icon-park:split" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 10V7C19 5.89543 19.8954 5 21 5H41C42.1046 5 43 5.89543 43 7V29C43 30.1046 42.1046 31 41 31H37" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><rect x="5" y="18" width="24" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Pin Warp</span></button>
+          <button id="workspace-tab-remap" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="remap" aria-controls="remap-workspace" aria-selected="false" aria-label="Lens &amp; maps"><span class="ui-icon" data-icon-id="icon-park:distortion" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V40H17M4 19V8H17M4 19C4 19 13 13 24 19C35 25 44 19 44 19M44 19V8H17M44 19V40H17M4 29C4 29 13 23 24 29C35 35 44 29 44 29M17 8C17 8 23 16 17 24C11 32 17 40 17 40M31 8C31 8 37 16 31 24C25 32 31 40 31 40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Lens &amp; maps</span></button>
+          <button id="workspace-tab-presets" class="workspace-tab" type="button" role="tab" data-workspace="presets" aria-controls="presets-workspace" aria-selected="false" aria-label="Preset effects"><span class="workspace-name">Preset effects</span></button>
+          <button id="workspace-tab-mockup" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="mockup" aria-controls="mockup-workspace" aria-selected="false" aria-label="Composition"><span class="ui-icon" data-icon-id="icon-park:layout-four" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="36" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M6 28L24 28M24 20H42M24 42V6" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Composition</span></button>
+          <button id="workspace-tab-canvas" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="canvas" aria-controls="canvas-workspace" aria-selected="false" aria-label="Sizes"><span class="ui-icon" data-icon-id="icon-park:scale" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 6H42V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 29L19 29L19 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 6L19 29" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 6H8C6.89543 6 6 6.89543 6 8V40C6 41.1046 6.89543 42 8 42H40C41.1046 42 42 41.1046 42 40V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Sizes</span></button>
+          <button id="workspace-tab-appearance" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="appearance" aria-controls="appearance-workspace" aria-selected="false" aria-label="Appearance"><span class="ui-icon" data-icon-id="icon-park:diamond" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 4L44 24L24 44L4 24L24 4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M24 14L34 24L24 34L14 24L24 14Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Appearance</span></button>
+          <button id="workspace-tab-spatial" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="spatial" aria-controls="spatial-workspace" aria-selected="false" aria-label="Depth"><span class="ui-icon" data-icon-id="icon-park:layers" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 11.9143L24 19L44 11.9143L24 5L4 11.9143Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M4 20L24 27L44 20" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28L24 35L44 28" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 36L24 43L44 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Depth</span></button>
+          <button id="workspace-tab-templates" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="templates" aria-controls="templates-workspace" aria-selected="false" aria-label="Templates"><span class="ui-icon" data-icon-id="icon-park:page-template" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23 4H4V26H23V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H4V43H44V34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 4H31V12H44V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 18H31V26H44V18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="workspace-name" aria-hidden="true">Templates</span></button>
+          <button id="workspace-tab-card" class="workspace-tab icon-tooltip-host" type="button" role="tab" data-workspace="card" aria-controls="card-workspace" aria-selected="false" aria-label="Card"><span class="ui-icon" data-icon-id="icon-park:flip-picture" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 30L18 12V30H6Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M42 18L30 36V18H42Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M24 8V40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 6"/></svg></span><span class="workspace-name" aria-hidden="true">Card</span></button>
+        </div>
+      </div>
+      <button id="workspace-forward" class="strip-arrow" type="button" aria-label="Next tools" hidden>
+        <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </button>
+      <button id="linked-results-trigger" type="button" aria-haspopup="menu" aria-controls="linked-results-popover" aria-expanded="false" hidden></button>
+      <div id="linked-results-popover" role="menu" aria-labelledby="linked-results-title" hidden>
+        <p id="linked-results-title" class="menu-section-title"></p>
+        <div id="linked-results-list"></div>
+        <p id="linked-results-more" hidden></p>
+      </div>
+      <button id="more-options" class="icon-tooltip-host" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More options">
+        <span class="ui-icon" data-icon-id="icon-park:more" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="24" r="3" fill="currentColor"/><circle cx="24" cy="24" r="3" fill="currentColor"/><circle cx="36" cy="24" r="3" fill="currentColor"/></svg></span>
+        <span class="action-tooltip" aria-hidden="true">More options</span>
+      </button>
+      <div id="settings-popover" role="menu" aria-label="More options" data-workspace="perspective" hidden>
+        <p id="perspective-options-title" class="menu-section-title">Perspective options</p>
+        <button id="action-transform-again" class="menu-option" type="button" role="menuitem">Repeat Last Transform</button>
+        <button id="action-copy-css" class="menu-option" type="button" role="menuitem">Copy CSS</button>
+        <p id="shortcut-help" class="menu-shortcuts">Shift switches Distort · Space pans · ⌘/Ctrl 0 fits · ⌘/Ctrl 1 shows 100%</p>
+        <p id="output-settings-title" class="menu-section-title">Output pixels</p>
+        <button id="output-policy-fit" class="menu-option" type="button" role="menuitemradio" aria-checked="true">
+          <span id="output-policy-fit-label">Fit to Figma</span>
+          <small id="output-policy-fit-detail">Reduce pixel density only when an axis exceeds 4096 px</small>
+          <span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <button id="output-policy-original" class="menu-option" type="button" role="menuitemradio" aria-checked="false">
+          <span id="output-policy-original-label">Keep original pixels</span>
+          <small id="output-policy-original-detail">Disable Apply when the requested raster is too large</small>
+          <span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <p id="settings-title" class="menu-section-title">Language</p>
+        <button class="menu-option" type="button" role="menuitemradio" data-locale="system" aria-checked="true">
+          <span id="locale-system">Automatic</span>
+          <small id="locale-system-detail">Uses your system language</small>
+          <span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <button id="locale-en" class="menu-option" type="button" role="menuitemradio" data-locale="en" aria-checked="false"><span id="locale-en-label">English</span><span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+        <button id="locale-zh-CN" class="menu-option" type="button" role="menuitemradio" data-locale="zh-CN" aria-checked="false"><span id="locale-zh-CN-label">简体中文</span><span class="ui-icon menu-check" data-icon-id="icon-park:check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M43 11L16.875 37L5 25.1818" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+      </div>
+    </nav>
+    <section id="selection-state" data-state="empty" role="status" aria-atomic="true">
+      <div class="selection-content">
+        <div class="selection-demo" aria-hidden="true">
+          <div class="selection-paper">
+            <svg viewBox="0 0 106 134" fill="none">
+              <defs>
+                <g id="selection-artwork">
+                  <path d="M13 14h24" stroke="currentColor" stroke-width="2" opacity=".5"/>
+                  <text x="12" y="47" fill="currentColor" font-family="Georgia, serif" font-size="30">Aa</text>
+                  <g transform="translate(65 80) rotate(-25)" stroke="currentColor" stroke-width=".8">
+                    <ellipse rx="27" ry="21"/><ellipse rx="19" ry="21"/><ellipse rx="9" ry="21"/>
+                    <ellipse rx="27" ry="10"/><path d="M-27 0h54"/>
+                  </g>
+                  <path d="M13 111h38M13 117h25" stroke="currentColor" stroke-width="2" opacity=".35"/>
+                </g>
+              </defs>
+              <use href="#selection-artwork"/>
+            </svg>
+            <i></i>
+          </div>
+          <svg class="selection-demo-arrow" viewBox="0 0 26 24" fill="none"><path d="M2 12h21m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="selection-paper selection-paper--after">
+            <svg viewBox="0 0 106 134" fill="none"><use href="#selection-artwork"/></svg>
+            <i></i>
+          </div>
+        </div>
+        <span class="selection-spinner" aria-hidden="true"></span>
+        <h1 id="selection-title">Start with your design</h1>
+        <p id="selection-detail">Select a frame, image, or layers on the Figma canvas.</p>
+        <p id="selection-continue">Already made a result? Select it to keep editing.</p>
+        <button id="native-recover" class="primary" type="button" hidden>Restore transform</button>
+      </div>
+    </section>
+    <section id="controls" role="tabpanel" aria-labelledby="workspace-tab-perspective" hidden>
+      <header id="control-dock">
+        <div id="dock-primary">
+          <div id="operation-cluster">
+            <button id="mode-backward" class="strip-arrow strip-arrow--backward" type="button" aria-label="Previous modes" hidden>
+              <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+            <div id="mode-strip-viewport" class="horizontal-strip-viewport">
+              <div id="mode-switch" role="group" aria-label="Editing mode">
+              <button id="mode-transform" class="mode-button" type="button" aria-pressed="false">Transform</button>
+              <button id="mode-distort" class="mode-button" type="button" aria-pressed="true">Distort</button>
+              <button id="mode-warp" class="mode-button" type="button" aria-pressed="false">Warp</button>
+              <button id="mode-rectify" class="mode-button" type="button" aria-pressed="false">Correct</button>
+              </div>
+            </div>
+            <button id="mode-forward" class="strip-arrow" type="button" aria-label="Next modes" hidden>
+              <span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+          </div>
+        </div>
+        <div id="context-controls" hidden>
+          <div id="rectify-options" hidden>
+            <label class="rectify-row" for="rectify-width">
+              <span id="rectify-width-label" class="transform-label">Width</span>
+              <input id="rectify-width" class="transform-number" type="number" min="1" max="4096" step="1" value="1024" inputmode="numeric" aria-labelledby="rectify-width-label">
+            </label>
+            <label class="rectify-row" for="rectify-height">
+              <span id="rectify-height-label" class="transform-label">Height</span>
+              <input id="rectify-height" class="transform-number" type="number" min="1" max="4096" step="1" value="1024" inputmode="numeric" aria-labelledby="rectify-height-label">
+            </label>
+          </div>
+          <div id="warp-options" hidden>
+            <div class="warp-row">
+              <label id="warp-preset-label" class="transform-label" for="warp-preset">Preset</label>
+              <select id="warp-preset">
+                <option value="">None</option>
+                <option value="arc">Arc</option>
+                <option value="arch">Arch</option>
+                <option value="flag">Flag</option>
+                <option value="wave">Wave</option>
+                <option value="fish">Fish</option>
+                <option value="rise">Rise</option>
+                <option value="fisheye">Fisheye</option>
+                <option value="inflate">Inflate</option>
+                <option value="squeeze">Squeeze</option>
+                <option value="twist">Twist</option>
+              </select>
+            </div>
+            <div class="warp-row">
+              <span id="warp-amount-label" class="transform-label">Bend</span>
+              <input id="warp-amount-slider" class="transform-slider" type="range" min="-100" max="100" step="1" value="50" aria-labelledby="warp-amount-label">
+              <span class="transform-value"><input id="warp-amount" class="transform-number" type="number" min="-100" max="100" step="any" value="50" inputmode="decimal" aria-labelledby="warp-amount-label warp-amount-unit"><span id="warp-amount-unit" class="transform-unit">%</span></span>
+            </div>
+            <button id="warp-mesh-continue" type="button">Continue in Mesh</button>
+          </div>
+          <div id="transform-options" hidden>
+            <div id="transform-default-controls">
+              <div id="size-controls" class="transform-group-row">
+                <div class="transform-row">
+                  <span id="scale-x-label" class="transform-label">Width</span>
+                  <input id="scale-x-slider" class="transform-slider" type="range" min="25" max="200" step="1" value="100" aria-labelledby="scale-x-label">
+                  <span class="transform-value"><input id="scale-x" class="transform-number" type="number" min="0.1" max="1000" step="0.1" value="100" inputmode="decimal" aria-labelledby="scale-x-label scale-x-unit"><span id="scale-x-unit" class="transform-unit">%</span></span>
+                </div>
+                <div class="transform-row">
+                  <span id="scale-y-label" class="transform-label">Height</span>
+                  <input id="scale-y-slider" class="transform-slider" type="range" min="25" max="200" step="1" value="100" aria-labelledby="scale-y-label">
+                  <span class="transform-value"><input id="scale-y" class="transform-number" type="number" min="0.1" max="1000" step="0.1" value="100" inputmode="decimal" aria-labelledby="scale-y-label scale-y-unit"><span id="scale-y-unit" class="transform-unit">%</span></span>
+                </div>
+                <button id="link-scale" type="button" aria-pressed="true" aria-label="Link width and height" title="Link width and height"><span class="ui-icon" data-icon-id="icon-park:link-one" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M26.2401 16.373L17.1001 7.23303C14.4388 4.57168 10.0653 4.6303 7.33158 7.36397C4.59791 10.0976 4.53929 14.4712 7.20064 17.1325L15.1359 25.0678" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M32.9027 23.0031L40.838 30.9384C43.4994 33.5998 43.4407 37.9733 40.7071 40.707C37.9734 43.4407 33.5999 43.4993 30.9385 40.8379L21.7985 31.6979" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26.1093 26.1416C28.843 23.4079 28.9016 19.0344 26.2403 16.373" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.7989 21.7984C19.0652 24.5321 19.0066 28.9056 21.6679 31.5669" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+              </div>
+              <div id="skew-controls" class="transform-group-row">
+                <div class="transform-row">
+                  <span id="skew-x-label" class="transform-label">Skew X</span>
+                  <input id="skew-x-slider" class="transform-slider" type="range" min="-60" max="60" step="1" value="0" aria-labelledby="skew-x-label">
+                  <span class="transform-value"><input id="skew-x" class="transform-number" type="number" min="-88.9" max="88.9" step="0.1" value="0" inputmode="decimal" aria-labelledby="skew-x-label skew-x-unit"><span id="skew-x-unit" class="transform-unit">°</span></span>
+                </div>
+                <div class="transform-row">
+                  <span id="skew-y-label" class="transform-label">Skew Y</span>
+                  <input id="skew-y-slider" class="transform-slider" type="range" min="-60" max="60" step="1" value="0" aria-labelledby="skew-y-label">
+                  <span class="transform-value"><input id="skew-y" class="transform-number" type="number" min="-88.9" max="88.9" step="0.1" value="0" inputmode="decimal" aria-labelledby="skew-y-label skew-y-unit"><span id="skew-y-unit" class="transform-unit">°</span></span>
+                </div>
+                <span class="transform-action-column-spacer" aria-hidden="true"></span>
+              </div>
+              <div id="rotation-command-row" class="transform-group-row">
+                <div class="transform-row">
+                  <span id="rotation-label" class="transform-label">Angle</span>
+                  <input id="rotation-slider" class="transform-slider" type="range" min="-90" max="90" step="1" value="0" aria-labelledby="rotation-label">
+                  <span class="transform-value"><input id="rotation" class="transform-number" type="number" step="0.1" value="0" inputmode="decimal" aria-labelledby="rotation-label rotation-unit"><span id="rotation-unit" class="transform-unit">°</span></span>
+                </div>
+                <div id="transform-command-cluster">
+                  <button id="placement-toggle" class="advanced-toggle" type="button" aria-expanded="false" aria-controls="advanced-placement"><span id="placement-label">Placement</span><span class="ui-icon" data-icon-id="icon-park:right-small" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 24.0083H12" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 12L36 24L24 36" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+                  <div id="transform-actions" role="toolbar" aria-label="Transform actions">
+                    <button id="action-flip-x" class="transform-icon-button" type="button" aria-pressed="false" aria-label="Flip Horizontal"><span class="ui-icon" data-icon-id="icon-park:flip-horizontally" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 6V42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 34L16 12V34H4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M44 34H32V12L44 34Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Flip Horizontal</span></button>
+                    <button id="action-flip-y" class="transform-icon-button" type="button" aria-pressed="false" aria-label="Flip Vertical"><span class="ui-icon" data-icon-id="icon-park:flip-vertically" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M42 24L6 24" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 4L36 16H14V4Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M14 44V32H36L14 44Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Flip Vertical</span></button>
+                    <button id="action-rotate-cw" class="transform-icon-button" type="button" aria-label="Rotate 90° Clockwise"><span class="ui-icon" data-icon-id="icon-park:rotate" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 24H42V42H12V24Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M6 8V17H15" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M38.4747 13.2985C35.1956 8.87049 29.933 6 24 6C18.1788 6 13.0029 8.76334 9.71272 13.0498L6 17" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Rotate 90° Clockwise</span></button>
+                    <button id="action-copy-parameters" class="transform-icon-button" type="button" aria-label="Copy placement parameters"><span class="ui-icon" data-icon-id="icon-park:copy" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 12.4316V7.8125C13 6.2592 14.2592 5 15.8125 5H40.1875C41.7408 5 43 6.2592 43 7.8125V32.1875C43 33.7408 41.7408 35 40.1875 35H35.5163" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M32.1875 13H7.8125C6.2592 13 5 14.2592 5 15.8125V40.1875C5 41.7408 6.2592 43 7.8125 43H32.1875C33.7408 43 35 41.7408 35 40.1875V15.8125C35 14.2592 33.7408 13 32.1875 13Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="action-tooltip" aria-hidden="true">Copy placement parameters</span></button>
+                  </div>
+                </div>
+                <span class="transform-action-column-spacer" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div id="advanced-placement" hidden>
+              <button id="placement-close" type="button" aria-label="Close placement"><span class="ui-icon" data-icon-id="icon-park:close" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 8L40 40" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 40L40 8" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+              <div class="pivot-block">
+                <span id="pivot-label" class="transform-label">Reference Point</span>
+                <div id="pivot-grid" class="pivot-grid" role="group" aria-labelledby="pivot-label">
+                  <button data-pivot="0,0" type="button" aria-pressed="false" aria-label="Top-left"></button>
+                  <button data-pivot="0.5,0" type="button" aria-pressed="false" aria-label="Top"></button>
+                  <button data-pivot="1,0" type="button" aria-pressed="false" aria-label="Top-right"></button>
+                  <button data-pivot="0,0.5" type="button" aria-pressed="false" aria-label="Left"></button>
+                  <button data-pivot="0.5,0.5" type="button" aria-pressed="true" aria-label="Center"></button>
+                  <button data-pivot="1,0.5" type="button" aria-pressed="false" aria-label="Right"></button>
+                  <button data-pivot="0,1" type="button" aria-pressed="false" aria-label="Bottom-left"></button>
+                  <button data-pivot="0.5,1" type="button" aria-pressed="false" aria-label="Bottom"></button>
+                  <button data-pivot="1,1" type="button" aria-pressed="false" aria-label="Bottom-right"></button>
+                </div>
+              </div>
+              <div class="position-rows">
+                <div class="position-row">
+                  <span id="position-x-label" class="transform-label">X</span>
+                  <span class="transform-value"><input id="position-x" class="transform-number" type="number" step="1" value="0" inputmode="decimal" aria-labelledby="position-x-label"><span id="position-x-unit" class="transform-unit">px</span></span>
+                </div>
+                <div class="position-row">
+                  <span id="position-y-label" class="transform-label">Y</span>
+                  <span class="transform-value"><input id="position-y" class="transform-number" type="number" step="1" value="0" inputmode="decimal" aria-labelledby="position-y-label"><span id="position-y-unit" class="transform-unit">px</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+      <div id="editor"><div id="native-source-editing" hidden><strong id="native-source-title">Edit source on canvas</strong><p id="native-source-description">Add, remove or arrange layers in Figma. Return to result when you are ready.</p></div><div id="distort-options" hidden>
+              <span id="distort-kind" role="group" aria-label="Corner dragging">
+                <button id="distort-free" class="distort-kind-button" type="button" aria-pressed="true">Free</button>
+                <button id="distort-perspective" class="distort-kind-button" type="button" aria-pressed="false">Symmetric</button>
+              </span>
+            </div><output id="source-name" aria-live="off"></output><output id="output-size" aria-live="off" hidden><span id="output-size-flow"></span><span id="output-size-note"></span></output></div>
+      <footer id="action-dock">
+        <div id="session-actions">
+          <button id="reset" type="button">Reset</button>
+          <button id="edit-native-source" type="button" hidden>Edit source</button>
+        </div>
+        <p id="status" class="sr-only" role="status" aria-live="polite"></p>
+        <div id="output-actions">
+          <p id="native-guidance" class="native-guidance" hidden></p>
+          <button id="open-effect-listing" type="button" hidden>Open effect listing</button>
+          <button id="action-apply-editable" type="button" disabled>New Editable Frame</button>
+          <button id="action-apply-vector" type="button" disabled hidden>New Native Vector</button>
+          <button id="action-apply-copy" type="button" disabled hidden>New Linked HD Image</button>
+          <button id="apply" class="primary" type="button" disabled>New Linked HD Image</button>
+        </div>
+      </footer>
+      <div id="error" role="alert" hidden><span id="error-text"></span><button id="error-dismiss" type="button" aria-label="Dismiss error">×</button></div>
+      <output id="zoom-level" class="sr-only" aria-live="polite">100%</output>
+    </section>
+    <section id="canvas-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-canvas" hidden></section>
+    <section id="spatial-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-spatial" hidden></section>
+    <section id="mockup-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-mockup" hidden></section>
+    <section id="mesh-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-mesh" hidden></section>
+    <section id="surface-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-surface" hidden></section>
+    <section id="remap-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-remap" hidden></section>
+    <section id="appearance-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-appearance" hidden></section>
+    <section id="presets-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-presets" hidden></section>
+    <section id="card-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-card" hidden></section>
+    <section id="templates-workspace" class="task-workspace" role="tabpanel" aria-labelledby="workspace-tab-templates" hidden></section>
+    <script type="module" src="/src/ui.ts"></script>
+  </body>
+</html>

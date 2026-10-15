@@ -1,0 +1,535 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		17068BD80AFE77D8C2FA7BA9 /* fronalpstock.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 7892F8A3C5A2094158066C74 /* fronalpstock.jpg */; };
+		1E1EC3C1AF5CFE56E40EB869 /* ReceivingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33EDA840A8858C382436A171 /* ReceivingApp.swift */; };
+		23518EB8C7212CB5DDDE0402 /* restoration.json in Resources */ = {isa = PBXBuildFile; fileRef = C64E0E6D87984F0CDF50DA53 /* restoration.json */; };
+		28B9BD18B93F85B717E62305 /* optical-revision.json in Resources */ = {isa = PBXBuildFile; fileRef = D646497EB22E584B729EFA45 /* optical-revision.json */; };
+		3D31D93193207D66FDC5F165 /* source.json in Resources */ = {isa = PBXBuildFile; fileRef = 7BC2FB9D41680DD45CE21C42 /* source.json */; };
+		4F6B04E317A91EB01FC9267A /* WorldbendAppearance in Frameworks */ = {isa = PBXBuildFile; productRef = 8376A1484DEF7A1E3E17EF3A /* WorldbendAppearance */; };
+		50F0CDB45D5F81D52B4CE1B8 /* optical-radius.json in Resources */ = {isa = PBXBuildFile; fileRef = AA64951B5E5393AB69FBFFEB /* optical-radius.json */; };
+		5A6B89E83F9411D2C8C1F07F /* optical-local.json in Resources */ = {isa = PBXBuildFile; fileRef = 022CB877729DA76875B49D14 /* optical-local.json */; };
+		6032E4ABC31D60626A576EF8 /* initial.json in Resources */ = {isa = PBXBuildFile; fileRef = 61F03C6A6A357DE0173800C8 /* initial.json */; };
+		67BEB2DC13B0F09E2A5CAC07 /* ReceivingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AC3AD2A7EF933D2B32E73B /* ReceivingTests.swift */; };
+		69C50A1FD8D4252ACA9FD8E1 /* optical-lightIntensity.json in Resources */ = {isa = PBXBuildFile; fileRef = DA52671A503E65A420E1F853 /* optical-lightIntensity.json */; };
+		7A85E4EC44F8296832FFD89B /* optical-lightAngle.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E25DB63AFD57AAAF544DCA4 /* optical-lightAngle.json */; };
+		82E9A47859E8DB60DC26645A /* optical-source.json in Resources */ = {isa = PBXBuildFile; fileRef = F8CD9E45F7B359EAFA90E5E8 /* optical-source.json */; };
+		950AAF00A1AB32328CC05BC3 /* optical-neutral.json in Resources */ = {isa = PBXBuildFile; fileRef = 3E39640338EB6CDA207E0012 /* optical-neutral.json */; };
+		A05FB67CBCF9E7C12DE32047 /* local.json in Resources */ = {isa = PBXBuildFile; fileRef = 101F346CB7D8A0F0D26EC7FD /* local.json */; };
+		A36A12D017D5A9F6974A7888 /* optical-depth.json in Resources */ = {isa = PBXBuildFile; fileRef = 8EEC40FF4AE46271CB543F60 /* optical-depth.json */; };
+		ABD543BB9DF7890666D25CA6 /* OpticalReceivingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4532226F3C9DA2259A6DF6D1 /* OpticalReceivingView.swift */; };
+		B6B5B00A082932268F645BC3 /* optical-refraction.json in Resources */ = {isa = PBXBuildFile; fileRef = 1F7DCE218EE7A1D294E8D672 /* optical-refraction.json */; };
+		CBCD1150CAE977FB80C9996C /* revision.json in Resources */ = {isa = PBXBuildFile; fileRef = A1FF7DF4218A24246150BC74 /* revision.json */; };
+		F7D918B1A687CA2CE3BA9CDF /* optical-dispersion.json in Resources */ = {isa = PBXBuildFile; fileRef = BEAE0A8D1C81E83A8E6DE0FB /* optical-dispersion.json */; };
+		FED733DB36D68E9AD2BD9531 /* optical-initial.json in Resources */ = {isa = PBXBuildFile; fileRef = 963F91B287CB37370D82C149 /* optical-initial.json */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9DC9C6673E599F40E2C2082C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CAAA78DE006271E3EF60ED44 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 619F44B2970FFDB936A93629;
+			remoteInfo = MaterialReceiving;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		022CB877729DA76875B49D14 /* optical-local.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-local.json"; sourceTree = "<group>"; };
+		101F346CB7D8A0F0D26EC7FD /* local.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = local.json; sourceTree = "<group>"; };
+		1F7DCE218EE7A1D294E8D672 /* optical-refraction.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-refraction.json"; sourceTree = "<group>"; };
+		33EDA840A8858C382436A171 /* ReceivingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceivingApp.swift; sourceTree = "<group>"; };
+		3E39640338EB6CDA207E0012 /* optical-neutral.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-neutral.json"; sourceTree = "<group>"; };
+		4532226F3C9DA2259A6DF6D1 /* OpticalReceivingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpticalReceivingView.swift; sourceTree = "<group>"; };
+		4E25DB63AFD57AAAF544DCA4 /* optical-lightAngle.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-lightAngle.json"; sourceTree = "<group>"; };
+		59644E042CF0850B02A382FC /* MaterialReceiving.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MaterialReceiving.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		61F03C6A6A357DE0173800C8 /* initial.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = initial.json; sourceTree = "<group>"; };
+		7892F8A3C5A2094158066C74 /* fronalpstock.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = fronalpstock.jpg; sourceTree = "<group>"; };
+		7BC2FB9D41680DD45CE21C42 /* source.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = source.json; sourceTree = "<group>"; };
+		8EEC40FF4AE46271CB543F60 /* optical-depth.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-depth.json"; sourceTree = "<group>"; };
+		963F91B287CB37370D82C149 /* optical-initial.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-initial.json"; sourceTree = "<group>"; };
+		A1FF7DF4218A24246150BC74 /* revision.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = revision.json; sourceTree = "<group>"; };
+		AA64951B5E5393AB69FBFFEB /* optical-radius.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-radius.json"; sourceTree = "<group>"; };
+		B95EA3D21BAA4865EB361FFB /* swiftui */ = {isa = PBXFileReference; lastKnownFileType = folder; name = swiftui; path = ../../packages/swiftui; sourceTree = SOURCE_ROOT; };
+		BEAE0A8D1C81E83A8E6DE0FB /* optical-dispersion.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-dispersion.json"; sourceTree = "<group>"; };
+		C0AC3AD2A7EF933D2B32E73B /* ReceivingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceivingTests.swift; sourceTree = "<group>"; };
+		C64E0E6D87984F0CDF50DA53 /* restoration.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = restoration.json; sourceTree = "<group>"; };
+		D646497EB22E584B729EFA45 /* optical-revision.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-revision.json"; sourceTree = "<group>"; };
+		DA52671A503E65A420E1F853 /* optical-lightIntensity.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-lightIntensity.json"; sourceTree = "<group>"; };
+		ED8931C9C9AA504D4A8A4AF4 /* MaterialReceivingUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MaterialReceivingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F8CD9E45F7B359EAFA90E5E8 /* optical-source.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "optical-source.json"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		96CC6EDD5B701291C1F34462 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4F6B04E317A91EB01FC9267A /* WorldbendAppearance in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		405506E1DD382EDEA67C4140 /* Receipts */ = {
+			isa = PBXGroup;
+			children = (
+				61F03C6A6A357DE0173800C8 /* initial.json */,
+				101F346CB7D8A0F0D26EC7FD /* local.json */,
+				8EEC40FF4AE46271CB543F60 /* optical-depth.json */,
+				BEAE0A8D1C81E83A8E6DE0FB /* optical-dispersion.json */,
+				963F91B287CB37370D82C149 /* optical-initial.json */,
+				4E25DB63AFD57AAAF544DCA4 /* optical-lightAngle.json */,
+				DA52671A503E65A420E1F853 /* optical-lightIntensity.json */,
+				022CB877729DA76875B49D14 /* optical-local.json */,
+				3E39640338EB6CDA207E0012 /* optical-neutral.json */,
+				AA64951B5E5393AB69FBFFEB /* optical-radius.json */,
+				1F7DCE218EE7A1D294E8D672 /* optical-refraction.json */,
+				D646497EB22E584B729EFA45 /* optical-revision.json */,
+				F8CD9E45F7B359EAFA90E5E8 /* optical-source.json */,
+				C64E0E6D87984F0CDF50DA53 /* restoration.json */,
+				A1FF7DF4218A24246150BC74 /* revision.json */,
+				7BC2FB9D41680DD45CE21C42 /* source.json */,
+			);
+			path = Receipts;
+			sourceTree = "<group>";
+		};
+		59EC2D24F358908E103C7FDD /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				B95EA3D21BAA4865EB361FFB /* swiftui */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		A27A0BC04659F052079E0472 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				4532226F3C9DA2259A6DF6D1 /* OpticalReceivingView.swift */,
+				33EDA840A8858C382436A171 /* ReceivingApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		AF5D96CC23FF82D679B43035 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				59644E042CF0850B02A382FC /* MaterialReceiving.app */,
+				ED8931C9C9AA504D4A8A4AF4 /* MaterialReceivingUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D0CC34AC8B7F79EFA30D72D1 = {
+			isa = PBXGroup;
+			children = (
+				A27A0BC04659F052079E0472 /* App */,
+				E197C7F2321982520FA5D9CC /* assets */,
+				59EC2D24F358908E103C7FDD /* Packages */,
+				405506E1DD382EDEA67C4140 /* Receipts */,
+				FC43DAEA2D046E7CCFBEDC8E /* UITests */,
+				AF5D96CC23FF82D679B43035 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E197C7F2321982520FA5D9CC /* assets */ = {
+			isa = PBXGroup;
+			children = (
+				7892F8A3C5A2094158066C74 /* fronalpstock.jpg */,
+			);
+			name = assets;
+			path = ../../packages/web/examples/assets;
+			sourceTree = "<group>";
+		};
+		FC43DAEA2D046E7CCFBEDC8E /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				C0AC3AD2A7EF933D2B32E73B /* ReceivingTests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		619F44B2970FFDB936A93629 /* MaterialReceiving */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 06A678685AD923F2B889C700 /* Build configuration list for PBXNativeTarget "MaterialReceiving" */;
+			buildPhases = (
+				3AE79D58B6E55C949C3C9235 /* Sources */,
+				D8EDFD8F91BCF57FF9A89C20 /* Resources */,
+				96CC6EDD5B701291C1F34462 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MaterialReceiving;
+			packageProductDependencies = (
+				8376A1484DEF7A1E3E17EF3A /* WorldbendAppearance */,
+			);
+			productName = MaterialReceiving;
+			productReference = 59644E042CF0850B02A382FC /* MaterialReceiving.app */;
+			productType = "com.apple.product-type.application";
+		};
+		997B5DE79159A062606F5030 /* MaterialReceivingUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A3259F8AE893215123D57D23 /* Build configuration list for PBXNativeTarget "MaterialReceivingUITests" */;
+			buildPhases = (
+				E20A3D7570BBE4A604792DDB /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FAD19A8C568ABDB34A2413D4 /* PBXTargetDependency */,
+			);
+			name = MaterialReceivingUITests;
+			packageProductDependencies = (
+			);
+			productName = MaterialReceivingUITests;
+			productReference = ED8931C9C9AA504D4A8A4AF4 /* MaterialReceivingUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CAAA78DE006271E3EF60ED44 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					997B5DE79159A062606F5030 = {
+						TestTargetID = 619F44B2970FFDB936A93629;
+					};
+				};
+			};
+			buildConfigurationList = 601C0C8270B423F24ECFD001 /* Build configuration list for PBXProject "MaterialReceiving" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D0CC34AC8B7F79EFA30D72D1;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				72A2E00878E107BCC6A6C846 /* XCLocalSwiftPackageReference "../../packages/swiftui" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AF5D96CC23FF82D679B43035 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				619F44B2970FFDB936A93629 /* MaterialReceiving */,
+				997B5DE79159A062606F5030 /* MaterialReceivingUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D8EDFD8F91BCF57FF9A89C20 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				17068BD80AFE77D8C2FA7BA9 /* fronalpstock.jpg in Resources */,
+				6032E4ABC31D60626A576EF8 /* initial.json in Resources */,
+				A05FB67CBCF9E7C12DE32047 /* local.json in Resources */,
+				A36A12D017D5A9F6974A7888 /* optical-depth.json in Resources */,
+				F7D918B1A687CA2CE3BA9CDF /* optical-dispersion.json in Resources */,
+				FED733DB36D68E9AD2BD9531 /* optical-initial.json in Resources */,
+				7A85E4EC44F8296832FFD89B /* optical-lightAngle.json in Resources */,
+				69C50A1FD8D4252ACA9FD8E1 /* optical-lightIntensity.json in Resources */,
+				5A6B89E83F9411D2C8C1F07F /* optical-local.json in Resources */,
+				950AAF00A1AB32328CC05BC3 /* optical-neutral.json in Resources */,
+				50F0CDB45D5F81D52B4CE1B8 /* optical-radius.json in Resources */,
+				B6B5B00A082932268F645BC3 /* optical-refraction.json in Resources */,
+				28B9BD18B93F85B717E62305 /* optical-revision.json in Resources */,
+				82E9A47859E8DB60DC26645A /* optical-source.json in Resources */,
+				23518EB8C7212CB5DDDE0402 /* restoration.json in Resources */,
+				CBCD1150CAE977FB80C9996C /* revision.json in Resources */,
+				3D31D93193207D66FDC5F165 /* source.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3AE79D58B6E55C949C3C9235 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ABD543BB9DF7890666D25CA6 /* OpticalReceivingView.swift in Sources */,
+				1E1EC3C1AF5CFE56E40EB869 /* ReceivingApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E20A3D7570BBE4A604792DDB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67BEB2DC13B0F09E2A5CAC07 /* ReceivingTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FAD19A8C568ABDB34A2413D4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 619F44B2970FFDB936A93629 /* MaterialReceiving */;
+			targetProxy = 9DC9C6673E599F40E2C2082C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7CFD051819B9EC34DBF65114 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.openadam.worldbend.material-receiving-tests";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MaterialReceiving;
+			};
+			name = Debug;
+		};
+		81D871E8776296B3463E4662 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8FE4D1F07C45AA7647597579 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.openadam.worldbend.material-receiving";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BE067B20DA48E8DC10EB9A6D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.openadam.worldbend.material-receiving";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D6EA09F79557E9EB98C1E7C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F66D13B770741A8763156F63 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "org.openadam.worldbend.material-receiving-tests";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MaterialReceiving;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		06A678685AD923F2B889C700 /* Build configuration list for PBXNativeTarget "MaterialReceiving" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BE067B20DA48E8DC10EB9A6D /* Debug */,
+				8FE4D1F07C45AA7647597579 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		601C0C8270B423F24ECFD001 /* Build configuration list for PBXProject "MaterialReceiving" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				81D871E8776296B3463E4662 /* Debug */,
+				D6EA09F79557E9EB98C1E7C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A3259F8AE893215123D57D23 /* Build configuration list for PBXNativeTarget "MaterialReceivingUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7CFD051819B9EC34DBF65114 /* Debug */,
+				F66D13B770741A8763156F63 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		72A2E00878E107BCC6A6C846 /* XCLocalSwiftPackageReference "../../packages/swiftui" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/swiftui;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8376A1484DEF7A1E3E17EF3A /* WorldbendAppearance */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WorldbendAppearance;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = CAAA78DE006271E3EF60ED44 /* Project object */;
+}

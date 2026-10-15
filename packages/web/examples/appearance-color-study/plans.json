@@ -1,0 +1,796 @@
+{
+  "original": {
+    "fingerprint": "sha256:9ca49d76afba0d1104856e5b215438deac44d1440493fac8a6161256add4a472",
+    "material": {
+      "depth": 10,
+      "dispersion": 0,
+      "lightAngle": 90,
+      "lightIntensity": 0,
+      "radius": 0,
+      "refraction": 0,
+      "visible": true
+    },
+    "recipeFingerprint": "sha256:b54783abce97fb0cb6d3f3a07dc418c4df55a325f2d0f672c056adc9f16644ff",
+    "recipeId": "color-study",
+    "recipeVersion": 1,
+    "schema": "worldbend.appearance-delivery@0.1",
+    "swiftui": null,
+    "target": "web",
+    "version": "0.1",
+    "web": {
+      "backdropFilter": "blur(0px) saturate(1) brightness(1)",
+      "boxShadow": "inset -2px 0px 4px rgba(255,255,255,0.15), inset 0 0 6px rgba(255,255,255,0.09)",
+      "couplings": [
+        {
+          "formula": "1 + 0.35*dispersion + 0.25*refraction",
+          "fromField": "refraction",
+          "intentional": true,
+          "note": "This Web profile also changes artwork saturation; use web-color-preserving when refraction must retain the sampled color treatment",
+          "toChannel": "backdrop-filter.saturate"
+        },
+        {
+          "formula": "1 + 0.35*dispersion + 0.25*refraction",
+          "fromField": "dispersion",
+          "intentional": true,
+          "note": "Dispersion shares the same saturate compensation channel as refraction",
+          "toChannel": "backdrop-filter.saturate"
+        }
+      ],
+      "css": "backdrop-filter: blur(0px) saturate(1) brightness(1);\nbox-shadow: inset -2px 0px 4px rgba(255,255,255,0.15), inset 0 0 6px rgba(255,255,255,0.09);\nborder: 1px solid rgba(255,255,255,0.08);",
+      "displacement": null,
+      "fidelity": [
+        {
+          "field": "visible",
+          "mapping": "native",
+          "note": "visible=false omits the glass declarations entirely"
+        },
+        {
+          "field": "radius",
+          "mapping": "native",
+          "note": "frost radius maps to the backdrop-filter blur length"
+        },
+        {
+          "field": "light-intensity",
+          "mapping": "approximated",
+          "note": "drives the inset edge highlight strength; Figma's full specular response is richer"
+        },
+        {
+          "field": "light-angle",
+          "mapping": "approximated",
+          "note": "positions the inset highlight on the lit edge; cardinals match native/Metal (left at 90°)"
+        },
+        {
+          "field": "refraction",
+          "mapping": "approximated",
+          "note": "edge-only displacement; also intentionally raises backdrop-filter saturate (see couplings)"
+        },
+        {
+          "field": "depth",
+          "mapping": "approximated",
+          "note": "scales edge displacement (linear to depth 10, soft tail to 100; effective 10, clamped=false) and rim width (linear to 20, soft tail to 100)"
+        },
+        {
+          "field": "dispersion",
+          "mapping": "approximated",
+          "note": "RGB channel separation in the Web runtime; an approximation rather than a spectral solver"
+        }
+      ],
+      "lightAxis": {
+        "angleDegrees": 90,
+        "cardinal": "left",
+        "convention": "native-cardinal@1",
+        "direction": [
+          -1,
+          6.123233995736766e-17
+        ],
+        "note": "Shared Figma/Web/Metal screen-space mapping: 0 down, 90 left, 180 up, 270 right; Web inset highlight uses this vector on the lit edge"
+      },
+      "parameterRanges": [
+        {
+          "authored": 10,
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "clamped": false,
+          "effective": 10,
+          "effectiveMax": 100,
+          "effectiveMin": 1,
+          "field": "depth",
+          "note": "Web displacement depthFactor is linear on [1,10] then a soft tail through 100; values above 100 clamp",
+          "unit": "logical-px"
+        },
+        {
+          "authored": 10,
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "clamped": false,
+          "effective": 10,
+          "effectiveMax": 100,
+          "effectiveMin": 1,
+          "field": "depth.rim",
+          "note": "Web receiver rim uses clamped authored depth on [1,100] (historical linear [1,20] then soft tail); mapped rim contribution is delivery.rimDepth (max 40)",
+          "unit": "logical-px"
+        }
+      ],
+      "rimDepth": 10
+    }
+  },
+  "refracted": {
+    "fingerprint": "sha256:bb2a4b6660435b4e0d0ff007200feecea945a59e89a256752a167352f444d331",
+    "material": {
+      "depth": 10,
+      "dispersion": 0,
+      "lightAngle": 90,
+      "lightIntensity": 0,
+      "radius": 0,
+      "refraction": 1,
+      "visible": true
+    },
+    "recipeFingerprint": "sha256:b54783abce97fb0cb6d3f3a07dc418c4df55a325f2d0f672c056adc9f16644ff",
+    "recipeId": "color-study",
+    "recipeVersion": 1,
+    "schema": "worldbend.appearance-delivery@0.1",
+    "swiftui": null,
+    "target": "web",
+    "version": "0.1",
+    "web": {
+      "backdropFilter": "blur(0px) saturate(1.25) brightness(1)",
+      "boxShadow": "inset -2px 0px 4px rgba(255,255,255,0.15), inset 0 0 6px rgba(255,255,255,0.09)",
+      "couplings": [
+        {
+          "formula": "1 + 0.35*dispersion + 0.25*refraction",
+          "fromField": "refraction",
+          "intentional": true,
+          "note": "This Web profile also changes artwork saturation; use web-color-preserving when refraction must retain the sampled color treatment",
+          "toChannel": "backdrop-filter.saturate"
+        },
+        {
+          "formula": "1 + 0.35*dispersion + 0.25*refraction",
+          "fromField": "dispersion",
+          "intentional": true,
+          "note": "Dispersion shares the same saturate compensation channel as refraction",
+          "toChannel": "backdrop-filter.saturate"
+        }
+      ],
+      "css": "backdrop-filter: blur(0px) saturate(1.25) brightness(1) url(\"#worldbend-glass\");\nbox-shadow: inset -2px 0px 4px rgba(255,255,255,0.15), inset 0 0 6px rgba(255,255,255,0.09);\nborder: 1px solid rgba(255,255,255,0.08);",
+      "displacement": {
+        "chromaticOffset": 0,
+        "markup": "<filter id=\"worldbend-glass\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\" color-interpolation-filters=\"sRGB\">\n<feImage href=\"data:image/svg+xml,%3C%73%76%67%20%78%6D%6C%6E%73%3D%27%68%74%74%70%3A%2F%2F%77%77%77%2E%77%33%2E%6F%72%67%2F%32%30%30%30%2F%73%76%67%27%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%3E%3C%64%65%66%73%3E%3C%6C%69%6E%65%61%72%47%72%61%64%69%65%6E%74%20%69%64%3D%27%78%27%3E%3C%73%74%6F%70%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%23%66%66%38%30%38%30%27%2F%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%31%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%23%30%30%38%30%38%30%27%2F%3E%3C%2F%6C%69%6E%65%61%72%47%72%61%64%69%65%6E%74%3E%3C%72%61%64%69%61%6C%47%72%61%64%69%65%6E%74%20%69%64%3D%27%72%69%6D%27%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%2E%36%35%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%62%6C%61%63%6B%27%2F%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%31%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%77%68%69%74%65%27%2F%3E%3C%2F%72%61%64%69%61%6C%47%72%61%64%69%65%6E%74%3E%3C%6D%61%73%6B%20%69%64%3D%27%6D%27%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%75%72%6C%28%23%72%69%6D%29%27%2F%3E%3C%2F%6D%61%73%6B%3E%3C%66%69%6C%74%65%72%20%69%64%3D%27%6E%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%20%63%6F%6C%6F%72%2D%69%6E%74%65%72%70%6F%6C%61%74%69%6F%6E%2D%66%69%6C%74%65%72%73%3D%27%73%52%47%42%27%3E%3C%66%65%49%6D%61%67%65%20%68%72%65%66%3D%27%64%61%74%61%3A%69%6D%61%67%65%2F%73%76%67%2B%78%6D%6C%2C%25%33%43%25%37%33%25%37%36%25%36%37%25%32%30%25%37%38%25%36%44%25%36%43%25%36%45%25%37%33%25%33%44%25%32%37%25%36%38%25%37%34%25%37%34%25%37%30%25%33%41%25%32%46%25%32%46%25%37%37%25%37%37%25%37%37%25%32%45%25%37%37%25%33%33%25%32%45%25%36%46%25%37%32%25%36%37%25%32%46%25%33%32%25%33%30%25%33%30%25%33%30%25%32%46%25%37%33%25%37%36%25%36%37%25%32%37%25%32%30%25%37%37%25%36%39%25%36%34%25%37%34%25%36%38%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%38%25%36%35%25%36%39%25%36%37%25%36%38%25%37%34%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%33%45%25%33%43%25%36%34%25%36%35%25%36%36%25%37%33%25%33%45%25%33%43%25%36%43%25%36%39%25%36%45%25%36%35%25%36%31%25%37%32%25%34%37%25%37%32%25%36%31%25%36%34%25%36%39%25%36%35%25%36%45%25%37%34%25%32%30%25%36%39%25%36%34%25%33%44%25%32%37%25%37%39%25%32%37%25%32%30%25%37%38%25%33%31%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%39%25%33%31%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%38%25%33%32%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%39%25%33%32%25%33%44%25%32%37%25%33%31%25%32%37%25%33%45%25%33%43%25%37%33%25%37%34%25%36%46%25%37%30%25%32%30%25%37%33%25%37%34%25%36%46%25%37%30%25%32%44%25%36%33%25%36%46%25%36%43%25%36%46%25%37%32%25%33%44%25%32%37%25%32%33%25%33%38%25%33%30%25%36%36%25%36%36%25%33%38%25%33%30%25%32%37%25%32%46%25%33%45%25%33%43%25%37%33%25%37%34%25%36%46%25%37%30%25%32%30%25%36%46%25%36%36%25%36%36%25%37%33%25%36%35%25%37%34%25%33%44%25%32%37%25%33%31%25%32%37%25%32%30%25%37%33%25%37%34%25%36%46%25%37%30%25%32%44%25%36%33%25%36%46%25%36%43%25%36%46%25%37%32%25%33%44%25%32%37%25%32%33%25%33%38%25%33%30%25%33%30%25%33%30%25%33%38%25%33%30%25%32%37%25%32%46%25%33%45%25%33%43%25%32%46%25%36%43%25%36%39%25%36%45%25%36%35%25%36%31%25%37%32%25%34%37%25%37%32%25%36%31%25%36%34%25%36%39%25%36%35%25%36%45%25%37%34%25%33%45%25%33%43%25%32%46%25%36%34%25%36%35%25%36%36%25%37%33%25%33%45%25%33%43%25%37%32%25%36%35%25%36%33%25%37%34%25%32%30%25%37%37%25%36%39%25%36%34%25%37%34%25%36%38%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%38%25%36%35%25%36%39%25%36%37%25%36%38%25%37%34%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%36%25%36%39%25%36%43%25%36%43%25%33%44%25%32%37%25%37%35%25%37%32%25%36%43%25%32%38%25%32%33%25%37%39%25%32%39%25%32%37%25%32%46%25%33%45%25%33%43%25%32%46%25%37%33%25%37%36%25%36%37%25%33%45%27%20%72%65%73%75%6C%74%3D%27%79%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%2F%3E%3C%66%65%43%6F%6D%70%6F%73%69%74%65%20%69%6E%3D%27%53%6F%75%72%63%65%47%72%61%70%68%69%63%27%20%69%6E%32%3D%27%79%27%20%6F%70%65%72%61%74%6F%72%3D%27%61%72%69%74%68%6D%65%74%69%63%27%20%6B%32%3D%27%31%27%20%6B%33%3D%27%31%27%20%6B%34%3D%27%2D%2E%35%30%32%27%2F%3E%3C%2F%66%69%6C%74%65%72%3E%3C%2F%64%65%66%73%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%23%38%30%38%30%38%30%27%2F%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%75%72%6C%28%23%78%29%27%20%66%69%6C%74%65%72%3D%27%75%72%6C%28%23%6E%29%27%20%6D%61%73%6B%3D%27%75%72%6C%28%23%6D%29%27%2F%3E%3C%2F%73%76%67%3E\" result=\"edge-map\" preserveAspectRatio=\"none\"/>\n<feDisplacementMap in=\"SourceGraphic\" in2=\"edge-map\" scale=\"64\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"refracted\"/>\n<feDisplacementMap in=\"refracted\" in2=\"edge-map\" scale=\"0\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"red-shift\"/>\n<feColorMatrix in=\"red-shift\" values=\"1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0\" result=\"red\"/>\n<feColorMatrix in=\"refracted\" values=\"0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0\" result=\"green\"/>\n<feDisplacementMap in=\"refracted\" in2=\"edge-map\" scale=\"0\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"blue-shift\"/>\n<feColorMatrix in=\"blue-shift\" values=\"0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0\" result=\"blue\"/>\n<feBlend in=\"red\" in2=\"green\" mode=\"screen\" result=\"rg\"/><feBlend in=\"rg\" in2=\"blue\" mode=\"screen\"/>\n</filter>",
+        "scale": 64
+      },
+      "fidelity": [
+        {
+          "field": "visible",
+          "mapping": "native",
+          "note": "visible=false omits the glass declarations entirely"
+        },
+        {
+          "field": "radius",
+          "mapping": "native",
+          "note": "frost radius maps to the backdrop-filter blur length"
+        },
+        {
+          "field": "light-intensity",
+          "mapping": "approximated",
+          "note": "drives the inset edge highlight strength; Figma's full specular response is richer"
+        },
+        {
+          "field": "light-angle",
+          "mapping": "approximated",
+          "note": "positions the inset highlight on the lit edge; cardinals match native/Metal (left at 90°)"
+        },
+        {
+          "field": "refraction",
+          "mapping": "approximated",
+          "note": "edge-only displacement; also intentionally raises backdrop-filter saturate (see couplings)"
+        },
+        {
+          "field": "depth",
+          "mapping": "approximated",
+          "note": "scales edge displacement (linear to depth 10, soft tail to 100; effective 10, clamped=false) and rim width (linear to 20, soft tail to 100)"
+        },
+        {
+          "field": "dispersion",
+          "mapping": "approximated",
+          "note": "RGB channel separation in the Web runtime; an approximation rather than a spectral solver"
+        }
+      ],
+      "lightAxis": {
+        "angleDegrees": 90,
+        "cardinal": "left",
+        "convention": "native-cardinal@1",
+        "direction": [
+          -1,
+          6.123233995736766e-17
+        ],
+        "note": "Shared Figma/Web/Metal screen-space mapping: 0 down, 90 left, 180 up, 270 right; Web inset highlight uses this vector on the lit edge"
+      },
+      "parameterRanges": [
+        {
+          "authored": 10,
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "clamped": false,
+          "effective": 10,
+          "effectiveMax": 100,
+          "effectiveMin": 1,
+          "field": "depth",
+          "note": "Web displacement depthFactor is linear on [1,10] then a soft tail through 100; values above 100 clamp",
+          "unit": "logical-px"
+        },
+        {
+          "authored": 10,
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "clamped": false,
+          "effective": 10,
+          "effectiveMax": 100,
+          "effectiveMin": 1,
+          "field": "depth.rim",
+          "note": "Web receiver rim uses clamped authored depth on [1,100] (historical linear [1,20] then soft tail); mapped rim contribution is delivery.rimDepth (max 40)",
+          "unit": "logical-px"
+        }
+      ],
+      "rimDepth": 10
+    }
+  },
+  "faithful": {
+    "fingerprint": "sha256:132b7bca1ab32b19f45481fcf0dfb8fde4d70f815818afaeb8bd3e12ca1360ca",
+    "material": {
+      "depth": 10,
+      "dispersion": 0,
+      "lightAngle": 90,
+      "lightIntensity": 0,
+      "radius": 0,
+      "refraction": 1,
+      "visible": true
+    },
+    "recipeFingerprint": "sha256:b54783abce97fb0cb6d3f3a07dc418c4df55a325f2d0f672c056adc9f16644ff",
+    "recipeId": "color-study",
+    "recipeVersion": 1,
+    "schema": "worldbend.appearance-delivery@0.1",
+    "swiftui": null,
+    "target": "web-color-preserving",
+    "version": "0.1",
+    "web": {
+      "backdropFilter": "blur(0px)",
+      "boxShadow": "inset -2px 0px 4px rgba(255,255,255,0.15), inset 0 0 6px rgba(255,255,255,0.09)",
+      "couplings": [],
+      "css": "backdrop-filter: blur(0px) url(\"#worldbend-glass\");\nbox-shadow: inset -2px 0px 4px rgba(255,255,255,0.15), inset 0 0 6px rgba(255,255,255,0.09);\nborder: 1px solid rgba(255,255,255,0.08);",
+      "displacement": {
+        "chromaticOffset": 0,
+        "markup": "<filter id=\"worldbend-glass\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\" color-interpolation-filters=\"sRGB\">\n<feImage href=\"data:image/svg+xml,%3C%73%76%67%20%78%6D%6C%6E%73%3D%27%68%74%74%70%3A%2F%2F%77%77%77%2E%77%33%2E%6F%72%67%2F%32%30%30%30%2F%73%76%67%27%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%3E%3C%64%65%66%73%3E%3C%6C%69%6E%65%61%72%47%72%61%64%69%65%6E%74%20%69%64%3D%27%78%27%3E%3C%73%74%6F%70%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%23%66%66%38%30%38%30%27%2F%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%31%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%23%30%30%38%30%38%30%27%2F%3E%3C%2F%6C%69%6E%65%61%72%47%72%61%64%69%65%6E%74%3E%3C%72%61%64%69%61%6C%47%72%61%64%69%65%6E%74%20%69%64%3D%27%72%69%6D%27%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%2E%36%35%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%62%6C%61%63%6B%27%2F%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%31%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%77%68%69%74%65%27%2F%3E%3C%2F%72%61%64%69%61%6C%47%72%61%64%69%65%6E%74%3E%3C%6D%61%73%6B%20%69%64%3D%27%6D%27%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%75%72%6C%28%23%72%69%6D%29%27%2F%3E%3C%2F%6D%61%73%6B%3E%3C%66%69%6C%74%65%72%20%69%64%3D%27%6E%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%20%63%6F%6C%6F%72%2D%69%6E%74%65%72%70%6F%6C%61%74%69%6F%6E%2D%66%69%6C%74%65%72%73%3D%27%73%52%47%42%27%3E%3C%66%65%49%6D%61%67%65%20%68%72%65%66%3D%27%64%61%74%61%3A%69%6D%61%67%65%2F%73%76%67%2B%78%6D%6C%2C%25%33%43%25%37%33%25%37%36%25%36%37%25%32%30%25%37%38%25%36%44%25%36%43%25%36%45%25%37%33%25%33%44%25%32%37%25%36%38%25%37%34%25%37%34%25%37%30%25%33%41%25%32%46%25%32%46%25%37%37%25%37%37%25%37%37%25%32%45%25%37%37%25%33%33%25%32%45%25%36%46%25%37%32%25%36%37%25%32%46%25%33%32%25%33%30%25%33%30%25%33%30%25%32%46%25%37%33%25%37%36%25%36%37%25%32%37%25%32%30%25%37%37%25%36%39%25%36%34%25%37%34%25%36%38%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%38%25%36%35%25%36%39%25%36%37%25%36%38%25%37%34%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%33%45%25%33%43%25%36%34%25%36%35%25%36%36%25%37%33%25%33%45%25%33%43%25%36%43%25%36%39%25%36%45%25%36%35%25%36%31%25%37%32%25%34%37%25%37%32%25%36%31%25%36%34%25%36%39%25%36%35%25%36%45%25%37%34%25%32%30%25%36%39%25%36%34%25%33%44%25%32%37%25%37%39%25%32%37%25%32%30%25%37%38%25%33%31%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%39%25%33%31%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%38%25%33%32%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%39%25%33%32%25%33%44%25%32%37%25%33%31%25%32%37%25%33%45%25%33%43%25%37%33%25%37%34%25%36%46%25%37%30%25%32%30%25%37%33%25%37%34%25%36%46%25%37%30%25%32%44%25%36%33%25%36%46%25%36%43%25%36%46%25%37%32%25%33%44%25%32%37%25%32%33%25%33%38%25%33%30%25%36%36%25%36%36%25%33%38%25%33%30%25%32%37%25%32%46%25%33%45%25%33%43%25%37%33%25%37%34%25%36%46%25%37%30%25%32%30%25%36%46%25%36%36%25%36%36%25%37%33%25%36%35%25%37%34%25%33%44%25%32%37%25%33%31%25%32%37%25%32%30%25%37%33%25%37%34%25%36%46%25%37%30%25%32%44%25%36%33%25%36%46%25%36%43%25%36%46%25%37%32%25%33%44%25%32%37%25%32%33%25%33%38%25%33%30%25%33%30%25%33%30%25%33%38%25%33%30%25%32%37%25%32%46%25%33%45%25%33%43%25%32%46%25%36%43%25%36%39%25%36%45%25%36%35%25%36%31%25%37%32%25%34%37%25%37%32%25%36%31%25%36%34%25%36%39%25%36%35%25%36%45%25%37%34%25%33%45%25%33%43%25%32%46%25%36%34%25%36%35%25%36%36%25%37%33%25%33%45%25%33%43%25%37%32%25%36%35%25%36%33%25%37%34%25%32%30%25%37%37%25%36%39%25%36%34%25%37%34%25%36%38%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%38%25%36%35%25%36%39%25%36%37%25%36%38%25%37%34%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%36%25%36%39%25%36%43%25%36%43%25%33%44%25%32%37%25%37%35%25%37%32%25%36%43%25%32%38%25%32%33%25%37%39%25%32%39%25%32%37%25%32%46%25%33%45%25%33%43%25%32%46%25%37%33%25%37%36%25%36%37%25%33%45%27%20%72%65%73%75%6C%74%3D%27%79%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%2F%3E%3C%66%65%43%6F%6D%70%6F%73%69%74%65%20%69%6E%3D%27%53%6F%75%72%63%65%47%72%61%70%68%69%63%27%20%69%6E%32%3D%27%79%27%20%6F%70%65%72%61%74%6F%72%3D%27%61%72%69%74%68%6D%65%74%69%63%27%20%6B%32%3D%27%31%27%20%6B%33%3D%27%31%27%20%6B%34%3D%27%2D%2E%35%30%32%27%2F%3E%3C%2F%66%69%6C%74%65%72%3E%3C%2F%64%65%66%73%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%23%38%30%38%30%38%30%27%2F%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%75%72%6C%28%23%78%29%27%20%66%69%6C%74%65%72%3D%27%75%72%6C%28%23%6E%29%27%20%6D%61%73%6B%3D%27%75%72%6C%28%23%6D%29%27%2F%3E%3C%2F%73%76%67%3E\" result=\"edge-map\" preserveAspectRatio=\"none\"/>\n<feDisplacementMap in=\"SourceGraphic\" in2=\"edge-map\" scale=\"64\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"refracted\"/>\n<feDisplacementMap in=\"refracted\" in2=\"edge-map\" scale=\"0\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"red-shift\"/>\n<feColorMatrix in=\"red-shift\" values=\"1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0\" result=\"red\"/>\n<feColorMatrix in=\"refracted\" values=\"0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0\" result=\"green\"/>\n<feDisplacementMap in=\"refracted\" in2=\"edge-map\" scale=\"0\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"blue-shift\"/>\n<feColorMatrix in=\"blue-shift\" values=\"0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0\" result=\"blue\"/>\n<feBlend in=\"red\" in2=\"green\" mode=\"screen\" result=\"rg\"/><feBlend in=\"rg\" in2=\"blue\" mode=\"screen\"/>\n</filter>",
+        "scale": 64
+      },
+      "fidelity": [
+        {
+          "field": "visible",
+          "mapping": "native",
+          "note": "visible=false omits the glass declarations entirely"
+        },
+        {
+          "field": "radius",
+          "mapping": "native",
+          "note": "frost radius maps to the backdrop-filter blur length"
+        },
+        {
+          "field": "light-intensity",
+          "mapping": "approximated",
+          "note": "drives the inset edge highlight strength; Figma's full specular response is richer"
+        },
+        {
+          "field": "light-angle",
+          "mapping": "approximated",
+          "note": "positions the inset highlight on the lit edge; cardinals match native/Metal (left at 90°)"
+        },
+        {
+          "field": "refraction",
+          "mapping": "approximated",
+          "note": "edge-only displacement without global saturation or brightness compensation; sampled color stays intact, while explicit dispersion and edge lighting remain separate"
+        },
+        {
+          "field": "depth",
+          "mapping": "approximated",
+          "note": "scales edge displacement (linear to depth 10, soft tail to 100; effective 10, clamped=false) and rim width (linear to 20, soft tail to 100)"
+        },
+        {
+          "field": "dispersion",
+          "mapping": "approximated",
+          "note": "RGB channel separation in the Web runtime; an approximation rather than a spectral solver"
+        }
+      ],
+      "lightAxis": {
+        "angleDegrees": 90,
+        "cardinal": "left",
+        "convention": "native-cardinal@1",
+        "direction": [
+          -1,
+          6.123233995736766e-17
+        ],
+        "note": "Shared Figma/Web/Metal screen-space mapping: 0 down, 90 left, 180 up, 270 right; Web inset highlight uses this vector on the lit edge"
+      },
+      "parameterRanges": [
+        {
+          "authored": 10,
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "clamped": false,
+          "effective": 10,
+          "effectiveMax": 100,
+          "effectiveMin": 1,
+          "field": "depth",
+          "note": "Web displacement depthFactor is linear on [1,10] then a soft tail through 100; values above 100 clamp",
+          "unit": "logical-px"
+        },
+        {
+          "authored": 10,
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "clamped": false,
+          "effective": 10,
+          "effectiveMax": 100,
+          "effectiveMin": 1,
+          "field": "depth.rim",
+          "note": "Web receiver rim uses clamped authored depth on [1,100] (historical linear [1,20] then soft tail); mapped rim contribution is delivery.rimDepth (max 40)",
+          "unit": "logical-px"
+        }
+      ],
+      "rimDepth": 10
+    }
+  },
+  "faithfulInput": {
+    "recipe": {
+      "schema": "worldbend.appearance@0.1",
+      "version": "0.1",
+      "recipeId": "color-study",
+      "recipeVersion": 1,
+      "material": {
+        "visible": true,
+        "lightIntensity": 0,
+        "lightAngle": 90,
+        "refraction": 0,
+        "depth": 10,
+        "dispersion": 0,
+        "radius": 0
+      }
+    },
+    "material": {
+      "visible": true,
+      "lightIntensity": 0,
+      "lightAngle": 90,
+      "refraction": 1,
+      "depth": 10,
+      "dispersion": 0,
+      "radius": 0
+    },
+    "target": "web-color-preserving"
+  },
+  "exposure": {
+    "web": {
+      "controls": [
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "toggle": true
+          },
+          "dependsOn": [],
+          "direction": "on shows the material; off removes only the optical layer",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "visible",
+          "kind": "toggle",
+          "note": "on/off drives only the optical layer; content and actions stay untouched",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "toggle"
+        },
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 0.5
+          },
+          "dependsOn": [],
+          "direction": "higher strengthens the edge highlight",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "light-intensity",
+          "kind": "scalar",
+          "note": "scales the inset edge highlight strength",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "ratio"
+        },
+        {
+          "authoredMax": 360,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 90
+          },
+          "dependsOn": [],
+          "direction": "rotates the lit edge; 0 down, 90 left, 180 up, 270 right",
+          "effectiveMax": 360,
+          "effectiveMin": 0,
+          "field": "light-angle",
+          "kind": "scalar",
+          "note": "cardinal mapping is calibrated across Figma, Web and Metal",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "degrees"
+        },
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 0.35
+          },
+          "dependsOn": [
+            "backdrop-filter.saturate"
+          ],
+          "direction": "higher displaces more backdrop at the rim",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "refraction",
+          "kind": "scalar",
+          "note": "edge-only backdrop displacement; intentionally also raises saturation (see dependsOn)",
+          "reason": "selected by policy and drivable on this target",
+          "state": "exposed",
+          "unit": "ratio"
+        },
+        {
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "cost": "live",
+          "default": {
+            "number": 2
+          },
+          "dependsOn": [
+            "refraction"
+          ],
+          "direction": "higher widens the refracting rim",
+          "effectiveMax": 1000,
+          "effectiveMin": 1,
+          "field": "depth",
+          "kind": "scalar",
+          "note": "Web displacement stays responsive through authored 100 (rim contribution caps at 40); higher values clamp with a receipt",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "logical-px"
+        },
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 0
+          },
+          "dependsOn": [
+            "backdrop-filter.saturate"
+          ],
+          "direction": "higher separates red/green/blue more",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "dispersion",
+          "kind": "scalar",
+          "note": "RGB channel separation at the refracting rim",
+          "reason": "selected by policy and drivable on this target",
+          "state": "exposed",
+          "unit": "ratio"
+        },
+        {
+          "authoredMax": 1000,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 12
+          },
+          "dependsOn": [],
+          "direction": "higher frosts more spatial detail",
+          "effectiveMax": 20,
+          "effectiveMin": 0,
+          "field": "radius",
+          "kind": "scalar",
+          "note": "frost radius changes spatial detail of the backdrop; it never fades foreground content",
+          "reason": "selected by policy and drivable on this target",
+          "state": "exposed",
+          "unit": "logical-px"
+        }
+      ],
+      "family": "glass",
+      "fingerprint": "sha256:834071176ebf520c50983c5e6141dd140c5e18d207a572178aeca21cd9e76b93",
+      "policyRevision": 1,
+      "schema": "worldbend.appearance-exposure@0.1",
+      "scopes": [
+        "color-study"
+      ],
+      "target": "web",
+      "version": "0.1"
+    },
+    "web-color-preserving": {
+      "controls": [
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "toggle": true
+          },
+          "dependsOn": [],
+          "direction": "on shows the material; off removes only the optical layer",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "visible",
+          "kind": "toggle",
+          "note": "on/off drives only the optical layer; content and actions stay untouched",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "toggle"
+        },
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 0.5
+          },
+          "dependsOn": [],
+          "direction": "higher strengthens the edge highlight",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "light-intensity",
+          "kind": "scalar",
+          "note": "scales the inset edge highlight strength",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "ratio"
+        },
+        {
+          "authoredMax": 360,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 90
+          },
+          "dependsOn": [],
+          "direction": "rotates the lit edge; 0 down, 90 left, 180 up, 270 right",
+          "effectiveMax": 360,
+          "effectiveMin": 0,
+          "field": "light-angle",
+          "kind": "scalar",
+          "note": "cardinal mapping is calibrated across Figma, Web and Metal",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "degrees"
+        },
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 0.35
+          },
+          "dependsOn": [],
+          "direction": "higher displaces more backdrop at the rim",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "refraction",
+          "kind": "scalar",
+          "note": "edge-only backdrop displacement without global saturation compensation",
+          "reason": "selected by policy and drivable on this target",
+          "state": "exposed",
+          "unit": "ratio"
+        },
+        {
+          "authoredMax": 1000,
+          "authoredMin": 1,
+          "cost": "live",
+          "default": {
+            "number": 2
+          },
+          "dependsOn": [
+            "refraction"
+          ],
+          "direction": "higher widens the refracting rim",
+          "effectiveMax": 1000,
+          "effectiveMin": 1,
+          "field": "depth",
+          "kind": "scalar",
+          "note": "Web displacement stays responsive through authored 100 (rim contribution caps at 40); higher values clamp with a receipt",
+          "reason": "implemented by the glass family but not selected by this policy",
+          "state": "not-exposed",
+          "unit": "logical-px"
+        },
+        {
+          "authoredMax": 1,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 0
+          },
+          "dependsOn": [],
+          "direction": "higher separates red/green/blue more",
+          "effectiveMax": 1,
+          "effectiveMin": 0,
+          "field": "dispersion",
+          "kind": "scalar",
+          "note": "RGB channel separation at the refracting rim",
+          "reason": "selected by policy and drivable on this target",
+          "state": "exposed",
+          "unit": "ratio"
+        },
+        {
+          "authoredMax": 1000,
+          "authoredMin": 0,
+          "cost": "live",
+          "default": {
+            "number": 12
+          },
+          "dependsOn": [],
+          "direction": "higher frosts more spatial detail",
+          "effectiveMax": 20,
+          "effectiveMin": 0,
+          "field": "radius",
+          "kind": "scalar",
+          "note": "frost radius changes spatial detail of the backdrop; it never fades foreground content",
+          "reason": "selected by policy and drivable on this target",
+          "state": "exposed",
+          "unit": "logical-px"
+        }
+      ],
+      "family": "glass",
+      "fingerprint": "sha256:2eaa03d5116dedc174e4abb31998e5f7972ed45675109c869979ad62e4dff1b4",
+      "policyRevision": 1,
+      "schema": "worldbend.appearance-exposure@0.1",
+      "scopes": [
+        "color-study"
+      ],
+      "target": "web-color-preserving",
+      "version": "0.1"
+    }
+  },
+  "fallbackExposure": {
+    "controls": [
+      {
+        "authoredMax": 1,
+        "authoredMin": 0,
+        "cost": "live",
+        "default": {
+          "toggle": true
+        },
+        "dependsOn": [],
+        "direction": "on shows the material; off removes only the optical layer",
+        "effectiveMax": 1,
+        "effectiveMin": 0,
+        "field": "visible",
+        "kind": "toggle",
+        "note": "on/off drives only the optical layer; content and actions stay untouched",
+        "reason": "implemented by the glass family but not selected by this policy",
+        "state": "not-exposed",
+        "unit": "toggle"
+      },
+      {
+        "authoredMax": 1,
+        "authoredMin": 0,
+        "cost": "live",
+        "default": {
+          "number": 0.5
+        },
+        "dependsOn": [],
+        "direction": "higher strengthens the edge highlight",
+        "effectiveMax": 1,
+        "effectiveMin": 0,
+        "field": "light-intensity",
+        "kind": "scalar",
+        "note": "scales the inset edge highlight strength",
+        "reason": "implemented by the glass family but not selected by this policy",
+        "state": "not-exposed",
+        "unit": "ratio"
+      },
+      {
+        "authoredMax": 360,
+        "authoredMin": 0,
+        "cost": "live",
+        "default": {
+          "number": 90
+        },
+        "dependsOn": [],
+        "direction": "rotates the lit edge; 0 down, 90 left, 180 up, 270 right",
+        "effectiveMax": 360,
+        "effectiveMin": 0,
+        "field": "light-angle",
+        "kind": "scalar",
+        "note": "cardinal mapping is calibrated across Figma, Web and Metal",
+        "reason": "implemented by the glass family but not selected by this policy",
+        "state": "not-exposed",
+        "unit": "degrees"
+      },
+      {
+        "authoredMax": 1,
+        "authoredMin": 0,
+        "cost": "live",
+        "default": {
+          "number": 0.35
+        },
+        "dependsOn": [],
+        "direction": "higher displaces more backdrop at the rim",
+        "effectiveMax": 1,
+        "effectiveMin": 0,
+        "field": "refraction",
+        "kind": "scalar",
+        "note": "edge-only backdrop displacement without global saturation compensation",
+        "reason": "temporary runtime fallback: this receiver currently renders frost only, so displacement has no visible effect; the saved value stays canonical",
+        "state": "adapted",
+        "unit": "ratio"
+      },
+      {
+        "authoredMax": 1000,
+        "authoredMin": 1,
+        "cost": "live",
+        "default": {
+          "number": 2
+        },
+        "dependsOn": [
+          "refraction"
+        ],
+        "direction": "higher widens the refracting rim",
+        "effectiveMax": 1000,
+        "effectiveMin": 1,
+        "field": "depth",
+        "kind": "scalar",
+        "note": "Web displacement stays responsive through authored 100 (rim contribution caps at 40); higher values clamp with a receipt",
+        "reason": "temporary runtime fallback: this receiver currently renders frost only, so displacement has no visible effect; the saved value stays canonical",
+        "state": "not-exposed",
+        "unit": "logical-px"
+      },
+      {
+        "authoredMax": 1,
+        "authoredMin": 0,
+        "cost": "live",
+        "default": {
+          "number": 0
+        },
+        "dependsOn": [],
+        "direction": "higher separates red/green/blue more",
+        "effectiveMax": 1,
+        "effectiveMin": 0,
+        "field": "dispersion",
+        "kind": "scalar",
+        "note": "RGB channel separation at the refracting rim",
+        "reason": "temporary runtime fallback: this receiver currently renders frost only, so displacement has no visible effect; the saved value stays canonical",
+        "state": "adapted",
+        "unit": "ratio"
+      },
+      {
+        "authoredMax": 1000,
+        "authoredMin": 0,
+        "cost": "live",
+        "default": {
+          "number": 12
+        },
+        "dependsOn": [],
+        "direction": "higher frosts more spatial detail",
+        "effectiveMax": 20,
+        "effectiveMin": 0,
+        "field": "radius",
+        "kind": "scalar",
+        "note": "frost radius changes spatial detail of the backdrop; it never fades foreground content",
+        "reason": "selected by policy and drivable on this target",
+        "state": "exposed",
+        "unit": "logical-px"
+      }
+    ],
+    "family": "glass",
+    "fingerprint": "sha256:5e2fe3302889ab578018458f84b280cc071f8112ac0ad0c4710fc1038ca7a790",
+    "policyRevision": 1,
+    "schema": "worldbend.appearance-exposure@0.1",
+    "scopes": [
+      "color-study"
+    ],
+    "target": "web-color-preserving",
+    "version": "0.1"
+  }
+}

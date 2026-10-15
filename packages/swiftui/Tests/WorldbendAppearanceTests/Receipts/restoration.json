@@ -1,0 +1,151 @@
+{
+  "updates": [
+    {
+      "delivery": {
+        "fingerprint": "sha256:edea7681f6ec3f2a3e1c7cab6b9cfc2fe274abf323c23a2d5b963bd507b64236",
+        "material": {
+          "depth": 20,
+          "dispersion": 0.11999999731779099,
+          "lightAngle": 120,
+          "lightIntensity": 0.8500000238418579,
+          "radius": 1,
+          "refraction": 0.800000011920929,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:575068b416b9ab205ae32aad9894fe2c2d9476e67d2fc6a037963eee042262a6",
+        "recipeId": "optical-lab-clear",
+        "recipeVersion": 2,
+        "schema": "worldbend.appearance-delivery@0.1",
+        "swiftui": {
+          "fidelity": [
+            {
+              "field": "visible",
+              "mapping": "native",
+              "note": "the generated modifier applies the exported visibility: true"
+            },
+            {
+              "field": "light-intensity",
+              "mapping": "unavailable",
+              "note": "system-driven highlights; not a SwiftUI setter"
+            },
+            {
+              "field": "light-angle",
+              "mapping": "unavailable",
+              "note": "system lighting; not a SwiftUI setter"
+            },
+            {
+              "field": "refraction",
+              "mapping": "unavailable",
+              "note": "the system refracts inherently but the exported refraction magnitude has no setter"
+            },
+            {
+              "field": "depth",
+              "mapping": "unavailable",
+              "note": "no thickness setter on the system material"
+            },
+            {
+              "field": "dispersion",
+              "mapping": "unavailable",
+              "note": "system chromatic behavior is fixed; no dispersion setter"
+            },
+            {
+              "field": "radius",
+              "mapping": "unavailable",
+              "note": "the material adapts frost itself; a fixed radius needs a custom implementation"
+            }
+          ],
+          "snippet": "import SwiftUI\n\n@available(iOS 26.0, macOS 26.0, tvOS 26.0, watchOS 26.0, *)\nextension View {\n  /// Worldbend appearance delivery — recipe \"optical-lab-clear\" v2.\n  /// Applies the system Liquid Glass material on iOS 26+.\n  func worldbendGlass(cornerRadius: CGFloat) -> some View {\n    self.glassEffect(true ? .regular.interactive() : .identity, in: .rect(cornerRadius: cornerRadius))\n  }\n}\n",
+          "usesNativeLiquidGlass": true
+        },
+        "target": "swiftui",
+        "version": "0.1",
+        "web": null
+      },
+      "preserved": [],
+      "previousDeliveryFingerprint": "sha256:1118aea82fc5b4761fca78c2e0a8e07af2eb9c74efc624a6afed29440bce9656",
+      "previousFingerprint": "sha256:1118aea82fc5b4761fca78c2e0a8e07af2eb9c74efc624a6afed29440bce9656",
+      "schema": "worldbend.appearance-update@0.1",
+      "sourceFingerprint": "sha256:edea7681f6ec3f2a3e1c7cab6b9cfc2fe274abf323c23a2d5b963bd507b64236",
+      "version": "0.1"
+    },
+    {
+      "delivery": {
+        "fingerprint": "sha256:e411bff557f18d070341c267c377a268f601d2e902d58728b825a9aa6a76d7e6",
+        "material": {
+          "depth": 20,
+          "dispersion": 0.11999999731779099,
+          "lightAngle": 120,
+          "lightIntensity": 0.8500000238418579,
+          "radius": 12,
+          "refraction": 0.800000011920929,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:575068b416b9ab205ae32aad9894fe2c2d9476e67d2fc6a037963eee042262a6",
+        "recipeId": "optical-lab-clear",
+        "recipeVersion": 2,
+        "schema": "worldbend.appearance-delivery@0.1",
+        "swiftui": {
+          "fidelity": [
+            {
+              "field": "visible",
+              "mapping": "native",
+              "note": "the generated modifier applies the exported visibility: true"
+            },
+            {
+              "field": "light-intensity",
+              "mapping": "unavailable",
+              "note": "system-driven highlights; not a SwiftUI setter"
+            },
+            {
+              "field": "light-angle",
+              "mapping": "unavailable",
+              "note": "system lighting; not a SwiftUI setter"
+            },
+            {
+              "field": "refraction",
+              "mapping": "unavailable",
+              "note": "the system refracts inherently but the exported refraction magnitude has no setter"
+            },
+            {
+              "field": "depth",
+              "mapping": "unavailable",
+              "note": "no thickness setter on the system material"
+            },
+            {
+              "field": "dispersion",
+              "mapping": "unavailable",
+              "note": "system chromatic behavior is fixed; no dispersion setter"
+            },
+            {
+              "field": "radius",
+              "mapping": "unavailable",
+              "note": "the material adapts frost itself; a fixed radius needs a custom implementation"
+            }
+          ],
+          "snippet": "import SwiftUI\n\n@available(iOS 26.0, macOS 26.0, tvOS 26.0, watchOS 26.0, *)\nextension View {\n  /// Worldbend appearance delivery — recipe \"optical-lab-clear\" v2.\n  /// Applies the system Liquid Glass material on iOS 26+.\n  func worldbendGlass(cornerRadius: CGFloat) -> some View {\n    self.glassEffect(true ? .regular.interactive() : .identity, in: .rect(cornerRadius: cornerRadius))\n  }\n}\n",
+          "usesNativeLiquidGlass": true
+        },
+        "target": "swiftui",
+        "version": "0.1",
+        "web": null
+      },
+      "preserved": [
+        "radius"
+      ],
+      "previousDeliveryFingerprint": "sha256:763fad357f3aa30c49013cb77536d5cb1065aef22a7237d8a94ad3e665ce330f",
+      "previousFingerprint": "sha256:1118aea82fc5b4761fca78c2e0a8e07af2eb9c74efc624a6afed29440bce9656",
+      "schema": "worldbend.appearance-update@0.1",
+      "sourceFingerprint": "sha256:edea7681f6ec3f2a3e1c7cab6b9cfc2fe274abf323c23a2d5b963bd507b64236",
+      "version": "0.1"
+    },
+    {
+      "delivery": null,
+      "preserved": [],
+      "previousDeliveryFingerprint": null,
+      "previousFingerprint": "sha256:1118aea82fc5b4761fca78c2e0a8e07af2eb9c74efc624a6afed29440bce9656",
+      "schema": "worldbend.appearance-update@0.1",
+      "sourceFingerprint": "sha256:edea7681f6ec3f2a3e1c7cab6b9cfc2fe274abf323c23a2d5b963bd507b64236",
+      "version": "0.1"
+    }
+  ]
+}

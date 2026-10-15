@@ -1,0 +1,33 @@
+{
+  "schema": "openadam.release-profile",
+  "version": "0.1",
+  "distribution": {"source": "public", "audience": "public"},
+  "carriers": [
+    {
+      "id": "figma-plugin",
+      "required": true,
+      "manifests": ["packages/figma/manifest.json"],
+      "packages": ["packages/figma"],
+      "listing": "https://www.figma.com/community/plugin/1675767923532475446/worldbend",
+      "notes": "Current 0.5 release target. Community submission, companion effect availability and public acquisition are separate from local candidate preparation."
+    },
+    {
+      "id": "github-actions",
+      "required": true,
+      "workflows": ["ci.yml", "codeql.yml"],
+      "notes": "Public source is tetracoralla/worldbend. Preserve its public history; prepare reviewed source changes separately from private development history. Hosted results require the actual authorized source publication."
+    },
+    {
+      "id": "agent-host",
+      "required": false,
+      "notes": "Retained separately versioned carrier. The Figma 0.5 preparation does not update or install a Host package; shared semantic changes still require source-carrier verification."
+    },
+    {
+      "id": "codex-plugin",
+      "required": false,
+      "manifests": ["plugins/worldbend/.codex-plugin/plugin.json"],
+      "notes": "Retained separately versioned carrier. A new installed runtime release is not part of the Figma 0.5 submission."
+    }
+  ],
+  "intentionalAbsences": []
+}

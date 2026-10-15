@@ -1,0 +1,47 @@
+name: MaterialReceiving
+options:
+  deploymentTarget:
+    iOS: "26.0"
+packages:
+  WorldbendAppearance:
+    path: ../../packages/swiftui
+targets:
+  MaterialReceiving:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - path: Receipts
+        type: group
+      - path: ../../packages/web/examples/assets/fronalpstock.jpg
+    dependencies:
+      - package: WorldbendAppearance
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.openadam.worldbend.material-receiving
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGNING_ALLOWED: NO
+  MaterialReceivingUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: MaterialReceiving
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.openadam.worldbend.material-receiving-tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+        CODE_SIGNING_ALLOWED: NO
+schemes:
+  MaterialReceiving:
+    build:
+      targets:
+        MaterialReceiving: all
+    test:
+      targets:
+        - MaterialReceivingUITests

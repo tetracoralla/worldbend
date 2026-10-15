@@ -1,0 +1,28 @@
+import { attachPlanePose, attachPointerTilt, attachPerspectiveStrip, normalizedSpec, projectPlanePose, initializeWorldbend } from '../dist/perspective.js';
+import { verifyPerspective } from './perspective-verify.js';
+const $ = id => document.getElementById(id);
+const start = performance.now();
+const errors = [];
+const onError = error => { errors.push({ code: error.code, message: error.message }); $('status').textContent = error.code ?? error.message; };
+const leftPlane = normalizedSpec({ tl:{x:0,y:.02},tr:{x:1,y:.10},br:{x:1,y:.90},bl:{x:0,y:.98} });
+const rightPlane = normalizedSpec({ tl:{x:0,y:.10},tr:{x:1,y:.02},br:{x:1,y:.98},bl:{x:0,y:.90} });
+const panels = element => [...element.querySelectorAll('.face')].map((element,i) => ({id:`panel-${i}`,element,start:i===0?0:.53,end:i===0?.47:1}));
+const left = attachPerspectiveStrip($('left'),panels($('left')),leftPlane,{onError});
+const right = attachPerspectiveStrip($('right'),panels($('right')),rightPlane,{onError});
+const tilt = attachPointerTilt($('feature'),$('tilt-surface'),{perspective:1400,rotateX:1,rotateY:-2},{rangeX:2,rangeY:3,onError});
+await initializeWorldbend();
+$('status').textContent = '实时透视已就绪';
+$('status').dataset.startupMs = String(performance.now()-start);
+let page=0;
+function change(direction){page=(page+direction+3)%3;const names=['让空间关系<br>成为可复用的设计。','同一份几何<br>装入新的内容。','从网页到图像<br>保留准确的透视。'];$('feature-title').innerHTML=names[page];document.querySelectorAll('.face .art').forEach((el,i)=>el.style.filter=`hue-rotate(${page*36+i*6}deg)`);$('interaction-status').textContent=`第 ${page+1} 组内容`;}
+$('previous').onclick=()=>change(-1);$('next').onclick=()=>change(1);
+$('guides').onchange=e=>$('scene').classList.toggle('guides',e.target.checked);
+$('width').oninput=e=>$('viewport').style.width=`${e.target.value}%`;
+let clicks=0;document.querySelectorAll('.live-action').forEach(el=>el.onclick=()=>{$('interaction-status').textContent=`已响应 ${++clicks} 次点击`;});
+const timer=setInterval(()=>{const t=(performance.now()-start)/1000;$('clock').textContent=`${String(Math.floor(t/60)).padStart(2,'0')}:${(t%60).toFixed(1).padStart(4,'0')}`;},100);
+$('save').onclick=()=>{const blob=new Blob([JSON.stringify({left:left.getSpecs(),right:right.getSpecs(),center:tilt.getSpec()},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='worldbend-planes.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+const examplePose={perspective:800,rotateX:12,rotateY:-20,rotateZ:4};
+$('native-plane').style.transform='perspective(800px) rotateZ(4deg) rotateY(-20deg) rotateX(12deg)';
+const comparison=attachPlanePose($('worldbend-plane'),examplePose,{onError});
+$('verify').onclick=async()=>{const button=$('verify');button.disabled=true;$('check-status').textContent='验证中';try{const result=await verifyPerspective({left,right,leftPlane,rightPlane,errors});$('results').textContent=JSON.stringify(result,null,2);$('check-status').textContent=result.ok?'通过':'失败';}catch(error){$('results').textContent=String(error.stack??error);$('check-status').textContent='失败';}finally{button.disabled=false;}};
+window.addEventListener('pagehide',()=>{left.dispose();right.dispose();tilt.dispose();comparison.dispose();clearInterval(timer);},{once:true});

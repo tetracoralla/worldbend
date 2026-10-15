@@ -1,0 +1,365 @@
+[
+  {
+    "id": "01",
+    "title": "原始纸质舞台",
+    "document": {
+      "schema": "worldbend.spatial-document",
+      "version": "0.1",
+      "assets": [
+        {
+          "id": "paper-stage",
+          "contentVersion": "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38"
+        },
+        {
+          "id": "field-notes",
+          "contentVersion": "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653"
+        }
+      ],
+      "expressions": [
+        {
+          "kind": "scene3d",
+          "id": "paper-theatre",
+          "scene": {
+            "schema": "worldbend.scene3d",
+            "version": "0.1",
+            "sceneSlot": "scene",
+            "camera": "RevealCamera",
+            "animation": "Scene",
+            "canvas": {
+              "width": 960,
+              "height": 720
+            },
+            "timebase": {
+              "numerator": 24,
+              "denominator": 1
+            },
+            "frameCount": 96,
+            "artworks": [
+              {
+                "slotId": "cover",
+                "material": "CoverPrint",
+                "surfaceSize": {
+                  "width": 840,
+                  "height": 1120
+                },
+                "fit": "contain"
+              }
+            ],
+            "backgroundRgb": [
+              209,
+              204,
+              180
+            ],
+            "exposure": 1,
+            "ambientIntensity": 2
+          },
+          "bindings": [
+            {
+              "role": "content",
+              "slotId": "scene",
+              "assetId": "paper-stage"
+            },
+            {
+              "role": "content",
+              "slotId": "cover",
+              "assetId": "field-notes"
+            }
+          ]
+        },
+        {
+          "kind": "static",
+          "id": "cover-proof",
+          "bindings": [
+            {
+              "role": "content",
+              "slotId": "artwork",
+              "assetId": "field-notes"
+            }
+          ],
+          "template": {
+            "schema": "worldbend.spatial-template",
+            "version": "0.1",
+            "operation": {
+              "kind": "rasterProgram",
+              "sourceSlot": "artwork",
+              "program": {
+                "schema": "worldbend.raster-program",
+                "version": "0.1",
+                "stages": [
+                  {
+                    "kind": "canvas",
+                    "id": "fit",
+                    "spec": {
+                      "schema": "worldbend.canvas",
+                      "version": "0.1",
+                      "operation": {
+                        "kind": "contain",
+                        "output": {
+                          "width": 840,
+                          "height": 1120
+                        },
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "background": {
+                          "kind": "transparent"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "output": {
+              "kind": "single",
+              "id": "cover"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "02",
+    "title": "新版封面与五秒镜头",
+    "document": {
+      "assets": [
+        {
+          "contentVersion": "sha256:cf450c061c11ad4ec25b2d3a519cf787cf67e344f18516f73bb1d33663e300cd",
+          "id": "paper-stage"
+        },
+        {
+          "contentVersion": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+          "id": "field-notes"
+        }
+      ],
+      "expressions": [
+        {
+          "bindings": [
+            {
+              "assetId": "paper-stage",
+              "role": "content",
+              "slotId": "scene"
+            },
+            {
+              "assetId": "field-notes",
+              "role": "content",
+              "slotId": "cover"
+            }
+          ],
+          "id": "paper-theatre",
+          "kind": "scene3d",
+          "scene": {
+            "ambientIntensity": 2,
+            "animation": "Scene",
+            "artworks": [
+              {
+                "fit": "contain",
+                "material": "CoverPrint",
+                "slotId": "cover",
+                "surfaceSize": {
+                  "height": 1120,
+                  "width": 840
+                }
+              }
+            ],
+            "backgroundRgb": [
+              209,
+              204,
+              180
+            ],
+            "camera": "RevealCamera",
+            "canvas": {
+              "height": 720,
+              "width": 960
+            },
+            "exposure": 1,
+            "frameCount": 120,
+            "sceneSlot": "scene",
+            "schema": "worldbend.scene3d",
+            "timebase": {
+              "denominator": 1,
+              "numerator": 24
+            },
+            "version": "0.1"
+          }
+        },
+        {
+          "bindings": [
+            {
+              "assetId": "field-notes",
+              "role": "content",
+              "slotId": "artwork"
+            }
+          ],
+          "id": "cover-proof",
+          "kind": "static",
+          "template": {
+            "operation": {
+              "kind": "rasterProgram",
+              "program": {
+                "schema": "worldbend.raster-program",
+                "stages": [
+                  {
+                    "id": "fit",
+                    "kind": "canvas",
+                    "spec": {
+                      "operation": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "background": {
+                          "kind": "transparent"
+                        },
+                        "kind": "contain",
+                        "output": {
+                          "height": 1120,
+                          "width": 840
+                        }
+                      },
+                      "schema": "worldbend.canvas",
+                      "version": "0.1"
+                    }
+                  }
+                ],
+                "version": "0.1"
+              },
+              "sourceSlot": "artwork"
+            },
+            "output": {
+              "id": "cover",
+              "kind": "single"
+            },
+            "schema": "worldbend.spatial-template",
+            "version": "0.1"
+          }
+        }
+      ],
+      "schema": "worldbend.spatial-document",
+      "version": "0.1"
+    }
+  },
+  {
+    "id": "03",
+    "title": "纸带新比例与七秒镜头",
+    "document": {
+      "assets": [
+        {
+          "contentVersion": "sha256:d702f1a03a08ad65d5e3e0bd0baff03daf9aa414e175d8b0ff26ca08b81dadfa",
+          "id": "paper-stage"
+        },
+        {
+          "contentVersion": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+          "id": "field-notes"
+        }
+      ],
+      "expressions": [
+        {
+          "bindings": [
+            {
+              "assetId": "paper-stage",
+              "role": "content",
+              "slotId": "scene"
+            },
+            {
+              "assetId": "field-notes",
+              "role": "content",
+              "slotId": "cover"
+            }
+          ],
+          "id": "paper-theatre",
+          "kind": "scene3d",
+          "scene": {
+            "ambientIntensity": 2,
+            "animation": "Scene",
+            "artworks": [
+              {
+                "fit": "contain",
+                "material": "CoverPrint",
+                "slotId": "cover",
+                "surfaceSize": {
+                  "height": 1120,
+                  "width": 840
+                }
+              }
+            ],
+            "backgroundRgb": [
+              209,
+              204,
+              180
+            ],
+            "camera": "Reveal Camera.003",
+            "canvas": {
+              "height": 720,
+              "width": 960
+            },
+            "exposure": 1,
+            "frameCount": 210,
+            "sceneSlot": "scene",
+            "schema": "worldbend.scene3d",
+            "timebase": {
+              "denominator": 1,
+              "numerator": 30
+            },
+            "version": "0.1"
+          }
+        },
+        {
+          "bindings": [
+            {
+              "assetId": "field-notes",
+              "role": "content",
+              "slotId": "artwork"
+            }
+          ],
+          "id": "cover-proof",
+          "kind": "static",
+          "template": {
+            "operation": {
+              "kind": "rasterProgram",
+              "program": {
+                "schema": "worldbend.raster-program",
+                "stages": [
+                  {
+                    "id": "fit",
+                    "kind": "canvas",
+                    "spec": {
+                      "operation": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "background": {
+                          "kind": "transparent"
+                        },
+                        "kind": "contain",
+                        "output": {
+                          "height": 1120,
+                          "width": 840
+                        }
+                      },
+                      "schema": "worldbend.canvas",
+                      "version": "0.1"
+                    }
+                  }
+                ],
+                "version": "0.1"
+              },
+              "sourceSlot": "artwork"
+            },
+            "output": {
+              "id": "cover",
+              "kind": "single"
+            },
+            "schema": "worldbend.spatial-template",
+            "version": "0.1"
+          }
+        }
+      ],
+      "schema": "worldbend.spatial-document",
+      "version": "0.1"
+    }
+  }
+]

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Field Notes · Worldbend material document</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e8e5d9;color:#19221b;font:15px/1.4 Arial,Helvetica,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}button:focus-visible{outline:3px solid #da4025;outline-offset:5px}
+header{display:flex;justify-content:space-between;align-items:center;margin:0 5vw;padding:25px 0;border-bottom:1px solid #17251b50;font-size:12px;letter-spacing:.09em}
+header strong{font-size:17px;letter-spacing:-.02em}.exhibition{position:relative;max-width:1380px;min-height:740px;margin:auto;padding:60px 6vw 95px}
+.poster{position:relative;width:min(66%,720px);height:560px;overflow:hidden;background:#ca6240;box-shadow:0 30px 40px -24px #19351d70;transform:rotate(-3deg);color:#f8f5d9;isolation:isolate}
+.poster-content{position:relative;z-index:1;height:100%;padding:28px 34px;display:flex;flex-direction:column;justify-content:space-between}
+.poster small{font-size:12px;letter-spacing:.12em}.poster h1{font-size:clamp(60px,7.8vw,112px);letter-spacing:-.08em;line-height:.87;margin:0;font-weight:800;max-width:520px}
+.poster-footer{display:flex;justify-content:space-between;align-items:end;font-size:11px;letter-spacing:.1em}.poster-footer b{font-size:55px;line-height:1;letter-spacing:-.08em}
+.paper{position:absolute;right:6vw;top:148px;width:340px;height:440px;background:#f6f0d9;transform:rotate(8deg);box-shadow:0 20px 40px -20px #19281d60;overflow:hidden;isolation:isolate}
+.paper-content{position:relative;z-index:1;height:100%;padding:28px;display:flex;flex-direction:column;justify-content:space-between}
+.paper small{letter-spacing:.13em;font-size:10px}.paper h2{font-size:45px;letter-spacing:-.06em;line-height:.94;margin:0;font-weight:500;max-width:230px}.paper p{font-size:12px;max-width:190px;margin:0}.paper hr{border:0;border-top:1px solid #162b1c;margin:24px 0}
+.seal{position:absolute;right:calc(6vw + 33px);top:489px;width:126px;height:126px;border-radius:50%;background:#364b39;isolation:isolate;color:#f4f6d5;overflow:hidden;transform:rotate(-9deg);box-shadow:0 7px 15px #152b1e33}
+.seal-content{position:relative;z-index:1;display:grid;place-content:center;height:100%;text-align:center}.seal span{font-size:10px;letter-spacing:.12em}.seal b{font-size:59px;line-height:.94;letter-spacing:-.1em}
+.controls{position:absolute;bottom:28px;left:6vw;right:6vw;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.glass{display:flex;align-items:center;gap:3px;padding:5px;border:1px solid #fff8;border-radius:28px;background:#ffffff22;isolation:isolate}
+.glass button{position:relative;z-index:1;border:0;background:transparent;padding:10px 17px;border-radius:23px;font-size:13px}.glass button:hover{background:#f9f3df66}.glass button[aria-pressed=true]{background:#203c29;color:#fbf3da}
+output{font-size:12px;max-width:350px;min-height:17px}footer{margin:0 5vw;padding:22px 0;border-top:1px solid #17251b50;display:flex;justify-content:space-between;gap:15px;font-size:11px;letter-spacing:.07em}
+@media(max-width:780px){.exhibition{padding:42px 7vw 160px;min-height:0}.poster{width:100%;height:480px}.poster h1{font-size:clamp(62px,12vw,90px)}.poster-content{padding:24px}.paper{position:relative;width:80%;max-width:300px;height:315px;right:auto;top:auto;margin:36px 0 0 auto;transform:rotate(4deg)}.paper-content{padding:22px}.paper h2{font-size:34px}.paper p{font-size:10px}.seal{width:88px;height:88px;top:auto;bottom:148px;right:11vw}.seal b{font-size:40px}.controls{bottom:20px;left:7vw;right:7vw;gap:12px}.glass{flex-wrap:wrap;border-radius:23px}.glass button{font-size:12px;padding:9px 12px}header,footer{margin:0 7vw}footer{flex-direction:column}}
+@media(prefers-reduced-motion:reduce){.poster,.paper,.seal{transition:none}}
+</style>
+<header><strong>Field Notes</strong><span>2026 / A SERIES OF FRESH PERSPECTIVES</span></header>
+<main class="exhibition" aria-label="Field Notes edition">
+  <article id="poster" class="poster"><div class="poster-content"><small>FIELD NOTES / 2026</small><h1 id="title">Outside<br>the<br>expected.</h1><div class="poster-footer"><span>A SERIES OF FRESH<br>PERSPECTIVES</span><b class="edition">01</b></div></div></article>
+  <article id="paper-note" class="paper"><div class="paper-content"><small>COLLECTED OBSERVATIONS</small><div><h2 id="note-title">A change<br>of view.</h2><hr><p id="note">New work, seen from another angle. An independent edition of Field Notes.</p></div><small>FIELD NOTES · <span class="edition">01</span></small></div></article>
+  <div id="foil-seal" class="seal" aria-label="Edition seal"><div class="seal-content"><span>EDITION</span><b class="edition">01</b><span>FIELD NOTES</span></div></div>
+  <div class="controls"><nav id="edition-control" class="glass" aria-label="Edition actions"><button id="next" disabled>Next edition</button><button id="pause" disabled aria-pressed="false">Pause</button><button id="restart" disabled>Reopen</button><button id="stale" disabled>Retry previous edit</button></nav><output id="status" role="status">Opening edition…</output></div>
+</main>
+<footer><span>ONE WORK / FOUR MATERIALS</span><span>Worldbend · editable receiving example</span></footer>
+<script type="module">
+import {attachMaterialDocument} from '../../dist/material-document.js';
+const $=id=>document.getElementById(id), storageKey='worldbend/field-notes-material-document';
+const originalChildren=new Map(['poster','paper-note','foil-seal','edition-control'].map(id=>[id,[...$(id).childNodes]]));
+let renderedEdition,session,receivingAbort=new AbortController(),actionGeneration=0;
+let edition=1,paused=matchMedia('(prefers-reduced-motion:reduce)').matches,accepted,plans,busy=false,businessActions=0;
+const status=text=>$('status').textContent=text;
+function persist(){try{localStorage.setItem(storageKey,JSON.stringify({version:1,edition,paused}));}catch{status('Edition open. Session storage is unavailable.');}}
+const ready=()=>session&&!session.getState().destroyed&&session.getState().surfaces.length===4&&session.getState().surfaces.every(surface=>surface.status==='ready');
+function availability(){
+  $('next').disabled=busy||!ready()||edition===2;$('stale').disabled=busy||!ready()||edition!==2;
+  $('pause').disabled=busy||!ready();$('restart').disabled=busy||!plans;
+}
+function content(){
+  if(renderedEdition!==edition){
+  $('title').innerHTML=edition===1?'Outside<br>the<br>expected.':'Across<br>the<br>ordinary.';
+  $('note-title').innerHTML=edition===1?'A change<br>of view.':'Another<br>beginning.';
+  document.querySelectorAll('.edition').forEach(node=>node.textContent=String(edition).padStart(2,'0'));
+  renderedEdition=edition;}
+  availability();$('pause').setAttribute('aria-pressed',String(paused));$('pause').textContent=paused?'Resume':'Pause';
+}
+async function attach(plan){
+  if(session&&!session.getState().destroyed){await session.recover();}
+  else session=await attachMaterialDocument(plan,{paused,signal:receivingAbort.signal,
+    resolveSurface:binding=>{if(!originalChildren.has(binding.slotId))throw Error('Receiving surface unavailable');return $(binding.slotId)},
+    onError:()=>{status('A material is unavailable. Reopen to retry; the current edition is retained.');availability();}});
+  accepted=session.getState().guard.documentFingerprint;content();window.worldbendExampleError=undefined;
+}
+async function revise(update,plan){
+  if(update.previousFingerprint!==accepted||update.fingerprint!==plan.documentFingerprint)throw Error('The work has changed. Reopen its current edition before retrying.');
+  await session.revise(plan,session.getState().guard);
+  accepted=session.getState().guard.documentFingerprint;edition=2;content();persist();
+}
+async function action(work){if(busy)return;const generation=++actionGeneration;busy=true;availability();try{await work();if(generation===actionGeneration)businessActions++;}catch(error){if(generation===actionGeneration)status(error.message);}finally{if(generation===actionGeneration){busy=false;availability();}}}
+addEventListener('pagehide',()=>{actionGeneration++;busy=false;receivingAbort.abort();session?.destroy();});
+addEventListener('pageshow',event=>{if(event.persisted){receivingAbort=new AbortController();if(!plans){location.reload();return}void action(async()=>{await attach(edition===2?plans.next:plans.initial);status('Edition '+String(edition).padStart(2,'0')+' reopened.');});}});
+const openingAbort=receivingAbort;
+try{
+  const receive=async name=>{const response=await fetch(new URL(name,import.meta.url),{signal:openingAbort.signal});if(!response.ok)throw Error('Edition receipt unavailable');return response.json();};
+  const [initial,next,update]=await Promise.all(['initial.json','next.json','update.json'].map(receive));plans={initial,next,update};
+  try{const saved=JSON.parse(localStorage.getItem(storageKey));if(saved?.version===1&&[1,2].includes(saved.edition)&&typeof saved.paused==='boolean'){edition=saved.edition;paused=saved.paused||paused;}}catch{}
+  $('next').addEventListener('click',()=>action(async()=>{await revise(update,next);status('Edition 02 · content and materials updated.');}));
+  $('pause').addEventListener('click',()=>action(()=>{paused=!paused;session.setPaused(paused);content();persist();const reduced=session.getState().surfaces.some(surface=>surface.reducedMotion);status(paused?'Motion paused.':reduced?'Motion follows your device’s reduced-motion preference.':'Motion resumed.');}));
+  $('restart').addEventListener('click',()=>action(async()=>{await attach(edition===2?next:initial);status('Edition '+String(edition).padStart(2,'0')+' reopened.');}));
+  $('stale').addEventListener('click',()=>action(async()=>{await revise(update,next);status('Edition 02 · content and materials updated.');}));
+  // Read-only acceptance observations for the real-browser fixture. Rendering
+  // and document meaning remain in their ordinary Worldbend implementations.
+  window.worldbendExample={get session(){return session},get plans(){return plans},getState:()=>({edition,paused,accepted,busy,businessActions,
+    ready:ready(),
+    originalContentRetained:[...originalChildren].every(([id,nodes])=>nodes.every(node=>node.parentNode===$(id))),
+    materialStates:session?.getState().surfaces.map(surface=>({id:surface.expressionId,...surface}))})};
+  await attach(edition===2?next:initial);status('Edition '+String(edition).padStart(2,'0')+' open.');
+}catch(error){if(!openingAbort.signal.aborted){status(error.message+(plans?' Reopen to retry.':' Reload to retry.'));availability();window.worldbendExampleError=error.message;}}
+
+</script>
+</html>

@@ -1,0 +1,107 @@
+{
+  "deliveries": [
+    {
+      "bindings": [
+        {
+          "assetId": "showcase-backdrop",
+          "role": "content",
+          "slotId": "background"
+        },
+        {
+          "assetId": "showcase-details",
+          "role": "content",
+          "slotId": "middle"
+        },
+        {
+          "assetId": "showcase-product",
+          "role": "content",
+          "slotId": "foreground"
+        }
+      ],
+      "id": "showcase-hero",
+      "kind": "interactive",
+      "recipe": {
+        "appearance": {
+          "depthOfField": {
+            "focusDistance": 650,
+            "focusRange": 300,
+            "maxBlurRadius": 11.479999999999999
+          },
+          "motionBlur": {
+            "exposureFraction": 0.65,
+            "maxBlurRadius": 26.24
+          }
+        },
+        "camera": {
+          "focalLength": 1320,
+          "focusDistance": 1000,
+          "travel": {
+            "x": 49.199999999999996,
+            "y": 32.8
+          }
+        },
+        "layers": [
+          {
+            "id": "background",
+            "offset": {
+              "x": -60,
+              "y": -40
+            },
+            "surface": {
+              "distance": 1500,
+              "kind": "camera-plane",
+              "size": {
+                "height": 480,
+                "width": 720
+              }
+            },
+            "tracks": []
+          },
+          {
+            "id": "middle",
+            "offset": {
+              "x": -60,
+              "y": -40
+            },
+            "surface": {
+              "distance": 1000,
+              "kind": "camera-plane",
+              "size": {
+                "height": 480,
+                "width": 720
+              }
+            },
+            "tracks": []
+          },
+          {
+            "id": "foreground",
+            "offset": {
+              "x": -60,
+              "y": -40
+            },
+            "surface": {
+              "distance": 650,
+              "kind": "camera-plane",
+              "size": {
+                "height": 480,
+                "width": 720
+              }
+            },
+            "tracks": []
+          }
+        ],
+        "origin": null,
+        "schema": "worldbend.effect-recipe",
+        "version": "3",
+        "viewport": {
+          "height": 400,
+          "width": 600
+        }
+      },
+      "recipeFingerprint": "sha256:78994e779d0f23bcdf68ee5d9f806724bc202cd0695a01e5d0ae846d73e34262"
+    }
+  ],
+  "documentFingerprint": "sha256:8d8e9aec0dc4ecffa8ea8d682bb6b1c7a58533f86214eafbe6fe95afea724a1e",
+  "schema": "worldbend.spatial-document-delivery-plan",
+  "version": "0.1"
+}

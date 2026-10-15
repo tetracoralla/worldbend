@@ -1,0 +1,74 @@
+[package]
+license.workspace = true
+name = "worldbend-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "MCP adapter for Worldbend"
+
+[features]
+default = ["full"]
+full = [
+    "worldbend-core/surface-window",
+    "worldbend-core/spatial-effects",
+    "worldbend-core/appearance",
+    "worldbend-core/surface-deformation",
+    "worldbend-core/deformation-work",
+    "worldbend-core/motion",
+    "worldbend-core/video",
+    "worldbend-core/css",
+    "worldbend-core/place",
+    "worldbend-core/deform",
+    "worldbend-core/remap",
+    "worldbend-core/timeline",
+    "worldbend-core/program",
+    "worldbend-core/template",
+    "worldbend-core/document",
+    "worldbend-render/place",
+    "worldbend-render/effects",
+    "worldbend-render/deform",
+    "worldbend-render/remap",
+    "worldbend-render/timeline",
+    "worldbend-render/program",
+    "worldbend-render/template",
+    "worldbend-render/surface-deformation",
+    "worldbend-render/deformation-work",
+    "worldbend-render/motion",
+    "worldbend-render/video",
+    "worldbend-render/svg-source",
+]
+
+[[bin]]
+name = "worldbend-mcp"
+path = "src/main.rs"
+
+[dependencies]
+hex = "0.4"
+anyhow.workspace = true
+base64.workspace = true
+clap.workspace = true
+futures = "0.3"
+flate2 = "1.1.9"
+image.workspace = true
+libc.workspace = true
+worldbend-agent-fs = { path = "../worldbend-agent-fs" }
+worldbend-process = { path = "../worldbend-process" }
+worldbend-core = { path = "../worldbend-core", default-features = false }
+worldbend-render = { path = "../worldbend-render", default-features = false }
+worldbend-perception = { path = "../worldbend-perception" }
+worldbend-interop = { path = "../worldbend-interop" }
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tokio-util = "0.7"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+image.workspace = true

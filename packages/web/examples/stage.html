@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,"><link rel="stylesheet" href="stage.css">
+<title>Worldbend · 一方小天地</title>
+<body>
+<header><a href="effects.html" class="brand">W↗ <span>Worldbend</span></a><span class="edition">EXPRESSION STUDY / 02</span><a href="effects.html">更多空间表达 ↗</a></header>
+<main>
+  <section class="intro"><div><p class="eyebrow">从一个意图开始</p><h1>让角色站在空间里。</h1><p class="lede">同一个小舞台，三种处理。拖动任一画面，观察它们如何回应。</p></div><p class="brief">目的：和角色互动，而不是摆弄一张卡片。<br>公仔、接触阴影与底座一起移动，避免脚底滑动。<br>本例为独立原创素材，供试做与接入比较。</p></section>
+  <section class="cards" aria-label="同一内容与手势的三个方案">
+    <article><div class="card-head"><span class="number">A</span><h2>轻轻晃动</h2><span class="method">宿主位移</span></div><div class="view" id="host" role="group" tabindex="0" aria-label="方案 A，拖动或用方向键晃动"><div class="scene"></div></div><p>前景动得多，远景动得少。足以表达轻巧的纵深。</p><button class="choose" data-choice="host-offsets" aria-pressed="true">选择 A · 简单位移</button></article>
+    <article><div class="card-head"><span class="number">B</span><h2>把关系保存下来</h2><span class="method">Worldbend 配方</span></div><div class="view" id="recipe" role="group" tabindex="0" aria-label="方案 B，拖动或用方向键晃动"><div class="scene"></div></div><p>相同的分层幅度。差别在于配方可以验证、保存和重放。</p><button class="choose" data-choice="layered-depth" aria-pressed="false">选择 B · 可复用配方</button></article>
+    <article><div class="card-head"><span class="number">C</span><h2>拿起一张卡片</h2><span class="method">Worldbend 整体透视</span></div><div class="view" id="rigid" role="group" tabindex="0" aria-label="方案 C，拖动或用方向键转动"><div class="scene"></div></div><p>整体朝向发生变化。更适合藏品卡，场景里的物件仍在一个平面。</p><button class="choose" data-choice="rigid-tilt" aria-pressed="false">选择 C · 整体透视</button></article>
+  </section>
+  <section class="controls" aria-label="共同操作状态"><label>左右<input id="x" type="range" min="-1" max="1" step=".01" value="0"></label><label>上下<input id="y" type="range" min="-1" max="1" step=".01" value="0"></label><button id="reset">回到中间</button><button id="theme">换位朋友</button><label class="toggle"><input id="reduce" type="checkbox">静态查看</label></section>
+  <p id="status" role="status" aria-live="polite">正在准备画面…</p>
+  <section class="decision"><div><p class="eyebrow">这次留下的判断</p><h2 id="decision-title">简单晃动，先选 A。</h2><p>如果交付只有三层位移，A 的实现更轻；如果需要保存、交换和验证空间配方，B 才带来额外价值。C 可以留给藏品卡片。选择随任务改变。</p><a href="effects.html">需要折叠、共面或磨砂窗口？打开空间试验台 ↗</a></div><div><label for="observation">观察与选择理由</label><textarea id="observation" maxlength="2000" rows="3">三层位移已经表达了前后关系。公仔、阴影与底座保持接触；整体透视更像拿起一张卡片。本次推荐简单位移。</textarea><div class="actions"><button id="open">打开比较</button><button class="primary" id="save">保存比较与反馈</button></div><p class="fine">保存到本地文件，包含配方、素材版本、状态与这段观察。不自动上传；观察是使用者判断。</p></div></section>
+</main>
+<input type="file" id="file" accept="application/json,.json" hidden>
+<script type="module" src="stage.js"></script>
+</body></html>

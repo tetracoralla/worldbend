@@ -1,0 +1,59 @@
+[package]
+license.workspace = true
+name = "worldbend-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Native reference raster renderer for Worldbend"
+
+[[test]]
+name = "motion_presentation"
+required-features = ["video", "program"]
+
+[features]
+default = [
+  "place",
+  "deform",
+  "deformation-work",
+  "remap",
+  "timeline",
+  "program",
+  "template",
+  "surface-deformation",
+  "motion",
+  "video",
+  "svg-source",
+]
+place = ["worldbend-core/place"]
+deform = ["worldbend-core/deform"]
+deformation-work = ["worldbend-core/deformation-work", "deform"]
+remap = ["worldbend-core/remap"]
+timeline = ["worldbend-core/timeline"]
+program = ["worldbend-core/program", "deformation-work", "surface-deformation", "remap"]
+template = ["worldbend-core/template", "place", "program"]
+surface-deformation = ["worldbend-core/surface-deformation", "deform"]
+motion = ["worldbend-core/motion", "timeline"]
+video = ["worldbend-core/video", "motion", "place", "dep:worldbend-process"]
+effects = ["worldbend-core/spatial-effects", "place"]
+svg-source = ["dep:resvg", "dep:roxmltree", "dep:svgtypes"]
+
+[dependencies]
+hex = "0.4"
+base64.workspace = true
+image.workspace = true
+libc.workspace = true
+worldbend-core = { path = "../worldbend-core", default-features = false }
+worldbend-process = { path = "../worldbend-process", optional = true }
+rayon.workspace = true
+resvg = { version = "0.48.1", default-features = false, features = ["raster-images"], optional = true }
+roxmltree = { version = "0.21.1", optional = true }
+svgtypes = { version = "0.16.1", optional = true }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+worldbend-core = { path = "../worldbend-core", default-features = false, features = ["document"] }

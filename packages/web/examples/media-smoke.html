@@ -1,0 +1,37 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Worldbend · 实时媒体验证</title>
+<style>body{font:16px system-ui;background:#f3f5f5;color:#172124;padding:30px}button{font:inherit;padding:12px 18px;margin:10px 8px 10px 0}#plane{position:relative;width:min(700px,90vw);height:260px;margin:35px 0}#plane img,#plane video{position:absolute;left:0;top:0;width:320px;height:220px;object-fit:cover}pre{white-space:pre-wrap}</style>
+<h1>图片与视频保持实时</h1><p>本地生成的视频测试流，不访问相机、麦克风或网络媒体。</p><button id="run">验证实时媒体</button><button id="stop">停止</button><div id="plane"></div><pre id="result" role="status">尚未运行</pre>
+<script type="module">
+import {attachPerspectiveStrip,normalizedSpec} from '../dist/perspective.js';
+const host=document.getElementById('plane'),out=document.getElementById('result'),button=document.getElementById('run');
+let cleanup=()=>{};
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const assert=(value,message)=>{if(!value)throw new Error(message);};
+button.onclick=async()=>{
+  cleanup();host.replaceChildren();button.disabled=true;out.textContent='验证中';
+  const canvas=document.createElement('canvas');canvas.width=640;canvas.height=440;const context=canvas.getContext('2d');let frame=0;
+  const draw=()=>{context.fillStyle=`hsl(${frame*4%360} 32% 35%)`;context.fillRect(0,0,640,440);context.fillStyle='white';context.font='36px system-ui';context.fillText('Live video frame '+(++frame),40,220);};draw();
+  const timer=setInterval(draw,50),stream=canvas.captureStream(20),video=document.createElement('video'),image=document.createElement('img');
+  video.muted=true;video.playsInline=true;video.controls=true;video.srcObject=stream;image.alt='正面测试图片';
+  const source=color=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="440"><rect width="640" height="440" fill="${color}"/><text x="40" y="220" fill="white" font-size="36">Live image source</text></svg>`);
+  image.src=source('#46694e');host.append(image,video);
+  const spec=normalizedSpec({tl:{x:0,y:0},tr:{x:1,y:.14},br:{x:1,y:.86},bl:{x:0,y:1}}),errors=[];
+  const binding=attachPerspectiveStrip(host,[{id:'image',element:image,start:0,end:.47},{id:'video',element:video,start:.53,end:1}],spec,{onError:error=>errors.push(error.code)});
+  cleanup=()=>{binding.dispose();clearInterval(timer);stream.getTracks().forEach(track=>track.stop());video.pause();};
+  try{
+    await Promise.all([video.play(),image.decode()]);await wait(250);
+    assert(binding.getSpecs()?.length===2,'media geometry was not applied');assert(video.videoWidth===640&&image.naturalWidth===640,'media did not decode');
+    const initialTime=video.currentTime,plan=JSON.stringify(binding.getSpecs()),streamIdentity=video.srcObject;
+    image.src=source('#a27c41');await image.decode();await wait(150);
+    assert(JSON.stringify(binding.getSpecs())===plan,'image replacement changed geometry');
+    const requests=Array.from({length:120},()=>binding.update(spec));await Promise.all(requests);
+    const invalid=structuredClone(spec);[invalid.destination.quad.tr,invalid.destination.quad.bl]=[invalid.destination.quad.bl,invalid.destination.quad.tr];
+    assert(!await binding.update(invalid),'invalid media plane accepted');assert(await binding.update(spec),'media recovery failed');await wait(200);
+    assert(video.srcObject===streamIdentity&&!video.paused&&video.currentTime>initialTime,'geometry update interrupted live playback');assert(host.children[0]===image&&host.children[1]===video,'bindings replaced media nodes');
+    assert(errors.length===1&&errors[0]==='E_QUAD_ORIENTATION','unexpected media error');
+    out.textContent=JSON.stringify({ok:true,imageNaturalSize:[image.naturalWidth,image.naturalHeight],videoDecodedSize:[video.videoWidth,video.videoHeight],videoTimeAdvancedSeconds:video.currentTime-initialTime,sourceReplacementKeepsMapping:true,mediaNodesAndStreamPreserved:true,coalescedUpdates:120,invalidMappingRejected:true,recovery:true},null,2);
+  }catch(error){out.textContent=JSON.stringify({ok:false,error:String(error.stack??error)},null,2);cleanup();}
+  finally{button.disabled=false;}
+};
+document.getElementById('stop').onclick=()=>{cleanup();out.textContent+='\n已停止视频流。';};window.addEventListener('pagehide',()=>cleanup(),{once:true});
+</script></html>

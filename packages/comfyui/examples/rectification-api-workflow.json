@@ -1,0 +1,41 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "input.png"
+    }
+  },
+  "2": {
+    "class_type": "Worldbend_RectificationSpec",
+    "inputs": {
+      "spec_json": "{\n  \"schema\": \"worldbend.rectify\",\n  \"version\": \"0.1\",\n  \"source\": {\n    \"space\": \"normalized\",\n    \"quad\": {\n      \"tl\": { \"x\": 0.12, \"y\": 0.16 },\n      \"tr\": { \"x\": 0.88, \"y\": 0.08 },\n      \"br\": { \"x\": 0.82, \"y\": 0.92 },\n      \"bl\": { \"x\": 0.18, \"y\": 0.84 }\n    }\n  },\n  \"output\": { \"width\": 1200, \"height\": 800 }\n}"
+    }
+  },
+  "3": {
+    "class_type": "Worldbend_ApplyRectification",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "mask": [
+        "1",
+        1
+      ],
+      "rectification": [
+        "2",
+        0
+      ],
+      "quality": "standard"
+    }
+  },
+  "4": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "3",
+        0
+      ]
+    }
+  }
+}

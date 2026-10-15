@@ -1,0 +1,231 @@
+{
+  "document": {
+    "schema": "worldbend.spatial-document",
+    "version": "0.1",
+    "assets": [
+      {
+        "id": "hanging-fabric",
+        "contentVersion": "n2-ready-v1"
+      },
+      {
+        "id": "carton-label",
+        "contentVersion": "n2-ready-v1"
+      }
+    ],
+    "expressions": [
+      {
+        "kind": "temporal",
+        "id": "ready-scene-showcase-video",
+        "video": {
+          "schema": "worldbend.mockup-video",
+          "version": "0.1",
+          "backgroundRgb": [
+            16,
+            22,
+            34
+          ],
+          "encoding": {
+            "format": "mp4H264",
+            "crf": 18
+          },
+          "mockupMotion": {
+            "schema": "worldbend.mockup-motion",
+            "version": "0.1",
+            "canvas": {
+              "width": 800,
+              "height": 600
+            },
+            "timebase": {
+              "numerator": 30,
+              "denominator": 1
+            },
+            "frameCount": 30,
+            "background": {
+              "kind": "transparent"
+            },
+            "seams": [],
+            "planes": [
+              {
+                "id": "hanging-fabric",
+                "sourceId": "hanging-fabric",
+                "opacity": 1,
+                "base": {
+                  "schema": "worldbend.transform",
+                  "version": "0.1",
+                  "destination": {
+                    "space": "normalized",
+                    "quad": {
+                      "tl": {
+                        "x": 0.02,
+                        "y": 0.05
+                      },
+                      "tr": {
+                        "x": 0.98,
+                        "y": 0.05
+                      },
+                      "br": {
+                        "x": 0.98,
+                        "y": 0.95
+                      },
+                      "bl": {
+                        "x": 0.02,
+                        "y": 0.95
+                      }
+                    }
+                  },
+                  "content": {
+                    "fit": "stretch",
+                    "orientation": "native"
+                  }
+                },
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "quad": {
+                      "tl": {
+                        "x": 0.02,
+                        "y": 0.05
+                      },
+                      "tr": {
+                        "x": 0.98,
+                        "y": 0.05
+                      },
+                      "br": {
+                        "x": 0.98,
+                        "y": 0.95
+                      },
+                      "bl": {
+                        "x": 0.02,
+                        "y": 0.95
+                      }
+                    },
+                    "easingToNext": {
+                      "kind": "linear"
+                    }
+                  },
+                  {
+                    "frame": 29,
+                    "quad": {
+                      "tl": {
+                        "x": 0.0,
+                        "y": 0.03
+                      },
+                      "tr": {
+                        "x": 1.0,
+                        "y": 0.07
+                      },
+                      "br": {
+                        "x": 1.0,
+                        "y": 0.97
+                      },
+                      "bl": {
+                        "x": 0.0,
+                        "y": 0.93
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "carton-label",
+                "sourceId": "carton-label",
+                "opacity": 1,
+                "base": {
+                  "schema": "worldbend.transform",
+                  "version": "0.1",
+                  "destination": {
+                    "space": "normalized",
+                    "quad": {
+                      "tl": {
+                        "x": 0.28,
+                        "y": 0.18
+                      },
+                      "tr": {
+                        "x": 0.72,
+                        "y": 0.18
+                      },
+                      "br": {
+                        "x": 0.74,
+                        "y": 0.78
+                      },
+                      "bl": {
+                        "x": 0.26,
+                        "y": 0.78
+                      }
+                    }
+                  },
+                  "content": {
+                    "fit": "stretch",
+                    "orientation": "native"
+                  }
+                },
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "quad": {
+                      "tl": {
+                        "x": 0.28,
+                        "y": 0.18
+                      },
+                      "tr": {
+                        "x": 0.72,
+                        "y": 0.18
+                      },
+                      "br": {
+                        "x": 0.74,
+                        "y": 0.78
+                      },
+                      "bl": {
+                        "x": 0.26,
+                        "y": 0.78
+                      }
+                    },
+                    "easingToNext": {
+                      "kind": "linear"
+                    }
+                  },
+                  {
+                    "frame": 29,
+                    "quad": {
+                      "tl": {
+                        "x": 0.22,
+                        "y": 0.16
+                      },
+                      "tr": {
+                        "x": 0.7,
+                        "y": 0.22
+                      },
+                      "br": {
+                        "x": 0.78,
+                        "y": 0.82
+                      },
+                      "bl": {
+                        "x": 0.24,
+                        "y": 0.76
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "bindings": [
+          {
+            "role": "content",
+            "slotId": "hanging-fabric",
+            "assetId": "hanging-fabric"
+          },
+          {
+            "role": "content",
+            "slotId": "carton-label",
+            "assetId": "carton-label"
+          }
+        ]
+      }
+    ]
+  },
+  "expressionIds": [
+    "ready-scene-showcase-video"
+  ]
+}

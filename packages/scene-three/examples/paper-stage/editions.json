@@ -1,0 +1,20 @@
+{
+  "1": {
+    "cover": "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653",
+    "scene": "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38",
+    "camera": "RevealCamera",
+    "animation": "Scene"
+  },
+  "2": {
+    "cover": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+    "scene": "sha256:cf450c061c11ad4ec25b2d3a519cf787cf67e344f18516f73bb1d33663e300cd",
+    "camera": "RevealCamera",
+    "animation": "Scene"
+  },
+  "3": {
+    "cover": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+    "scene": "sha256:d702f1a03a08ad65d5e3e0bd0baff03daf9aa414e175d8b0ff26ca08b81dadfa",
+    "camera": "Reveal Camera.003",
+    "animation": "Scene"
+  }
+}

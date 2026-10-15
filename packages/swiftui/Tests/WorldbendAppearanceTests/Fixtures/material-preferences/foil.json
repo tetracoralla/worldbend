@@ -1,0 +1,3151 @@
+{
+  "cases": [
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "flow-speed",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 1.0,
+          "b": 0.68,
+          "g": 0.71,
+          "r": 0.72
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.45,
+        "visible": true
+      },
+      "name": "empty",
+      "policy": {
+        "exposed": [
+          {
+            "field": "roughness",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "flow-speed",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "visible"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {},
+        "recipeId": "field-notes-foil",
+        "revision": 0,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:e3121330d02fa81fdeebae4022aee53f9289914a0aa6ac6550dc719af6acbecd",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.45,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:c89000d691f6044ced622757c72bf74d8937bf6bfc568284da70534b48c4a1c5",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 1,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": false
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": false
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 133.2
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 133.2
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.74
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            2.0
+          ],
+          "field": "flow-speed",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.74
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 0.78,
+          "b": 0.56,
+          "g": 0.34,
+          "r": 0.12
+        },
+        "flowSpeed": 0.74,
+        "highlightColor": {
+          "a": 0.78,
+          "b": 0.56,
+          "g": 0.34,
+          "r": 0.12
+        },
+        "intensity": 0.37,
+        "lightAngle": 133.2,
+        "roughness": 0.37,
+        "visible": false
+      },
+      "name": "all-fields",
+      "policy": {
+        "exposed": [
+          {
+            "field": "visible"
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "highlight-color"
+          },
+          {
+            "field": "light-angle"
+          },
+          {
+            "field": "intensity"
+          },
+          {
+            "field": "roughness"
+          },
+          {
+            "field": "flow-speed"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "base-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.78,
+                "b": 0.56,
+                "g": 0.34,
+                "r": 0.12
+              }
+            }
+          },
+          "flow-speed": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 0.74
+            }
+          },
+          "highlight-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.78,
+                "b": 0.56,
+                "g": 0.34,
+                "r": 0.12
+              }
+            }
+          },
+          "intensity": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 0.37
+            }
+          },
+          "light-angle": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 133.2
+            }
+          },
+          "roughness": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 0.37
+            }
+          },
+          "visible": {
+            "actor": "agent",
+            "value": {
+              "kind": "toggle",
+              "value": false
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "visible",
+          "state": "applied"
+        },
+        {
+          "field": "base-color",
+          "state": "applied"
+        },
+        {
+          "field": "highlight-color",
+          "state": "applied"
+        },
+        {
+          "field": "light-angle",
+          "state": "applied"
+        },
+        {
+          "field": "intensity",
+          "state": "applied"
+        },
+        {
+          "field": "roughness",
+          "state": "applied"
+        },
+        {
+          "field": "flow-speed",
+          "state": "applied"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:e3121330d02fa81fdeebae4022aee53f9289914a0aa6ac6550dc719af6acbecd",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.45,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:c89000d691f6044ced622757c72bf74d8937bf6bfc568284da70534b48c4a1c5",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 1,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": false
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "adapted",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": false
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "adapted",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "adapted",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.78,
+              "b": 0.56,
+              "g": 0.34,
+              "r": 0.12
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 133.2
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "adapted",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 133.2
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "adapted",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "adapted",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.37
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.74
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            2.0
+          ],
+          "field": "flow-speed",
+          "state": "adapted",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.74
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 0.78,
+          "b": 0.56,
+          "g": 0.34,
+          "r": 0.12
+        },
+        "flowSpeed": 0.74,
+        "highlightColor": {
+          "a": 0.78,
+          "b": 0.56,
+          "g": 0.34,
+          "r": 0.12
+        },
+        "intensity": 0.37,
+        "lightAngle": 133.2,
+        "roughness": 0.37,
+        "visible": false
+      },
+      "name": "unavailable",
+      "policy": {
+        "exposed": [
+          {
+            "field": "visible"
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "highlight-color"
+          },
+          {
+            "field": "light-angle"
+          },
+          {
+            "field": "intensity"
+          },
+          {
+            "field": "roughness"
+          },
+          {
+            "field": "flow-speed"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "base-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.78,
+                "b": 0.56,
+                "g": 0.34,
+                "r": 0.12
+              }
+            }
+          },
+          "flow-speed": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 0.74
+            }
+          },
+          "highlight-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.78,
+                "b": 0.56,
+                "g": 0.34,
+                "r": 0.12
+              }
+            }
+          },
+          "intensity": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 0.37
+            }
+          },
+          "light-angle": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 133.2
+            }
+          },
+          "roughness": {
+            "actor": "agent",
+            "value": {
+              "kind": "number",
+              "value": 0.37
+            }
+          },
+          "visible": {
+            "actor": "agent",
+            "value": {
+              "kind": "toggle",
+              "value": false
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "visible",
+          "state": "applied"
+        },
+        {
+          "field": "base-color",
+          "state": "applied"
+        },
+        {
+          "field": "highlight-color",
+          "state": "applied"
+        },
+        {
+          "field": "light-angle",
+          "state": "applied"
+        },
+        {
+          "field": "intensity",
+          "state": "applied"
+        },
+        {
+          "field": "roughness",
+          "state": "applied"
+        },
+        {
+          "field": "flow-speed",
+          "state": "applied"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": false
+      },
+      "source": {
+        "fingerprint": "sha256:e3121330d02fa81fdeebae4022aee53f9289914a0aa6ac6550dc719af6acbecd",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.45,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:c89000d691f6044ced622757c72bf74d8937bf6bfc568284da70534b48c4a1c5",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 1,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "flow-speed",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 1.0,
+          "b": 0.68,
+          "g": 0.71,
+          "r": 0.72
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.45,
+        "visible": true
+      },
+      "name": "explicit-default",
+      "policy": {
+        "exposed": [
+          {
+            "field": "roughness",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "flow-speed",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "visible"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "roughness": {
+            "actor": "user",
+            "value": {
+              "kind": "number",
+              "value": 0.45
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "roughness",
+          "state": "applied"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:e3121330d02fa81fdeebae4022aee53f9289914a0aa6ac6550dc719af6acbecd",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.45,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:c89000d691f6044ced622757c72bf74d8937bf6bfc568284da70534b48c4a1c5",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 1,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "flow-speed",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 1.0,
+          "b": 0.68,
+          "g": 0.71,
+          "r": 0.72
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.45,
+        "visible": true
+      },
+      "name": "later-design",
+      "policy": {
+        "exposed": [
+          {
+            "field": "roughness",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "flow-speed",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "visible"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "roughness": {
+            "actor": "user",
+            "value": {
+              "kind": "number",
+              "value": 0.45
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "roughness",
+          "state": "applied"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:3d96b3deaa1c42e66c42040272451884bbdeee5403ab3310b222f58745acb40f",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.85,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:9d53e1ed7d09c9acd9880749ae52968bd5f28ceaac186016b93aa3cdadfb3555",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 2,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.7,
+              "b": 0.6,
+              "g": 0.3,
+              "r": 0.1
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.7,
+              "b": 0.6,
+              "g": 0.3,
+              "r": 0.1
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "flow-speed",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 0.7,
+          "b": 0.6,
+          "g": 0.3,
+          "r": 0.1
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.45,
+        "visible": true
+      },
+      "name": "color",
+      "policy": {
+        "exposed": [
+          {
+            "field": "roughness",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "flow-speed",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "visible"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "base-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.7,
+                "b": 0.6,
+                "g": 0.3,
+                "r": 0.1
+              }
+            }
+          },
+          "roughness": {
+            "actor": "user",
+            "value": {
+              "kind": "number",
+              "value": 0.45
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "base-color",
+          "state": "applied"
+        },
+        {
+          "field": "roughness",
+          "state": "applied"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:3d96b3deaa1c42e66c42040272451884bbdeee5403ab3310b222f58745acb40f",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.85,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:9d53e1ed7d09c9acd9880749ae52968bd5f28ceaac186016b93aa3cdadfb3555",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 2,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            2.0
+          ],
+          "field": "flow-speed",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 1.0,
+          "b": 0.68,
+          "g": 0.71,
+          "r": 0.72
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.85,
+        "visible": true
+      },
+      "name": "hidden",
+      "policy": {
+        "exposed": [],
+        "policyId": "reading-room",
+        "revision": 2,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "base-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.7,
+                "b": 0.6,
+                "g": 0.3,
+                "r": 0.1
+              }
+            }
+          },
+          "roughness": {
+            "actor": "user",
+            "value": {
+              "kind": "number",
+              "value": 0.45
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "base-color",
+          "state": "not-exposed"
+        },
+        {
+          "field": "roughness",
+          "state": "not-exposed"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:3d96b3deaa1c42e66c42040272451884bbdeee5403ab3310b222f58745acb40f",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.85,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:9d53e1ed7d09c9acd9880749ae52968bd5f28ceaac186016b93aa3cdadfb3555",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 2,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            0.2
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            2.0
+          ],
+          "field": "flow-speed",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 1.0,
+          "b": 0.68,
+          "g": 0.71,
+          "r": 0.72
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.85,
+        "visible": true
+      },
+      "name": "narrowed",
+      "policy": {
+        "exposed": [
+          {
+            "field": "roughness",
+            "max": 0.2,
+            "min": 0
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 3,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "base-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.7,
+                "b": 0.6,
+                "g": 0.3,
+                "r": 0.1
+              }
+            }
+          },
+          "roughness": {
+            "actor": "user",
+            "value": {
+              "kind": "number",
+              "value": 0.45
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "base-color",
+          "state": "not-exposed"
+        },
+        {
+          "field": "roughness",
+          "state": "out-of-range"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": true,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:3d96b3deaa1c42e66c42040272451884bbdeee5403ab3310b222f58745acb40f",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.85,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:9d53e1ed7d09c9acd9880749ae52968bd5f28ceaac186016b93aa3cdadfb3555",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 2,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    },
+    {
+      "controls": [
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "toggle",
+            "value": true
+          },
+          "default": {
+            "kind": "toggle",
+            "value": true
+          },
+          "direction": "show material",
+          "effectiveRange": null,
+          "field": "visible",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "toggle",
+            "value": true
+          },
+          "unit": "toggle"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.7,
+              "b": 0.6,
+              "g": 0.3,
+              "r": 0.1
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.68,
+              "g": 0.71,
+              "r": 0.72
+            }
+          },
+          "direction": "base tint and coverage",
+          "effectiveRange": null,
+          "field": "base-color",
+          "state": "exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 0.7,
+              "b": 0.6,
+              "g": 0.3,
+              "r": 0.1
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": null,
+          "cost": "live",
+          "current": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "default": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "direction": "highlight tint and coverage",
+          "effectiveRange": null,
+          "field": "highlight-color",
+          "state": "not-exposed",
+          "targetRange": null,
+          "targetValue": {
+            "kind": "rgba",
+            "value": {
+              "a": 1.0,
+              "b": 0.78,
+              "g": 0.92,
+              "r": 0.98
+            }
+          },
+          "unit": "srgb-rgba"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            360.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "default": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "direction": "rotate incident light",
+          "effectiveRange": [
+            0.0,
+            360.0
+          ],
+          "field": "light-angle",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            360.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 120.0
+          },
+          "unit": "degrees"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "direction": "increase highlight response",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "intensity",
+          "state": "not-exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.6
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            1.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.85
+          },
+          "direction": "soften specular detail",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "roughness",
+          "state": "exposed",
+          "targetRange": [
+            0.0,
+            1.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.45
+          },
+          "unit": "ratio"
+        },
+        {
+          "authoredRange": [
+            0.0,
+            2.0
+          ],
+          "cost": "live",
+          "current": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "default": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "direction": "increase flow speed",
+          "effectiveRange": [
+            0.0,
+            1.0
+          ],
+          "field": "flow-speed",
+          "state": "adapted",
+          "targetRange": [
+            0.0,
+            2.0
+          ],
+          "targetValue": {
+            "kind": "number",
+            "value": 0.25
+          },
+          "unit": "multiplier"
+        }
+      ],
+      "expectedMaterial": {
+        "baseColor": {
+          "a": 0.7,
+          "b": 0.6,
+          "g": 0.3,
+          "r": 0.1
+        },
+        "flowSpeed": 0.25,
+        "highlightColor": {
+          "a": 1.0,
+          "b": 0.78,
+          "g": 0.92,
+          "r": 0.98
+        },
+        "intensity": 0.6,
+        "lightAngle": 120.0,
+        "roughness": 0.45,
+        "visible": true
+      },
+      "name": "reduced",
+      "policy": {
+        "exposed": [
+          {
+            "field": "roughness",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "base-color"
+          },
+          {
+            "field": "flow-speed",
+            "max": 1,
+            "min": 0
+          },
+          {
+            "field": "visible"
+          }
+        ],
+        "policyId": "reading-room",
+        "revision": 1,
+        "schema": "worldbend.material-policy@0.1",
+        "scopes": [
+          "book-cover"
+        ]
+      },
+      "preference": {
+        "fields": {
+          "base-color": {
+            "actor": "agent",
+            "value": {
+              "kind": "rgba",
+              "value": {
+                "a": 0.7,
+                "b": 0.6,
+                "g": 0.3,
+                "r": 0.1
+              }
+            }
+          },
+          "roughness": {
+            "actor": "user",
+            "value": {
+              "kind": "number",
+              "value": 0.45
+            }
+          }
+        },
+        "recipeId": "field-notes-foil",
+        "revision": 1,
+        "schema": "worldbend.material-preference@0.1",
+        "scope": "book-cover"
+      },
+      "receipts": [
+        {
+          "field": "base-color",
+          "state": "applied"
+        },
+        {
+          "field": "roughness",
+          "state": "applied"
+        }
+      ],
+      "runtime": {
+        "motionAllowed": false,
+        "rendererAvailable": true
+      },
+      "source": {
+        "fingerprint": "sha256:3d96b3deaa1c42e66c42040272451884bbdeee5403ab3310b222f58745acb40f",
+        "kernel": {
+          "id": "worldbend.foil.rgba@0.1",
+          "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+          "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+          "uniformBytes": 96
+        },
+        "material": {
+          "baseColor": {
+            "a": 1.0,
+            "b": 0.68,
+            "g": 0.71,
+            "r": 0.72
+          },
+          "flowSpeed": 0.25,
+          "highlightColor": {
+            "a": 1.0,
+            "b": 0.78,
+            "g": 0.92,
+            "r": 0.98
+          },
+          "intensity": 0.6,
+          "lightAngle": 120.0,
+          "roughness": 0.85,
+          "visible": true
+        },
+        "recipeFingerprint": "sha256:9d53e1ed7d09c9acd9880749ae52968bd5f28ceaac186016b93aa3cdadfb3555",
+        "recipeId": "field-notes-foil",
+        "recipeVersion": 2,
+        "schema": "worldbend.foil-delivery@0.1",
+        "target": "swiftui",
+        "version": "0.1"
+      }
+    }
+  ],
+  "family": "foil"
+}

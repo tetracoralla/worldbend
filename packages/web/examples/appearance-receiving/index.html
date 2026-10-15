@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alpine day planner · Material receiving example</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0c171d;color:#f4f9fa;font:15px/1.5 system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:28px}h1{font-size:clamp(34px,6vw,68px);line-height:1.04;letter-spacing:-.04em;margin:0 0 22px}
+.scene{position:relative;min-height:660px;border-radius:30px;overflow:hidden;background:linear-gradient(0deg,#04131de6,#04131d70 80%,transparent),url('../assets/fronalpstock.jpg') center/cover}
+.story{padding:155px 36px 190px;max-width:680px}.story p{max-width:380px}small{font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.controls{position:absolute;display:flex;align-items:center;gap:16px;background:#e3f0ff11;border-radius:24px;padding:16px 22px}
+.nav{left:24px;right:24px;top:24px;justify-content:space-between}.nav strong{color:#092530}.booking{left:24px;right:24px;bottom:24px;flex-wrap:wrap;justify-content:space-between}
+.booking strong{font-size:22px}.booking p{margin:0;color:#e7f2f5}button{font:inherit;cursor:pointer;border:1px solid #bedbe45c;border-radius:16px;padding:10px 16px;background:#102932d9;color:inherit}
+button:hover{background:#20444e}button:disabled{cursor:default;opacity:.5}button:focus-visible{outline:3px solid #84e9ee;outline-offset:3px}button.primary{background:#d9f3ef;color:#142e36;border-color:transparent;font-weight:650}
+.actions{display:flex;gap:10px;flex-wrap:wrap}.receipt{margin-top:24px;padding:4px;display:grid;gap:12px}.receipt p{margin:0;color:#b8cdd2}.receipt h2{font-size:17px;margin:0}.receipt output{min-height:24px;color:#d9efeb}
+footer{font-size:12px;color:#9fb6bd;margin-top:22px}a{color:#c0e2e6}
+@media(max-width:600px){main{padding:16px}.scene{min-height:720px}.nav,.booking{left:16px;right:16px;padding:14px;gap:10px}.nav strong{max-width:130px;line-height:1.2}.story{padding:170px 24px 250px}.booking{align-items:flex-start}.booking .actions{width:100%}.booking button{flex:1}.actions button{white-space:normal}}
+</style>
+<main>
+  <section class="scene" aria-label="Alpine route">
+    <nav class="controls nav" aria-label="Route actions"><strong>Field notes / 047</strong><button id="save" aria-pressed="false">Save route</button></nav>
+    <div class="story"><small>A day in the mountains</small><h1>Alpine<br>horizons.</h1><p>A ridge above the lake. Open skies, quiet trails and a guide who knows the way.</p><p id="campaign">Meet at the lower station at 09:00.</p></div>
+    <div class="controls booking"><div><strong>Ridge walk</strong><p>6 km · 3 hours · $48 per person</p></div><div class="actions"><button id="change">Later departure</button><button id="reserve" class="primary">Reserve a guide</button></div><output id="reservation" aria-live="polite"></output></div>
+  </section>
+  <section class="receipt" aria-label="Material receipt demonstration">
+    <h2>One material, existing controls</h2><p>The current Figma material is shared by both controls. Their content, focus and actions belong to this project.</p>
+    <label for="clarity">Clear ↔ more solid <input type="range" id="clarity" min="0" max="1" step="0.05" value="1" aria-label="Material clarity"></label>
+    <div class="actions"><button id="local" disabled>Use stronger frost</button><button id="revision" disabled>Receive design update</button><button id="remove" disabled>Remove material</button><button id="reconnect">Reconnect material</button><button id="reset-preference" disabled>Reset personal frost</button></div>
+    <output id="status" role="status">Loading material…</output>
+    <p>Web optics approximate native Glass. Figma Splay has no portable setter; it stays in the source. The clarity slider writes an explicit personal preference through the same session — no model or MCP call while you drag.</p>
+  </section>
+  <footer>Photo: <a href="https://commons.wikimedia.org/wiki/File:Fronalpstock_big.jpg">Hannes Röst / Wikimedia Commons</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, cropped by CSS. See assets/NOTICE.md.</footer>
+</main>
+<script type="module">
+import {attachAppearanceGroup,clarityToRadius} from '../../dist/appearance-receiving.js';
+const status=document.getElementById('status'),surfaces=[...document.querySelectorAll('.controls')];
+let group,accepted,acceptedInput,requests=0,reservations=0,localEdit=false,localFile='local.v1.json';
+let exposure,fixturePreference,clarityRange=[0,64];
+const storageKey='worldbend-appearance-receiving/hero';
+const readStored=()=>{try{const raw=localStorage.getItem(storageKey);return raw?JSON.parse(raw):null;}catch{return null;}};
+const persist=()=>{if(!group)return;localStorage.setItem(storageKey,JSON.stringify({preference:group.getState().preference.record,source:accepted}));};
+const receive=async name=>{const response=await fetch(new URL(name,import.meta.url));if(!response.ok)throw Error('Material unavailable; reconnect or retry.');return response.json();};
+const feedback=error=>{status.textContent=String(error.message??error);};
+const controls=()=>{for(const id of ['local','revision','remove'])document.getElementById(id).disabled=!group||
+  (id!=='revision'&&!group.getState().delivery);};
+function syncPreference(){
+  const state=group?.getState();
+  const slider=document.getElementById('clarity');
+  slider.disabled=!state;
+  const radius=state?.preference.record.fields?.radius?.value;
+  slider.value=radius===undefined?'1':String(Math.max(0,Math.min(1,1-(radius-clarityRange[0])/(clarityRange[1]-clarityRange[0]))));
+  document.getElementById('reset-preference').disabled=!state||!state.delivery||radius===undefined;
+}
+async function reconnect() {
+  const request=++requests;
+  try {
+    const stored=readStored();
+    const source=accepted??stored?.source??await receive('initial.json');
+    const sourceInput=acceptedInput??await receive(stored?.source?'source.v2.json':'source.v1.json');
+    if(request!==requests)return;
+    group?.destroy();group=undefined;controls();
+    group=attachAppearanceGroup(surfaces,source,{exposure,preference:stored?.preference});
+    accepted=source;acceptedInput=sourceInput;localEdit=false;controls();syncPreference();
+    status.textContent='Material connected';
+  }catch(error){if(request===requests)feedback(error);}
+}
+document.getElementById('save').onclick=event=>{const button=event.currentTarget,saved=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(saved));button.textContent=saved?'Route saved':'Save route';};
+document.getElementById('reserve').onclick=()=>{document.getElementById('reservation').textContent=`Reservation draft ${++reservations} ready`;};
+document.getElementById('change').onclick=()=>{document.getElementById('campaign').textContent='Meet at the lower station at 11:00.';document.getElementById('change').textContent='11:00 departure';};
+document.getElementById('local').onclick=async()=>{
+  const owner=group,request=++requests;
+  try{const plan=await receive(localFile);if(owner!==group||request!==requests)return;owner.updateLocal(plan);localEdit=true;status.textContent='Stronger local frost retained for this project';}
+  catch(error){if(owner===group&&request===requests)feedback(error);}
+};
+document.getElementById('revision').onclick=async()=>{
+  const owner=group,request=++requests;if(!owner)return;
+  try {
+    const receipt=await receive('revision.json');if(owner!==group||request!==requests)return;
+    const state=owner.getState();
+    if(state.sourceFingerprint===receipt.source.fingerprint){status.textContent='Current design already received';return;}
+    if(state.preference.record.revision>0&&receipt.consumerUpdate) {
+      // Consumer path: the plan merges by explicit intent, and the session
+      // takes the pure new source beside it so later tuning and resets
+      // evaluate against the source, not the merged display.
+      owner.update(receipt.consumerUpdate,receipt.source);
+      accepted=receipt.source;acceptedInput=receipt.sourceInput;localFile='local.v2.json';controls();persist();
+      status.textContent=`Design updated; your saved frost stays at ${owner.getState().delivery.material.radius}px while the new default is ${receipt.source.material.radius}px.`;
+      syncPreference();return;
+    }
+    const plan=receipt.updates.find(plan=>plan.previousFingerprint===state.sourceFingerprint&&
+      (plan.previousDeliveryFingerprint??null)===(state.delivery?.fingerprint??null));
+    if(!plan)throw Error('Project material changed; prepare a fresh update from its current state.');
+    owner.update(plan);accepted=receipt.source;acceptedInput=receipt.sourceInput;localFile='local.v2.json';controls();
+    status.textContent=state.delivery?localEdit?'Design updated; local frost retained':'Design updated':'Design updated; local removal retained';
+  } catch(error){if(owner===group&&request===requests)feedback(error);}
+};
+document.getElementById('remove').onclick=()=>{++requests;group?.remove();localEdit=false;controls();status.textContent='Material removed; route actions remain available';};
+document.getElementById('reconnect').onclick=reconnect;
+document.getElementById('clarity').addEventListener('input',event=>{
+  if(!group)return;
+  const radius=clarityToRadius(Number(event.target.value),clarityRange[0],clarityRange[1]);
+  try{group.propose([{field:'radius',value:Math.round(radius*100)/100,actor:'user'}]);status.textContent='Previewing your clarity; release to keep it.';}
+  catch(error){feedback(error);}
+  syncPreference();
+});
+document.getElementById('clarity').addEventListener('change',()=>{
+  if(!group)return;
+  try{const record=group.commitCandidate();persist();status.textContent=`Clarity saved at preference revision ${record.revision}.`;}
+  catch(error){feedback(error);}
+  syncPreference();
+});
+document.getElementById('reset-preference').onclick=()=>{
+  try{const record=group.resetOverrides(['radius']);persist();status.textContent=`Personal frost removed at revision ${record.revision}; the current source default shows.`;}
+  catch(error){feedback(error);}
+  syncPreference();
+};
+window.__appearanceReady=(async()=>{
+  [exposure,fixturePreference]=await Promise.all([receive('exposure.json'),receive('preference.json')]);
+  if(exposure.clarity)clarityRange=[exposure.clarity.rangeMin,exposure.clarity.rangeMax];
+  await reconnect();
+})();
+window.__appearanceReceiving={get group(){return group;},get accepted(){return accepted;},get sourceInput(){return acceptedInput;},get exposure(){return exposure;},get fixturePreference(){return fixturePreference;},surfaces,receive,storageKey,
+  restorePreference(record){localStorage.setItem(storageKey,JSON.stringify({preference:record}));accepted=undefined;acceptedInput=undefined;return reconnect();},persist};
+window.addEventListener('pagehide',event=>{++requests;if(!event.persisted){group?.destroy();group=undefined;controls();}});
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Worldbend · Native material handoff</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:40px;background:#0b0f13;color:#eff5ff;font-family:Inter,system-ui,sans-serif}h1{font-size:26px;margin:0 0 12px}p{color:#a4b6cd;line-height:1.5}.comparison{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;max-width:1440px}h2{font-size:14px;letter-spacing:.1em}article{position:relative;height:600px;border-radius:24px;overflow:hidden;background:linear-gradient(0deg,#07182cbb,transparent),url(assets/fronalpstock.jpg) center/cover}.scene-title{position:absolute;top:175px;left:24px;font-weight:650;font-size:clamp(28px,4vw,54px);line-height:1.1;letter-spacing:-.025em}.coordinates{position:absolute;top:324px;left:24px}.grid{position:absolute;left:24px;right:24px;top:390px;height:115px;background:repeating-linear-gradient(90deg,#ffffffaa 0px 2px,transparent 2px 38px)}.glass{position:absolute;inset:145px 24px auto;height:355px;border-radius:40px;background:#e3f0ff11;cursor:pointer}.glass:focus-visible{outline:3px solid #61dcff;outline-offset:4px}.solid{background:#e3f0ff}.frost{backdrop-filter:blur(18px)}.kicker{position:absolute;top:28px;left:24px;font-size:12px}.foreground{position:absolute;bottom:30px;left:24px;font-size:13px}.toolbar{display:flex;gap:12px;flex-wrap:wrap;margin:25px 0}button{font:inherit;border:1px solid #a4b6cd66;border-radius:24px;background:#213447;color:inherit;padding:10px 20px;cursor:pointer}button:focus-visible{outline:3px solid #61dcff}footer{margin-top:30px;font-size:12px}a{color:#abd4ff}@media(max-width:760px){body{padding:20px}.comparison{grid-template-columns:1fr}article{height:590px}.scene-title{font-size:48px}}
+</style>
+<h1>One scene. Three materials.</h1><p>The same native recipe travels from Figma to this Web runtime. Web edge optics approximate Figma; they do not share its rendering engine.</p>
+<div class="toolbar"><button id="toggle">Hide Glass</button><button id="restore">Reset</button><span id="status" role="status">Loading material…</span></div>
+<div class="comparison"></div>
+<footer>Photo: <a href="https://commons.wikimedia.org/wiki/File:Fronalpstock_big.jpg">Hannes Röst / Wikimedia Commons</a>, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, cropped by CSS. See assets/NOTICE.md.</footer>
+<script type="module">
+import {attachAppearance} from '../dist/appearance.js';
+const plan=await (await fetch('./native-glass-plan.json')).json();
+const root=document.querySelector('.comparison');
+for(const [i,title] of ['Solid','Background blur','Web Glass'].entries()){
+ const section=document.createElement('section');section.innerHTML=`<h2>${title.toUpperCase()}</h2><article><span class="kicker">FIELD NOTES / 047</span><div class="scene-title">ALPINE<br>HORIZONS</div><div class="coordinates">46°59′ N · 8°40′ E<br>A clear view. A changing light.</div><div class="grid"></div><div class="glass ${i===0?'solid':i===1?'frost':'optics'}" ${i===2?'tabindex="0" role="button" aria-label="Hold to see glass press response"':''}></div><span class="foreground">${i===2?'Hold the surface to see its press response.':'The same content behind every surface.'}</span></article>`;root.append(section);
+}
+const surface=document.querySelector('.optics');let visible=true;
+const handle=attachAppearance(surface,plan);
+const status=document.querySelector('#status');status.textContent=handle.mode==='svg-optics'?'Ready · SVG edge optics':'Ready · Frost fallback; SVG backdrop optics unavailable';
+document.querySelector('#toggle').onclick=()=>{visible=!visible;handle.setVisible(visible);document.querySelector('#toggle').textContent=visible?'Hide Glass':'Show Glass';};
+document.querySelector('#restore').onclick=()=>{visible=true;handle.setVisible(undefined);handle.update(plan);document.querySelector('#toggle').textContent='Hide Glass';};
+if(new URL(location.href).searchParams.has('test'))window.nativeAppearanceFixture={handle,plan,surface,attachAppearance};
+</script></html>

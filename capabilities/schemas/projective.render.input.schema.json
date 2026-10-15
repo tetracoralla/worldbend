@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openadam:capability:projective.render:v0.1:input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "spec", "output"],
+  "properties": {
+    "source": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "spec": { "$ref": "#/$defs/spec" },
+    "output": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\.[Pp][Nn][Gg]$" },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "quality": { "enum": ["preview", "standard", "high"], "default": "standard" },
+        "canvas": { "enum": ["tight", "reference"], "default": "tight" },
+        "target_size": { "$ref": "#/$defs/size" }
+      }
+    },
+    "overwrite": { "type": "boolean", "default": false },
+    "dry_run": { "type": "boolean", "default": false }
+  },
+  "$defs": {
+    "point": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+    "quad": { "type": "object", "additionalProperties": false, "required": ["tl", "tr", "br", "bl"], "properties": { "tl": { "$ref": "#/$defs/point" }, "tr": { "$ref": "#/$defs/point" }, "br": { "$ref": "#/$defs/point" }, "bl": { "$ref": "#/$defs/point" } } },
+    "size": { "type": "object", "additionalProperties": false, "required": ["width", "height"], "properties": { "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 } } },
+    "destination": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["space", "reference", "quad"], "properties": { "space": { "const": "pixel" }, "reference": { "$ref": "#/$defs/size" }, "quad": { "$ref": "#/$defs/quad" } } },
+        { "type": "object", "additionalProperties": false, "required": ["space", "quad"], "properties": { "space": { "const": "normalized" }, "quad": { "$ref": "#/$defs/quad" } } }
+      ]
+    },
+    "spec": { "type": "object", "additionalProperties": false, "required": ["schema", "version", "destination", "content"], "properties": { "schema": { "const": "projective.transform" }, "version": { "const": "0.1" }, "destination": { "$ref": "#/$defs/destination" }, "content": { "type": "object", "additionalProperties": false, "required": ["fit"], "properties": { "fit": { "const": "stretch" } } } } }
+  }
+}

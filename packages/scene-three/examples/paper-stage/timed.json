@@ -1,0 +1,151 @@
+{
+  "affectedExpressions": [
+    {
+      "bindings": [
+        {
+          "assetId": "paper-stage",
+          "role": "content",
+          "slotId": "scene"
+        },
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "cover"
+        }
+      ],
+      "id": "paper-theatre",
+      "kind": "scene3d"
+    }
+  ],
+  "changed": true,
+  "document": {
+    "assets": [
+      {
+        "contentVersion": "sha256:cf450c061c11ad4ec25b2d3a519cf787cf67e344f18516f73bb1d33663e300cd",
+        "id": "paper-stage"
+      },
+      {
+        "contentVersion": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+        "id": "field-notes"
+      }
+    ],
+    "expressions": [
+      {
+        "bindings": [
+          {
+            "assetId": "paper-stage",
+            "role": "content",
+            "slotId": "scene"
+          },
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "cover"
+          }
+        ],
+        "id": "paper-theatre",
+        "kind": "scene3d",
+        "scene": {
+          "ambientIntensity": 2,
+          "animation": "Scene",
+          "artworks": [
+            {
+              "fit": "contain",
+              "material": "CoverPrint",
+              "slotId": "cover",
+              "surfaceSize": {
+                "height": 1120,
+                "width": 840
+              }
+            }
+          ],
+          "backgroundRgb": [
+            209,
+            204,
+            180
+          ],
+          "camera": "RevealCamera",
+          "canvas": {
+            "height": 720,
+            "width": 960
+          },
+          "exposure": 1,
+          "frameCount": 144,
+          "sceneSlot": "scene",
+          "schema": "worldbend.scene3d",
+          "timebase": {
+            "denominator": 1,
+            "numerator": 24
+          },
+          "version": "0.1"
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "artwork"
+          }
+        ],
+        "id": "cover-proof",
+        "kind": "static",
+        "template": {
+          "operation": {
+            "kind": "rasterProgram",
+            "program": {
+              "schema": "worldbend.raster-program",
+              "stages": [
+                {
+                  "id": "fit",
+                  "kind": "canvas",
+                  "spec": {
+                    "operation": {
+                      "anchor": {
+                        "x": 0.5,
+                        "y": 0.5
+                      },
+                      "background": {
+                        "kind": "transparent"
+                      },
+                      "kind": "contain",
+                      "output": {
+                        "height": 1120,
+                        "width": 840
+                      }
+                    },
+                    "schema": "worldbend.canvas",
+                    "version": "0.1"
+                  }
+                }
+              ],
+              "version": "0.1"
+            },
+            "sourceSlot": "artwork"
+          },
+          "output": {
+            "id": "cover",
+            "kind": "single"
+          },
+          "schema": "worldbend.spatial-template",
+          "version": "0.1"
+        }
+      }
+    ],
+    "schema": "worldbend.spatial-document",
+    "version": "0.1"
+  },
+  "expressionRevisions": [
+    {
+      "changed": true,
+      "fingerprint": "sha256:2cd2b3aceee7e8a2268a29fd57f81aac5ba17f358fee718aff859696dc318024",
+      "id": "paper-theatre",
+      "previousFingerprint": "sha256:76551a8522974eb1d1abad0b13e2a30bea10109264a512d8a9a3ae34c6c2c861"
+    }
+  ],
+  "fingerprint": "sha256:3d44c8b12af3144f834a69a9f9f05c258c3683aa3c54e10cc52ab3589f9839be",
+  "previousFingerprint": "sha256:47d4e169a14121565ae30b4965bb202592093c3a5cf4724663f24476b4ec94df",
+  "revisions": [],
+  "schema": "worldbend.spatial-document-update-plan",
+  "version": "0.1"
+}

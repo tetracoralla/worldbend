@@ -1,0 +1,20 @@
+{
+  "name": "worldbend-local",
+  "interface": {
+    "displayName": "Worldbend Local"
+  },
+  "plugins": [
+    {
+      "name": "worldbend",
+      "source": {
+        "source": "local",
+        "path": "./plugins/worldbend"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

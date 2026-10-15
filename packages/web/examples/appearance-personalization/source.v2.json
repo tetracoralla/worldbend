@@ -1,0 +1,27 @@
+{
+  "recipe": {
+    "schema": "worldbend.appearance@0.1",
+    "version": "0.1",
+    "recipeId": "consumer-hero",
+    "recipeVersion": 1,
+    "material": {
+      "visible": true,
+      "lightIntensity": 0.5,
+      "lightAngle": 90,
+      "refraction": 0.35,
+      "depth": 2,
+      "dispersion": 0,
+      "radius": 1
+    }
+  },
+  "material": {
+    "visible": true,
+    "lightIntensity": 0.5,
+    "lightAngle": 90,
+    "refraction": 0.55,
+    "depth": 6,
+    "dispersion": 0,
+    "radius": 5
+  },
+  "target": "web"
+}

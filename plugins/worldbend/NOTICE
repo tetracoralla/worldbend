@@ -1,0 +1,26 @@
+Worldbend
+Copyright 2026 openAdam
+
+Licensed under the Apache License, Version 2.0.
+Third-party components retain their own copyright and license notices.
+See THIRD_PARTY_NOTICES.md and the notices supplied with each distribution.
+
+Raindrop FX (wet-glass simulation / water-field composition adaptation)
+Copyright (c) 2021 SardineFish
+MIT License. The license text ships with the Swift package at
+Sources/WorldbendAppearance/Licenses/RaindropFX-LICENSE.txt and is redistributed
+with exported WorldbendAppearance source packages.
+Pinned reference: bae4081bc15815bb094ea040a976dca083bbc3a5
+https://github.com/SardineFish/raindrop-fx
+No Raindrop FX demo backgrounds, JavaScript/WebGL runtime, or renderer
+dependency is bundled. Worldbend's wet-glass surface recipe
+(worldbend.wet-glass-surface@0.1) adapts the mass/resistance, merge/trail and
+height-field refraction model for shared reuse; APP scene masks, weather UX
+and brand chrome remain outside this package.
+
+Google Filament (native glazed-surface microfacet clear-coat BRDF adaptation)
+Apache License 2.0. Pinned reference: 764fe6cac9bdb4ba24d3d852344dfa04a5f70f75
+https://github.com/google/filament/blob/764fe6cac9bdb4ba24d3d852344dfa04a5f70f75/shaders/src/surface_brdf.fs
+D_GGX, V_Kelemen and scalar F_Schlick adapted to Metal; host mask normals and
+fixed studio lighting added. No Filament engine, model or demo media is bundled.
+Full license ships at Sources/WorldbendAppearance/Licenses/Filament-LICENSE.txt.

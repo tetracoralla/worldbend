@@ -1,0 +1,29 @@
+[package]
+license.workspace = true
+name = "worldbend-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "WASM geometry bridge for Worldbend web and Figma adapters"
+
+[features]
+default = ["css", "template", "deformation-work", "motion", "material-preference", "document"]
+document = ["worldbend-core/document"]
+material-preference = ["worldbend-core/appearance"]
+motion = ["worldbend-core/motion", "worldbend-core/place"]
+css = ["worldbend-core/css"]
+template = ["worldbend-core/template"]
+designer = ["worldbend-core/place", "worldbend-core/deform", "worldbend-core/remap", "worldbend-core/surface-deformation", "css"]
+deformation-work-plan = ["worldbend-core/deformation-work"]
+deformation-work = ["deformation-work-plan"]
+spatial-effects = ["worldbend-core/spatial-effects"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+worldbend-core = { path = "../worldbend-core", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true

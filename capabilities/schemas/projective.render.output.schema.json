@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openadam:capability:projective.render:v0.1:output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "dry_run", "output", "bytes", "evidence", "placement", "quality", "canvas"],
+  "properties": {
+    "status": { "const": "ok" },
+    "dry_run": { "type": "boolean" },
+    "output": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_sha256", "output_sha256", "output_width", "output_height", "output_format", "warnings"],
+      "properties": {
+        "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "output_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "output_width": { "type": "integer", "minimum": 1 },
+        "output_height": { "type": "integer", "minimum": 1 },
+        "output_format": { "const": "png" },
+        "warnings": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 512 } }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "width", "height"],
+      "properties": {
+        "origin": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "quality": { "enum": ["preview", "standard", "high"] },
+    "canvas": { "enum": ["tight", "reference"] }
+  }
+}

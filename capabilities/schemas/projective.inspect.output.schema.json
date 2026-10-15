@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openadam:capability:projective.inspect:v0.1:output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["homography", "bounds", "geometry", "max_reprojection_error"],
+  "properties": {
+    "homography": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matrix", "inverse"],
+      "properties": {
+        "matrix": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "type": "number" } },
+        "inverse": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "type": "number" } }
+      }
+    },
+    "bounds": { "$ref": "#/$defs/bounds" },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orientation", "signed_area", "edge_lengths"],
+      "properties": {
+        "orientation": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "signed_area": { "type": "number" },
+        "edge_lengths": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number", "exclusiveMinimum": 0 } }
+      }
+    },
+    "max_reprojection_error": { "type": "number", "minimum": 0 }
+  },
+  "$defs": {
+    "bounds": { "type": "object", "additionalProperties": false, "required": ["x", "y", "width", "height"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number", "minimum": 0 }, "height": { "type": "number", "minimum": 0 } } }
+  }
+}

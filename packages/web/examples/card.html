@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Worldbend interactive card</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; gap: 32px;
+         grid-auto-flow: row; background: repeating-linear-gradient(45deg, #f4f2ee 0 24px, #e9e5de 24px 48px);
+         font: 14px/1.5 system-ui, sans-serif; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; justify-items: center;
+    width: 100%; max-width: 780px; padding: 24px; box-sizing: border-box; }
+  .stage { position: relative; width: min(100%, 460px); aspect-ratio: 460 / 320; min-height: 260px; }
+  .card { position: absolute; inset: 0; border-radius: 18px; padding: 28px;
+          background: linear-gradient(160deg, #ffffff 0%, #eef3f8 55%, #dde7f2 100%);
+          border: 1px solid rgb(0 0 0 / 12%); box-shadow: 0 18px 40px rgb(15 23 42 / 18%);
+          display: grid; align-content: space-between; will-change: transform; }
+  .card.back { background: linear-gradient(160deg, #10233f 0%, #1c3a63 100%); color: #eaf2fb; }
+  .card h1 { margin: 0; font-size: 22px; letter-spacing: .02em; }
+  .card p { margin: 0; color: #5b6774; font-size: 13px; }
+  .card.back p { color: #9fb4cc; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; font-size: 12px; color: #6b7684; }
+  .card:focus-visible { outline: 3px solid #0d99ff; outline-offset: 3px; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid rgb(0 0 0 / 15%);
+           background: #fff; cursor: pointer; }
+  button.primary { background: #0d99ff; border-color: #0d99ff; color: #fff; }
+  output { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <div class="stage" id="stage">
+    <div class="card" id="front" tabindex="0" role="group" aria-label="Interactive card">
+      <h1>Aa · Interactive card</h1>
+      <p>Move the pointer here. Click or press Enter to turn.</p>
+      <div class="meta"><span>Business clicks: <output id="count">0</output></span><span>worldbend.card@0.1</span></div>
+    </div>
+    <div class="card back" id="back" aria-hidden="true">
+      <h1>Back face</h1>
+      <p>Authored back artwork replaces the mirrored default when supplied.</p>
+    </div>
+  </div>
+  <div class="controls">
+    <button type="button" id="turn" class="primary">Turn</button>
+    <button type="button" id="business">Business click</button>
+    <button type="button" id="toggle-idle">Idle: on</button>
+    <button type="button" id="dispose">Dispose</button>
+    <span id="state" role="status" aria-live="polite"></span>
+  </div>
+</main>
+<script type="module">
+import { attachCardController } from '../dist/card.js';
+
+const rig = {
+  schema: 'worldbend.card',
+  version: '0.1',
+  elementSize: { width: 460, height: 320 },
+  geometry: { perspective: 1100 },
+  tilt: {
+    maxRotateX: 10,
+    maxRotateY: 14,
+    smoothingMs: 110,
+    settleMs: 420,
+    idle: { amplitudeX: 2.5, amplitudeY: 3.5, periodMs: 5200 },
+  },
+  action: { axis: 'y', direction: 1, turns: 1, durationMs: 720,
+            easing: { kind: 'cubicBezier', x1: 0.4, y1: 0, x2: 0.2, y2: 1 } },
+};
+
+window.cardClicks = 0;
+window.cardFixtureReady = new Promise((resolve) => {
+  const controller = attachCardController(document.getElementById('front'), rig, {
+    surface: document.getElementById('stage'),
+    back: document.getElementById('back'),
+    onError: (error) => console.error('card', error),
+  });
+  window.cardController = controller;
+  window.cardRig = rig;
+  const count = document.getElementById('count');
+  const state = document.getElementById('state');
+  document.getElementById('front').addEventListener('click', () => {
+    window.cardClicks += 1;
+    count.value = String(window.cardClicks);
+  });
+  document.getElementById('turn').addEventListener('click', () => controller.activate());
+  document.getElementById('business').addEventListener('click', () => {
+    window.cardClicks += 1;
+    count.value = String(window.cardClicks);
+  });
+  let idle = true;
+  document.getElementById('toggle-idle').addEventListener('click', (event) => {
+    idle = !idle;
+    event.currentTarget.textContent = `Idle: ${idle ? 'on' : 'off'}`;
+    controller.update({ ...rig, tilt: { ...rig.tilt, idle: idle ? rig.tilt.idle : null } });
+  });
+  document.getElementById('dispose').addEventListener('click', () => controller.dispose());
+  const paint = () => {
+    const current = controller.getState();
+    const text = `${current.face} · ${current.revolutions.toFixed(2)} rev`;
+    // The state span is an aria-live region; write only on change.
+    if (state.textContent !== text) state.textContent = text;
+    requestAnimationFrame(paint);
+  };
+  paint();
+  controller.ready.then(() => resolve(controller));
+});
+</script>
+</body>
+</html>

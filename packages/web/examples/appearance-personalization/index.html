@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Summit pass · Personal material example</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0c171d;color:#f4f9fa;font:15px/1.5 system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:28px}h1{font-size:clamp(30px,5vw,54px);line-height:1.06;letter-spacing:-.04em;margin:0 0 18px}
+.scene{position:relative;min-height:620px;border-radius:30px;overflow:hidden;background:linear-gradient(0deg,#04131de6,#04131d70 80%,transparent),url('../assets/fronalpstock.jpg') center/cover}
+.story{padding:140px 36px 170px;max-width:640px}.story p{max-width:380px}small{font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.surface{position:absolute;display:flex;align-items:center;gap:16px;background:#e3f0ff11;border-radius:24px;padding:16px 22px}
+.nav{left:24px;right:24px;top:24px;justify-content:space-between}.nav strong{color:#092530}
+.status{left:24px;top:96px;padding:8px 14px;border-radius:14px;font-size:13px}
+.booking{left:24px;right:24px;bottom:24px;flex-wrap:wrap;justify-content:space-between}
+.booking strong{font-size:22px}.booking p{margin:0;color:#e7f2f5}button{font:inherit;cursor:pointer;border:1px solid #bedbe45c;border-radius:16px;padding:10px 16px;background:#102932d9;color:inherit}
+button:hover{background:#20444e}button:disabled{cursor:default;opacity:.5}button:focus-visible{outline:3px solid #84e9ee;outline-offset:3px}button.primary{background:#d9f3ef;color:#142e36;border-color:transparent;font-weight:650}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.panel{margin-top:22px;padding:18px 20px;border:1px solid #1e3945;border-radius:20px}
+.panel h2{font-size:17px;margin:0 0 6px}.panel p{margin:0 0 12px;color:#b8cdd2}
+.panel label{display:flex;align-items:center;gap:12px;margin:10px 0;font-size:14px}
+.receipt{margin-top:16px;padding:4px;display:grid;gap:10px}.receipt p{margin:0;color:#b8cdd2}.receipt h2{font-size:17px;margin:0}output{min-height:24px;color:#d9efeb}
+footer{font-size:12px;color:#9fb6bd;margin-top:22px}a{color:#c0e2e6}
+</style>
+<main>
+  <section class="scene" aria-label="Summit pass">
+    <nav class="surface nav" aria-label="Pass actions"><strong>Pass status / 112</strong><button id="save">Save pass</button></nav>
+    <output class="surface status" id="conditions" aria-live="polite">Conditions loading…</output>
+    <div class="story"><small>High route today</small><h1>Summit<br>conditions.</h1><p>Wind, visibility and open lifts, refreshed by the patrol every thirty minutes.</p><p id="report">Upper cable car running.</p></div>
+    <div class="surface booking"><div><strong>Ridge pass</strong><p>1 day · $32 · opens 08:30</p></div><div class="actions"><button id="later">Later window</button><button id="book" class="primary">Book pass</button></div><output id="booking"></output></div>
+  </section>
+  <section class="panel" aria-label="Personal material controls">
+    <h2>One material, two adjustment routes</h2>
+    <p>This page has no Figma file behind it at runtime: the recipe was authored in the repository, and every receipt below is a versioned, fingerprinted artifact. Human and Agent changes go through the same guarded session; nothing here calls a model or an MCP tool while you drag.</p>
+    <label for="clarity">Clear ↔ more solid <input type="range" id="clarity" min="0" max="1" step="0.05" value="1" aria-label="Material clarity"></label>
+    <div class="actions">
+      <button id="agent-preview">Agent suggests bolder refraction</button>
+      <button id="commit" disabled>Commit preview</button>
+      <button id="cancel" disabled>Cancel preview</button>
+      <button id="hidden-attempt">Try hidden light angle</button>
+    </div>
+    <div class="actions">
+      <button id="design-update">Receive design update</button>
+      <button id="stale-agent">Replay stale Agent plan</button>
+      <button id="reset-radius">Reset frost to source default</button>
+    </div>
+    <div class="actions">
+      <button id="restart">Save &amp; restart (offline restore)</button>
+      <button id="clear-storage">Clear saved preference</button>
+      <button id="frost-only" aria-pressed="false">Simulate frost-only runtime</button>
+    </div>
+    <div class="receipt"><output id="status" role="status">Connecting material…</output>
+    <p id="exposure-summary"></p></div>
+  </section>
+  <footer>Photo: <a href="https://commons.wikimedia.org/wiki/File:Fronalpstock_big.jpg">Hannes Röst / Wikimedia Commons</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, cropped by CSS. See assets/NOTICE.md.</footer>
+</main>
+<script type="module">
+import {attachAppearanceGroup, clarityToRadius} from '../../dist/appearance-receiving.js';
+const $=id=>document.getElementById(id);
+const status=$('status');
+const heroSurfaces=[...document.querySelectorAll('.scene .nav, .scene .booking')];
+const toolbarSurfaces=[$('conditions')];
+let fetchCount=0;const nativeFetch=window.fetch;window.fetch=(...args)=>{fetchCount++;return nativeFetch(...args);};
+const receive=async name=>{const response=await fetch(new URL(name,import.meta.url));if(!response.ok)throw Error('Receipt unavailable');return response.json();};
+const storageKey=scope=>`worldbend-appearance-personalization/${scope}`;
+const readStored=scope=>{try{const raw=localStorage.getItem(storageKey(scope));return raw?JSON.parse(raw):null;}catch{return null;}};
+let hero,toolbar,exposure,exposureFrost,initial,sourceV2,updateReceipt,frostOnly=false,clarityRange=[0,40];
+let acceptedSource; // the canonical source delivery the session has accepted
+let businessClicks=0;
+
+function attachHero(preference,source){
+  hero?.destroy();
+  hero=attachAppearanceGroup(heroSurfaces,source??acceptedSource??initial,{preference,exposure:frostOnly?exposureFrost:exposure,optics:frostOnly?'frost-only':'svg'});
+  return hero;
+}
+function persist(){
+  if(!hero)return;
+  localStorage.setItem(storageKey('hero'),JSON.stringify({preference:hero.getState().preference.record,source:acceptedSource}));
+}
+function attachToolbar(){
+  toolbar?.destroy();
+  toolbar=attachAppearanceGroup(toolbarSurfaces,structuredClone(initial),{exposure:frostOnly?exposureFrost:exposure,optics:frostOnly?'frost-only':'svg'});
+}
+function exposureSummary(report){
+  const row=field=>report.controls.find(control=>control.field===field);
+  return `Controls — exposed: ${report.controls.filter(c=>c.state==='exposed').map(c=>c.field).join(', ')||'none'}; not exposed: ${row('light-angle').state}; unsupported: ${row('splay').state}; adapted (frost-only runtime): ${exposureFrost.controls.find(c=>c.field==='refraction').state}.`;
+}
+function syncControls(){
+  const state=hero.getState();
+  $('commit').disabled=$('cancel').disabled=!state.preference.candidateRevision;
+  const record=state.preference.record;
+  const radiusOverride=record.fields?.radius?.value;
+  $('clarity').value=radiusOverride===undefined?'1':String(Math.max(0,Math.min(1,1-(radiusOverride-clarityRange[0])/(clarityRange[1]-clarityRange[0]))));
+  status.textContent=`Connected · preference revision ${record.revision}${state.preference.candidateRevision?` · preview ${state.preference.candidateRevision}`:''}`;
+}
+async function start(){
+  [exposure,exposureFrost,initial,sourceV2,updateReceipt]=[await receive('exposure.json'),await receive('exposure-frost.json'),await receive('initial.json'),await receive('source.v2.delivery.json'),await receive('update.json')];
+  const clarity=exposure.clarity;
+  if(clarity){clarityRange=[clarity.rangeMin,clarity.rangeMax];}
+  acceptedSource=initial;
+  const stored=readStored('hero');
+  if(stored?.source)acceptedSource=stored.source;
+  attachHero(stored?.preference,stored?.source);
+  attachToolbar();
+  $('exposure-summary').textContent=exposureSummary(exposure);
+  syncControls();
+}
+$('clarity').addEventListener('input',event=>{
+  const radius=clarityToRadius(Number(event.target.value),clarityRange[0],clarityRange[1]);
+  try{hero.propose([{field:'radius',value:Math.round(radius*100)/100,actor:'user'}]);}
+  catch(error){status.textContent=String(error.message??error);}
+  syncControls();
+});
+$('clarity').addEventListener('change',()=>{hero.commitCandidate();syncControls();});
+$('agent-preview').onclick=()=>{
+  try{hero.propose([{field:'refraction',value:0.8,actor:'agent'}]);status.textContent='Agent preview applied locally; commit or cancel decides.';}
+  catch(error){status.textContent=String(error.message??error);}
+  syncControls();
+};
+$('commit').onclick=()=>{const record=hero.commitCandidate();persist();status.textContent=`Committed revision ${record.revision}; saved for the next session.`;syncControls();};
+$('cancel').onclick=()=>{hero.cancelPreview();status.textContent='Preview cancelled; the latest committed result is back.';syncControls();};
+$('hidden-attempt').onclick=()=>{
+  try{hero.propose([{field:'light-angle',value:120,actor:'user'}]);status.textContent='Unexpectedly accepted.';}
+  catch(error){status.textContent=String(error.message??error);}
+};
+$('design-update').onclick=()=>{
+  try{
+    const state=hero.getState();
+    const plan=updateReceipt.current;
+    if(state.sourceFingerprint===plan.sourceFingerprint){status.textContent='Design already received.';return;}
+    hero.update(plan,sourceV2);acceptedSource=sourceV2;persist();
+    status.textContent=`Design updated; explicit frost kept at ${hero.getState().delivery.material.radius}px while the new source default is ${sourceV2.material.radius}px.`;
+    syncControls();
+  }catch(error){status.textContent=String(error.message??error);}
+};
+$('stale-agent').onclick=()=>{
+  const before=hero.getState().delivery?.fingerprint;
+  try{hero.update(updateReceipt.stale,sourceV2);status.textContent='Unexpectedly accepted a stale plan.';}
+  catch(error){
+    const after=hero.getState().delivery?.fingerprint;
+    status.textContent=`${String(error.message??error)} Display unchanged: ${before===after}.`;
+  }
+};
+$('reset-radius').onclick=()=>{
+  try{const record=hero.resetOverrides(['radius']);persist();status.textContent=`Frost override removed at revision ${record.revision}; source default shows again.`;}
+  catch(error){status.textContent=String(error.message??error);}
+  syncControls();
+};
+$('restart').onclick=()=>{persist();location.reload();};
+$('clear-storage').onclick=()=>{localStorage.removeItem(storageKey('hero'));location.reload();};
+$('frost-only').onclick=event=>{
+  frostOnly=!frostOnly;event.currentTarget.setAttribute('aria-pressed',String(frostOnly));
+  const preference=hero.getState().preference.record;
+  attachHero(preference);attachToolbar();
+  $('exposure-summary').textContent=exposureSummary(frostOnly?exposureFrost:exposure);
+  syncControls();
+};
+for(const id of ['save','later','book']){
+  $(id).addEventListener('click',()=>{businessClicks++;if(id==='book')$('booking').textContent=`Booking draft ${businessClicks} ready`;if(id==='later')$('report').textContent='Upper cable car paused 11:00–12:00.';});
+}
+window.__appearancePersonalization={get hero(){return hero;},get toolbar(){return toolbar;},get fetchCount(){return fetchCount;},get businessClicks(){return businessClicks;},get exposure(){return exposure;},get exposureFrost(){return exposureFrost;},get updateReceipt(){return updateReceipt;},get initial(){return initial;},get frostOnly(){return frostOnly;},heroSurfaces,toolbarSurfaces,receive,storageKey,
+  restorePreference(record){acceptedSource=initial;const next=attachHero(record,initial);syncControls();return next;},persist};
+window.__appearanceReady=start();
+window.addEventListener('pagehide',event=>{if(!event.persisted){hero?.destroy();toolbar?.destroy();}});
+</script>
+</body>
+</html>
