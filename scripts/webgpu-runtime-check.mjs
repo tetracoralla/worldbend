@@ -29,13 +29,15 @@ try {
 </script>`;
 const server=createServer((_request,response)=>{response.setHeader('content-type','text/html');response.end(html)});
 let browser;
+let diagnostics='';
 try {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   browser=await launchChrome(await findChrome(),['--enable-unsafe-webgpu']);
+  browser.process.stderr.on('data',chunk=>{diagnostics=(diagnostics+chunk).slice(-8000)});
   const url=`http://127.0.0.1:${server.address().port}/`;
   const target=await createPage(browser.debugUrl,url);
   const result=await readPageResult(target.webSocketDebuggerUrl,{width:640,height:480,url,timeoutMs:20000});
-  if(result.error)throw Error(result.error);
+  if(result.error)throw Error(result.error+'\nBrowser GPU diagnostics:\n'+diagnostics);
   assert.equal(result.ok,true);
   process.stdout.write(JSON.stringify(result,null,2)+'\n');
 } finally {

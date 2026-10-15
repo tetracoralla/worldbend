@@ -327,8 +327,9 @@ export async function launchChrome(executable, extraArgs = []) {
   const webgpuArgs = process.platform === "linux" && extraArgs.includes("--enable-unsafe-webgpu")
     ? ["--enable-features=Vulkan", "--use-angle=vulkan", "--use-vulkan=swiftshader",
       "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface"] : [];
+  const headedWebgpu = webgpuArgs.length > 0 && process.env.WORLDBEND_WEBGPU_HEADED === "1";
   const args = [
-    "--headless=new",
+    ...(headedWebgpu ? [] : ["--headless=new"]),
     // A display-less Linux runner can otherwise report no pointing device.
     // Use Chromium's real desktop settings (also used by Playwright); coarse
     // cases override this with native CDP touch emulation and assert the result.
