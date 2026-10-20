@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "@figma/plugin-typings",
+      "vite/client"
+    ],
+    "paths": {
+      "@worldbend/web/mockup-motion": [
+        "../web/src/mockup-motion.ts"
+      ],
+      "@worldbend/web": [
+        "../web/src/index.ts"
+      ],
+      "@worldbend/web/types": [
+        "../web/src/types.ts"
+      ],
+      "@worldbend/wasm-bindings": [
+        "../wasm/pkg-figma/worldbend_wasm.d.ts"
+      ],
+      "@worldbend/psd-import-bindings": [
+        "../wasm/pkg-psd-import/worldbend_wasm.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "worldbend.appearance-preference@0.1",
+  "version": "0.1",
+  "revision": 3,
+  "fields": {
+    "radius": {
+      "value": 1.2,
+      "actor": "user"
+    },
+    "light-intensity": {
+      "value": 0.9,
+      "actor": "agent"
+    }
+  }
+}

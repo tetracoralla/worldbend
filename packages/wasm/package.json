@@ -1,0 +1,36 @@
+{
+  "name": "@worldbend/wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./perspective": {
+      "types": "./pkg-perspective/worldbend_wasm.d.ts",
+      "import": "./pkg-perspective/worldbend_wasm.js"
+    },
+    ".": {
+      "types": "./pkg/worldbend_wasm.d.ts",
+      "import": "./pkg/worldbend_wasm.js"
+    },
+    "./figma": {
+      "types": "./pkg-figma/worldbend_wasm.d.ts",
+      "import": "./pkg-figma/worldbend_wasm.js"
+    },
+    "./surface-window": {
+      "types": "./pkg-surface-window/worldbend_wasm.d.ts",
+      "import": "./pkg-surface-window/worldbend_wasm.js"
+    },
+    "./effects": {
+      "types": "./pkg-effects/worldbend_wasm.d.ts",
+      "import": "./pkg-effects/worldbend_wasm.js"
+    }
+  },
+  "files": [
+    "pkg",
+    "pkg-figma",
+    "pkg-perspective",
+    "pkg-surface-window",
+    "pkg-effects"
+  ],
+  "license": "Apache-2.0"
+}

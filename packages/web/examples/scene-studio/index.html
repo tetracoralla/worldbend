@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Worldbend · Scene studio</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #f5f2ea;
+        color: #182725;
+        font:
+          14px Arial,
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button,
+      select,
+      input[type="number"] {
+        background: transparent;
+        border: 1px solid #a4aaa0;
+        border-radius: 3px;
+        min-height: 38px;
+        padding: 8px 12px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:disabled,
+      input:disabled,
+      select:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      :focus-visible {
+        outline: 3px solid #267c87;
+        outline-offset: 3px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 24px 3vw 0;
+        padding-bottom: 18px;
+        border-bottom: 1px solid #d3d3c8;
+      }
+      .brand {
+        font-size: 12px;
+        letter-spacing: 0.1em;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+      }
+      .primary {
+        background: #182725;
+        color: #f5f2ea;
+        border-color: #182725;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 230px;
+        gap: 32px;
+        padding: 32px 3vw;
+      }
+      .stage {
+        position: relative;
+        background: #e9e5db;
+        min-width: 0;
+        align-self: start;
+      }
+      .stage canvas {
+        max-width: 100%;
+      }
+      .stage[data-editing="true"] {
+        outline: 1px solid #267c87;
+        outline-offset: 4px;
+      }
+      .overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .handle {
+        position: absolute;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        transform: translate(-50%, -50%);
+        pointer-events: auto;
+        touch-action: none;
+        cursor: crosshair;
+      }
+      .handle:before {
+        content: "";
+        display: block;
+        width: 9px;
+        height: 9px;
+        border: 2px solid #f5f2ea;
+        border-radius: 50%;
+        background: #267c87;
+        box-shadow: 0 0 0 1px #182725;
+        margin: auto;
+      }
+      .handle:focus-visible {
+        outline-offset: 0;
+        border-radius: 50%;
+      }
+      .handle[hidden] {
+        display: none;
+      }
+      aside {
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+      }
+      h1 {
+        font-size: 23px;
+        letter-spacing: -0.7px;
+        margin: 0 0 10px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: #52625d;
+        margin-bottom: 7px;
+      }
+      .full {
+        width: 100%;
+      }
+      .group {
+        border-top: 1px solid #d3d3c8;
+        padding-top: 18px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .row input {
+        min-width: 0;
+        flex: 1;
+        width: 100%;
+      }
+      input[type="range"] {
+        accent-color: #267c87;
+        min-height: 32px;
+      }
+      output {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        font-size: 12px;
+        color: #52625d;
+      }
+      .timeline {
+        margin-top: 22px;
+      }
+      .transport {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .transport #play {
+        min-width: 96px;
+      }
+      .transport #position {
+        width: 100%;
+        min-width: 0;
+      }
+      .poses {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .pose {
+        min-width: 64px;
+        text-align: center;
+        font-size: 12px;
+      }
+      .pose[aria-current="true"] {
+        background: #267c87;
+        color: white;
+        border-color: #267c87;
+      }
+      .secondary {
+        font-size: 12px;
+        color: #52625d;
+      }
+      .actions {
+        display: grid;
+        gap: 10px;
+      }
+      .corners {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .corners label {
+        margin: 0;
+      }
+      .corners input {
+        width: 100%;
+        padding: 6px;
+        font-variant-numeric: tabular-nums;
+      }
+      .export {
+        margin: 0 3vw 28px;
+        border-top: 1px solid #d3d3c8;
+        padding-top: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      #status {
+        margin: 0;
+        min-height: 20px;
+        line-height: 1.5;
+        color: #52625d;
+        max-width: 700px;
+      }
+      #download {
+        color: #267c87;
+      }
+      #asset {
+        position: absolute;
+        left: -9999px;
+      }
+      #cancel[hidden],
+      #download[hidden],
+      #keep-copy[hidden] {
+        display: none;
+      }
+      @media (max-width: 760px) {
+        header {
+          margin: 20px 20px 0;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .toolbar {
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        main {
+          grid-template-columns: 1fr;
+          padding: 24px 20px;
+          gap: 26px;
+        }
+        aside {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+        h1 {
+          font-size: 21px;
+        }
+        .export {
+          margin: 0 20px 24px;
+        }
+        .corners {
+          grid-template-columns: 1fr 1fr;
+        }
+        .timeline {
+          margin-top: 18px;
+        }
+      }
+      @media (max-width: 390px) {
+        aside {
+          grid-template-columns: 1fr;
+        }
+        .toolbar button {
+          padding: 8px;
+        }
+        .brand {
+          max-width: 100px;
+          line-height: 1.5;
+        }
+      }
+      @media (min-width: 761px) {
+        .stage {
+          width: min(100%, calc((100vh - 320px) * 4 / 3));
+          margin-inline: auto;
+        }
+        aside {
+          max-height: calc(100vh - 210px);
+          overflow: auto;
+          padding-right: 3px;
+        }
+        .handle {
+          width: 40px;
+          height: 40px;
+        }
+      }
+      @media (min-width: 761px) {
+        .export {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          margin: 0;
+          min-height: 62px;
+          padding: 10px 3vw;
+          background: #f5f2ea;
+        }
+        .stage[data-editing="true"] {
+          outline: none;
+        }
+      }
+      .stage {
+        aspect-ratio: 4/3;
+      }
+      .overlay svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .overlay polygon {
+        fill: none;
+        stroke: #267c87;
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+        vector-effect: non-scaling-stroke;
+      }
+    </style>
+    <!--studio-session-->
+  </head>
+  <body>
+    <header>
+      <span class="brand">WORLDBEND / SCENE STUDIO</span>
+      <div class="toolbar">
+        <button id="undo" disabled>Undo</button
+        ><button id="redo" disabled>Redo</button
+        ><button id="save" disabled>Save work</button
+        ><button id="export-image" disabled>Save image</button
+        ><button id="export-video" class="primary" disabled>
+          Export video
+        </button>
+      </div>
+    </header>
+    <main>
+      <section>
+        <div
+          id="stage"
+          class="stage"
+          role="img"
+          aria-label="Editable Field Notes edition scene"
+        >
+          <div id="receiver"></div>
+          <div id="overlay" class="overlay">
+            <svg
+              viewBox="0 0 100 100"
+              aria-hidden="true"
+              preserveAspectRatio="none"
+            >
+              <polygon id="selection-outline"></polygon>
+            </svg>
+          </div>
+        </div>
+        <div class="timeline">
+          <div class="transport">
+            <button id="play" disabled>Play</button
+            ><input
+              id="position"
+              type="range"
+              min="0"
+              max="1000"
+              value="0"
+              aria-label="Scene position"
+              disabled
+            /><output id="time">0.0 / 4.0 s</output>
+          </div>
+          <div id="poses" class="poses" aria-label="Key poses"></div>
+        </div>
+      </section>
+      <aside>
+        <div>
+          <h1>Field Notes editions</h1>
+          <label for="plane">Layer</label
+          ><select id="plane" class="full" disabled></select>
+        </div>
+        <div class="group">
+          <label for="duration">Duration</label>
+          <div class="row">
+            <input
+              id="duration"
+              type="number"
+              min="0.1"
+              step="0.1"
+              value="4"
+              disabled
+            /><span class="secondary">seconds</span>
+          </div>
+        </div>
+        <div class="group actions">
+          <button id="capture" disabled>Add scene pose</button
+          ><label for="easing">To next pose</label
+          ><select id="easing" disabled>
+            <option value="linear">Linear</option>
+            <option value="smooth">Smooth</option>
+            <option value="hold">Hold</option></select
+          ><button id="remove" disabled>Remove layer pose</button>
+        </div>
+        <div class="group">
+          <label for="strength">Shadow</label>
+          <div class="row">
+            <input
+              id="strength"
+              type="range"
+              min="0"
+              max="60"
+              value="25"
+              disabled
+            /><output id="strength-value">25%</output>
+          </div>
+        </div>
+        <div class="group actions">
+          <button id="replace" disabled>Replace artwork</button
+          ><input
+            id="asset"
+            type="file"
+            accept="image/png"
+            aria-label="Replacement PNG artwork"
+          /><label for="fit">Artwork fit</label
+          ><select id="fit" disabled>
+            <option value="contain">Contain</option>
+            <option value="cover">Cover</option></select
+          ><button id="next" disabled>Next artwork</button>
+        </div>
+        <details class="group">
+          <summary>Corners</summary>
+          <div id="corners" class="corners"></div>
+        </details>
+      </aside>
+    </main>
+    <footer class="export">
+      <p id="status" role="status">Preparing editable work…</p>
+      <div class="row">
+        <button id="keep-copy" hidden>Keep edits as copy</button
+        ><button id="cancel" hidden>Cancel export</button
+        ><a id="download" hidden download>Download</a>
+      </div>
+    </footer>
+    <script
+      type="module"
+      src="/packages/web/examples/scene-studio/studio.js"
+    ></script>
+  </body>
+</html>

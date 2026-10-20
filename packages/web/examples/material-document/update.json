@@ -1,0 +1,314 @@
+{
+  "affectedExpressions": [
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "poster"
+        }
+      ],
+      "id": "poster",
+      "kind": "material"
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "paper-note"
+        }
+      ],
+      "id": "paper-note",
+      "kind": "material"
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "foil-seal"
+        }
+      ],
+      "id": "foil-seal",
+      "kind": "material"
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "edition-control"
+        }
+      ],
+      "id": "edition-control",
+      "kind": "material"
+    }
+  ],
+  "changed": true,
+  "document": {
+    "assets": [
+      {
+        "contentVersion": "edition-02",
+        "id": "field-notes"
+      }
+    ],
+    "expressions": [
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "poster"
+          }
+        ],
+        "id": "poster",
+        "kind": "material",
+        "material": {
+          "family": "mesh-gradient",
+          "input": {
+            "kernelProfile": "worldbend.mesh-gradient.rgba@0.2",
+            "material": {
+              "colorBl": {
+                "a": 1,
+                "b": 0.41,
+                "g": 0.45,
+                "r": 0.11
+              },
+              "colorBr": {
+                "a": 1,
+                "b": 0.29,
+                "g": 0.68,
+                "r": 0.94
+              },
+              "colorTl": {
+                "a": 1,
+                "b": 0.43,
+                "g": 0.32,
+                "r": 0.13
+              },
+              "colorTr": {
+                "a": 1,
+                "b": 0.13,
+                "g": 0.23,
+                "r": 0.8
+              },
+              "durationMs": 12000,
+              "flowSpeed": 0.32,
+              "phaseMs": 900,
+              "softness": 0.48,
+              "visible": true,
+              "warp": 0.57
+            },
+            "recipe": {
+              "material": {
+                "colorBl": {
+                  "a": 1,
+                  "b": 0.36,
+                  "g": 0.62,
+                  "r": 0.94
+                },
+                "colorBr": {
+                  "a": 1,
+                  "b": 0.49,
+                  "g": 0.57,
+                  "r": 0.4
+                },
+                "colorTl": {
+                  "a": 1,
+                  "b": 0.15,
+                  "g": 0.3,
+                  "r": 0.96
+                },
+                "colorTr": {
+                  "a": 1,
+                  "b": 0.15,
+                  "g": 0.17,
+                  "r": 0.05
+                },
+                "durationMs": 12000,
+                "flowSpeed": 0.32,
+                "phaseMs": 900,
+                "softness": 0.48,
+                "visible": true,
+                "warp": 0.57
+              },
+              "recipeId": "field-notes-mesh-gradient",
+              "recipeVersion": 1,
+              "schema": "worldbend.mesh-gradient@0.1",
+              "version": "0.1"
+            },
+            "target": "web"
+          }
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "paper-note"
+          }
+        ],
+        "id": "paper-note",
+        "kind": "material",
+        "material": {
+          "family": "texture",
+          "input": {
+            "material": {
+              "clipToShape": true,
+              "etch": 0.4,
+              "etchSize": 3,
+              "grain": 0.18,
+              "grainColor": "#7b5a39",
+              "grainSize": 1.2,
+              "visible": true
+            },
+            "nativeExtras": {},
+            "recipe": {
+              "material": {
+                "clipToShape": true,
+                "etch": 0.4,
+                "etchSize": 3,
+                "grain": 0.18,
+                "grainColor": "#7b5a39",
+                "grainSize": 1.2,
+                "visible": true
+              },
+              "recipeId": "field-notes-texture",
+              "recipeVersion": 1,
+              "schema": "worldbend.texture@0.1",
+              "version": "0.1"
+            },
+            "target": "web"
+          }
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "foil-seal"
+          }
+        ],
+        "id": "foil-seal",
+        "kind": "material",
+        "material": {
+          "family": "foil",
+          "input": {
+            "material": {
+              "baseColor": {
+                "a": 1,
+                "b": 0.19,
+                "g": 0.22,
+                "r": 0.17
+              },
+              "flowSpeed": 0.25,
+              "highlightColor": {
+                "a": 1,
+                "b": 0.56,
+                "g": 0.94,
+                "r": 0.87
+              },
+              "intensity": 0.8,
+              "lightAngle": 130,
+              "roughness": 0.45,
+              "visible": true
+            },
+            "recipe": {
+              "material": {
+                "baseColor": {
+                  "a": 1,
+                  "b": 0.19,
+                  "g": 0.22,
+                  "r": 0.17
+                },
+                "flowSpeed": 0.25,
+                "highlightColor": {
+                  "a": 1,
+                  "b": 0.56,
+                  "g": 0.94,
+                  "r": 0.87
+                },
+                "intensity": 0.8,
+                "lightAngle": 130,
+                "roughness": 0.45,
+                "visible": true
+              },
+              "recipeId": "field-notes-foil",
+              "recipeVersion": 1,
+              "schema": "worldbend.foil@0.1",
+              "version": "0.1"
+            },
+            "target": "web"
+          }
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "edition-control"
+          }
+        ],
+        "id": "edition-control",
+        "kind": "material",
+        "material": {
+          "family": "glass",
+          "input": {
+            "material": {
+              "depth": 8,
+              "dispersion": 0,
+              "lightAngle": 115,
+              "lightIntensity": 0.45,
+              "radius": 3,
+              "refraction": 0.25,
+              "visible": true
+            },
+            "nativeExtras": {},
+            "recipe": {
+              "material": {
+                "depth": 8,
+                "dispersion": 0,
+                "lightAngle": 115,
+                "lightIntensity": 0.45,
+                "radius": 3,
+                "refraction": 0.25,
+                "visible": true
+              },
+              "recipeId": "field-notes-glass",
+              "recipeVersion": 1,
+              "schema": "worldbend.appearance@0.1",
+              "version": "0.1"
+            },
+            "target": "web"
+          }
+        }
+      }
+    ],
+    "schema": "worldbend.spatial-document",
+    "version": "0.1"
+  },
+  "expressionRevisions": [
+    {
+      "changed": true,
+      "fingerprint": "sha256:f87d76579a1a2a185a86a38af6375422a4a395e5809daa2bbded735d5d2e72e9",
+      "id": "poster",
+      "previousFingerprint": "sha256:1f1a6de8eea11500b811f9250de8f368655b5788826d01274584da795ea55a06"
+    }
+  ],
+  "fingerprint": "sha256:e362bc8e7e99436f020faebeb1c2c86f30438dd96225411fbf9d92530ce0151a",
+  "previousFingerprint": "sha256:b9c8832aa5010430ddb1c1cc3326ffdd40bd53d85d1fb6d9c5bb1efa0609e8d8",
+  "revisions": [
+    {
+      "assetId": "field-notes",
+      "changed": true,
+      "contentVersion": "edition-02",
+      "previousContentVersion": "edition-01"
+    }
+  ],
+  "schema": "worldbend.spatial-document-update-plan",
+  "version": "0.1"
+}

@@ -1,0 +1,198 @@
+{
+  "current": {
+    "delivery": {
+      "fingerprint": "sha256:123a6cda6e8197667b7b22dd8cadd9c52baa6481faf3ce52974ba92e74f67a0d",
+      "material": {
+        "depth": 28,
+        "dispersion": 0.16,
+        "lightAngle": 300,
+        "lightIntensity": 0.9,
+        "radius": 1.2,
+        "refraction": 0.4,
+        "visible": true
+      },
+      "recipeFingerprint": "sha256:7069693fea7d13fa004b69861eb687423684f5b16eb978ba00575d5659398b06",
+      "recipeId": "optical-receiving-clear",
+      "recipeVersion": 1,
+      "schema": "worldbend.appearance-delivery@0.1",
+      "swiftui": {
+        "fidelity": [
+          {
+            "field": "visible",
+            "mapping": "native",
+            "note": "hidden or removed material emits no pane; foreground identity is preserved"
+          },
+          {
+            "field": "light-intensity",
+            "mapping": "approximated",
+            "note": "scales directional edge highlights in the Metal kernel"
+          },
+          {
+            "field": "light-angle",
+            "mapping": "approximated",
+            "note": "calibrated to the native Glass primary highlight: 0 down, 90 left, 180 up, 270 right"
+          },
+          {
+            "field": "refraction",
+            "mapping": "approximated",
+            "note": "scales rounded-surface backdrop displacement up to 32 logical points"
+          },
+          {
+            "field": "depth",
+            "mapping": "approximated",
+            "note": "sets the refracting rim width, limited by the receiving surface half-size"
+          },
+          {
+            "field": "dispersion",
+            "mapping": "approximated",
+            "note": "separates sampled red and blue by up to 8 logical points at the rim"
+          },
+          {
+            "field": "radius",
+            "mapping": "approximated",
+            "note": "sets SwiftUI Gaussian backdrop blur in logical points before refraction"
+          }
+        ],
+        "optical": {
+          "backdrop": "explicit-swiftui-layer",
+          "chromaticOffset": 1.28,
+          "edgeWidth": 28,
+          "frostRadius": 1.2,
+          "highlightStrength": 0.54,
+          "lightDirection": [
+            0.8660254037844386,
+            0.5000000000000001
+          ],
+          "profile": "worldbend.rounded-glass-metal@0.1",
+          "refractionScale": 12.8
+        },
+        "snippet": "// Requires WorldbendAppearance (iOS 17+/macOS 14+). Supply a renderable, presentation-only backdrop.\nWorldbendOpticalScene(backdrop: { sceneArtwork }) { backdrop in\n  existingControls.background {\n    WorldbendOpticalPane(backdrop: backdrop, optics: material.opticalConfiguration, cornerRadius: 24)\n  }.contentShape(RoundedRectangle(cornerRadius: 24))\n}\n// Retain one AppearanceSession. Foreground controls are never sampled.\n",
+        "usesNativeLiquidGlass": false
+      },
+      "target": "swiftui-optical",
+      "version": "0.1",
+      "web": null
+    },
+    "preferenceFingerprint": "sha256:f9b188e28dc6f14e531e596dae7233601e88d1dd11a299181610b14598ed8558",
+    "preferenceReceipts": [
+      {
+        "field": "light-intensity",
+        "reason": "explicit override applied to the effective material",
+        "state": "applied"
+      },
+      {
+        "field": "radius",
+        "reason": "explicit override applied to the effective material",
+        "state": "applied"
+      }
+    ],
+    "preferenceRevision": 3,
+    "preserved": [
+      "light-intensity",
+      "radius"
+    ],
+    "previousDeliveryFingerprint": "sha256:27e7f289376a733fc12bf1f10adea58cc122213e7d13d96e2562fb01a68bf535",
+    "previousFingerprint": "sha256:50b1c8004dd4e11599674b3feb1773fb84a6dba6ec1b17ef7795942b94a3eae9",
+    "schema": "worldbend.appearance-update@0.1",
+    "sourceFingerprint": "sha256:fba9be1ae3946140c919e2034b6dab025513012f41bbb358b29ade8dc8eae796",
+    "version": "0.1"
+  },
+  "stale": {
+    "delivery": {
+      "fingerprint": "sha256:123a6cda6e8197667b7b22dd8cadd9c52baa6481faf3ce52974ba92e74f67a0d",
+      "material": {
+        "depth": 28,
+        "dispersion": 0.16,
+        "lightAngle": 300,
+        "lightIntensity": 0.9,
+        "radius": 1.2,
+        "refraction": 0.4,
+        "visible": true
+      },
+      "recipeFingerprint": "sha256:7069693fea7d13fa004b69861eb687423684f5b16eb978ba00575d5659398b06",
+      "recipeId": "optical-receiving-clear",
+      "recipeVersion": 1,
+      "schema": "worldbend.appearance-delivery@0.1",
+      "swiftui": {
+        "fidelity": [
+          {
+            "field": "visible",
+            "mapping": "native",
+            "note": "hidden or removed material emits no pane; foreground identity is preserved"
+          },
+          {
+            "field": "light-intensity",
+            "mapping": "approximated",
+            "note": "scales directional edge highlights in the Metal kernel"
+          },
+          {
+            "field": "light-angle",
+            "mapping": "approximated",
+            "note": "calibrated to the native Glass primary highlight: 0 down, 90 left, 180 up, 270 right"
+          },
+          {
+            "field": "refraction",
+            "mapping": "approximated",
+            "note": "scales rounded-surface backdrop displacement up to 32 logical points"
+          },
+          {
+            "field": "depth",
+            "mapping": "approximated",
+            "note": "sets the refracting rim width, limited by the receiving surface half-size"
+          },
+          {
+            "field": "dispersion",
+            "mapping": "approximated",
+            "note": "separates sampled red and blue by up to 8 logical points at the rim"
+          },
+          {
+            "field": "radius",
+            "mapping": "approximated",
+            "note": "sets SwiftUI Gaussian backdrop blur in logical points before refraction"
+          }
+        ],
+        "optical": {
+          "backdrop": "explicit-swiftui-layer",
+          "chromaticOffset": 1.28,
+          "edgeWidth": 28,
+          "frostRadius": 1.2,
+          "highlightStrength": 0.54,
+          "lightDirection": [
+            0.8660254037844386,
+            0.5000000000000001
+          ],
+          "profile": "worldbend.rounded-glass-metal@0.1",
+          "refractionScale": 12.8
+        },
+        "snippet": "// Requires WorldbendAppearance (iOS 17+/macOS 14+). Supply a renderable, presentation-only backdrop.\nWorldbendOpticalScene(backdrop: { sceneArtwork }) { backdrop in\n  existingControls.background {\n    WorldbendOpticalPane(backdrop: backdrop, optics: material.opticalConfiguration, cornerRadius: 24)\n  }.contentShape(RoundedRectangle(cornerRadius: 24))\n}\n// Retain one AppearanceSession. Foreground controls are never sampled.\n",
+        "usesNativeLiquidGlass": false
+      },
+      "target": "swiftui-optical",
+      "version": "0.1",
+      "web": null
+    },
+    "preferenceFingerprint": "sha256:f9b188e28dc6f14e531e596dae7233601e88d1dd11a299181610b14598ed8558",
+    "preferenceReceipts": [
+      {
+        "field": "light-intensity",
+        "reason": "explicit override applied to the effective material",
+        "state": "applied"
+      },
+      {
+        "field": "radius",
+        "reason": "explicit override applied to the effective material",
+        "state": "applied"
+      }
+    ],
+    "preferenceRevision": 2,
+    "preserved": [
+      "light-intensity",
+      "radius"
+    ],
+    "previousDeliveryFingerprint": "sha256:27e7f289376a733fc12bf1f10adea58cc122213e7d13d96e2562fb01a68bf535",
+    "previousFingerprint": "sha256:50b1c8004dd4e11599674b3feb1773fb84a6dba6ec1b17ef7795942b94a3eae9",
+    "schema": "worldbend.appearance-update@0.1",
+    "sourceFingerprint": "sha256:fba9be1ae3946140c919e2034b6dab025513012f41bbb358b29ade8dc8eae796",
+    "version": "0.1"
+  }
+}

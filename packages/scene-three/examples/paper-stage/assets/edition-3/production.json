@@ -1,0 +1,18 @@
+{
+  "schema": "worldbend.scene-production-evidence",
+  "version": "0.1",
+  "revision": 3,
+  "blenderVersion": "5.2.2 LTS",
+  "parentSourceSha256": "e865712cf087fe4ccd3b43561801a57cda8bd17e1a986c723ea737f7c01b1a7d",
+  "sourceSha256": "997652fdd9d7c891f28223051a97c3a8c8a6ed75a315f110d6f58a9ac9731512",
+  "gltfSha256": "d702f1a03a08ad65d5e3e0bd0baff03daf9aa414e175d8b0ff26ca08b81dadfa",
+  "camera": "Reveal Camera.003",
+  "animation": "Scene",
+  "changes": [
+    "paper ribbon height .91",
+    "renamed authored reveal camera"
+  ],
+  "losses": [
+    "COMPAT lighting; no Cycles/AgX visual parity claim"
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "nativeExtras": {"splay": 0.20000000298023224},
+  "losses": [{"field": "splay", "mapping": "unavailable", "note": "Retained in Figma; native SwiftUI has no Splay setter."}]
+}

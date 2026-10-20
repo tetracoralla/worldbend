@@ -1,0 +1,27 @@
+{
+  "recipe": {
+    "material": {
+      "depth": 20,
+      "dispersion": 0.12,
+      "lightAngle": 120,
+      "lightIntensity": 0.85,
+      "radius": 6,
+      "refraction": 0.8,
+      "visible": true
+    },
+    "recipeId": "optical-lab-clear",
+    "recipeVersion": 2,
+    "schema": "worldbend.appearance@0.1",
+    "version": "0.1"
+  },
+  "material": {
+    "visible": true,
+    "lightIntensity": 0.8500000238418579,
+    "lightAngle": 120,
+    "refraction": 0.800000011920929,
+    "depth": 20,
+    "dispersion": 0.11999999731779099,
+    "radius": 1
+  },
+  "target": "web"
+}

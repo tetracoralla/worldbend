@@ -1,0 +1,174 @@
+{
+  "clarity": {
+    "formula": "radius = rangeMin + (rangeMax - rangeMin) * (1 - clarity)",
+    "mapsTo": "radius",
+    "note": "Versioned composite: coordinates frost only. Direction was verified against rendered backgrounds: lower clarity increases measured backdrop blur and leaves foreground content, opacity and hit targets untouched.",
+    "rangeMax": 64,
+    "rangeMin": 0,
+    "version": "1"
+  },
+  "controls": [
+    {
+      "authoredMax": 1,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "toggle": true
+      },
+      "dependsOn": [],
+      "direction": "on shows the material; off removes only the optical layer",
+      "effectiveMax": 1,
+      "effectiveMin": 0,
+      "field": "visible",
+      "kind": "toggle",
+      "note": "on/off drives only the optical layer; content and actions stay untouched",
+      "reason": "selected by policy and drivable on this target",
+      "state": "exposed",
+      "unit": "toggle"
+    },
+    {
+      "authoredMax": 1,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "number": 0.5
+      },
+      "dependsOn": [],
+      "direction": "higher strengthens the edge highlight",
+      "effectiveMax": 1,
+      "effectiveMin": 0,
+      "field": "light-intensity",
+      "kind": "scalar",
+      "note": "scales the inset edge highlight strength",
+      "reason": "implemented by the glass family but not selected by this policy",
+      "state": "not-exposed",
+      "unit": "ratio"
+    },
+    {
+      "authoredMax": 360,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "number": 90
+      },
+      "dependsOn": [],
+      "direction": "rotates the lit edge; 0 down, 90 left, 180 up, 270 right",
+      "effectiveMax": 360,
+      "effectiveMin": 0,
+      "field": "light-angle",
+      "kind": "scalar",
+      "note": "cardinal mapping is calibrated across Figma, Web and Metal",
+      "reason": "implemented by the glass family but not selected by this policy",
+      "state": "not-exposed",
+      "unit": "degrees"
+    },
+    {
+      "authoredMax": 1,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "number": 0.35
+      },
+      "dependsOn": [
+        "backdrop-filter.saturate"
+      ],
+      "direction": "higher displaces more backdrop at the rim",
+      "effectiveMax": 1,
+      "effectiveMin": 0,
+      "field": "refraction",
+      "kind": "scalar",
+      "note": "edge-only backdrop displacement; intentionally also raises saturation (see dependsOn)",
+      "reason": "implemented by the glass family but not selected by this policy",
+      "state": "not-exposed",
+      "unit": "ratio"
+    },
+    {
+      "authoredMax": 1000,
+      "authoredMin": 1,
+      "cost": "live",
+      "default": {
+        "number": 2
+      },
+      "dependsOn": [
+        "refraction"
+      ],
+      "direction": "higher widens the refracting rim",
+      "effectiveMax": 1000,
+      "effectiveMin": 1,
+      "field": "depth",
+      "kind": "scalar",
+      "note": "Web displacement stays responsive through authored 100 (rim contribution caps at 40); higher values clamp with a receipt",
+      "reason": "implemented by the glass family but not selected by this policy",
+      "state": "not-exposed",
+      "unit": "logical-px"
+    },
+    {
+      "authoredMax": 1,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "number": 0
+      },
+      "dependsOn": [
+        "backdrop-filter.saturate"
+      ],
+      "direction": "higher separates red/green/blue more",
+      "effectiveMax": 1,
+      "effectiveMin": 0,
+      "field": "dispersion",
+      "kind": "scalar",
+      "note": "RGB channel separation at the refracting rim",
+      "reason": "implemented by the glass family but not selected by this policy",
+      "state": "not-exposed",
+      "unit": "ratio"
+    },
+    {
+      "authoredMax": 1000,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "number": 12
+      },
+      "dependsOn": [],
+      "direction": "higher frosts more spatial detail",
+      "effectiveMax": 1000,
+      "effectiveMin": 0,
+      "field": "radius",
+      "kind": "scalar",
+      "note": "frost radius changes spatial detail of the backdrop; it never fades foreground content",
+      "reason": "implemented by the glass family but not selected by this policy",
+      "state": "not-exposed",
+      "unit": "logical-px"
+    },
+    {
+      "authoredMax": 1,
+      "authoredMin": 0,
+      "cost": "live",
+      "default": {
+        "number": 0.8125
+      },
+      "dependsOn": [
+        "radius"
+      ],
+      "direction": "1 is clearest, 0 is most solid",
+      "effectiveMax": 1,
+      "effectiveMin": 0,
+      "field": "clarity",
+      "kind": "composite",
+      "note": "clarity owns the frost radius range [0,64] logical px; tint/coverage stays a receiver role layer outside the seven portable glass fields, and this control never lowers foreground opacity or disables actions",
+      "reason": "selected by policy; coordinates frost radius through the versioned mapping",
+      "state": "exposed",
+      "step": 0.05,
+      "unit": "ratio"
+    }
+  ],
+  "family": "glass",
+  "fingerprint": "sha256:e86e573df8391ebf68462237c93fd795901bf36a41687eaff8a619c23350d276",
+  "policyRevision": 2,
+  "schema": "worldbend.appearance-exposure@0.1",
+  "scopes": [
+    "ridge-walk"
+  ],
+  "target": "web",
+  "version": "0.1"
+}

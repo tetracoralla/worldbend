@@ -1,0 +1,117 @@
+{
+  "schema": "worldbend.spatial-document",
+  "version": "0.1",
+  "assets": [
+    {
+      "id": "paper-stage",
+      "contentVersion": "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38"
+    },
+    {
+      "id": "field-notes",
+      "contentVersion": "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653"
+    }
+  ],
+  "expressions": [
+    {
+      "kind": "scene3d",
+      "id": "paper-theatre",
+      "scene": {
+        "schema": "worldbend.scene3d",
+        "version": "0.1",
+        "sceneSlot": "scene",
+        "camera": "RevealCamera",
+        "animation": "Scene",
+        "canvas": {
+          "width": 960,
+          "height": 720
+        },
+        "timebase": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "frameCount": 96,
+        "artworks": [
+          {
+            "slotId": "cover",
+            "material": "CoverPrint",
+            "surfaceSize": {
+              "width": 840,
+              "height": 1120
+            },
+            "fit": "contain"
+          }
+        ],
+        "backgroundRgb": [
+          209,
+          204,
+          180
+        ],
+        "exposure": 1,
+        "ambientIntensity": 2
+      },
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "scene",
+          "assetId": "paper-stage"
+        },
+        {
+          "role": "content",
+          "slotId": "cover",
+          "assetId": "field-notes"
+        }
+      ]
+    },
+    {
+      "kind": "static",
+      "id": "cover-proof",
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "artwork",
+          "assetId": "field-notes"
+        }
+      ],
+      "template": {
+        "schema": "worldbend.spatial-template",
+        "version": "0.1",
+        "operation": {
+          "kind": "rasterProgram",
+          "sourceSlot": "artwork",
+          "program": {
+            "schema": "worldbend.raster-program",
+            "version": "0.1",
+            "stages": [
+              {
+                "kind": "canvas",
+                "id": "fit",
+                "spec": {
+                  "schema": "worldbend.canvas",
+                  "version": "0.1",
+                  "operation": {
+                    "kind": "contain",
+                    "output": {
+                      "width": 840,
+                      "height": 1120
+                    },
+                    "anchor": {
+                      "x": 0.5,
+                      "y": 0.5
+                    },
+                    "background": {
+                      "kind": "transparent"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "output": {
+          "kind": "single",
+          "id": "cover"
+        }
+      }
+    }
+  ]
+}

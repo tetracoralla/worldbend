@@ -1,0 +1,44 @@
+{
+  "schema": "worldbend.foil-update@0.1",
+  "version": "0.1",
+  "previousFingerprint": "sha256:a5d96bacdf885563e06bb2e4fa74b57373d8f481ad8ee660eb6e04c298f41a8e",
+  "previousDeliveryFingerprint": "sha256:5624de0a0849b01c605ea73b214e737feb396946bf384ad73f4ec2569f31e306",
+  "sourceFingerprint": "sha256:4851711a8851266e6adc8c4c1967ae30f40667da89b5cc699c9e9566fe411c51",
+  "delivery": {
+    "schema": "worldbend.foil-delivery@0.1",
+    "version": "0.1",
+    "fingerprint": "sha256:c8ae2182da9aaed9dd5cf7f96747fd293a8afd5e3e89f0c01d46f6d59ff74e2c",
+    "recipeId": "native-book-foil",
+    "recipeVersion": 2,
+    "recipeFingerprint": "sha256:23f1af876b019329ce24ede96949024d382ce67a897e509d708fb8631e5a7b9a",
+    "material": {
+      "visible": true,
+      "baseColor": {
+        "r": 0.08,
+        "g": 0.18,
+        "b": 0.22,
+        "a": 0.85
+      },
+      "highlightColor": {
+        "r": 0.45,
+        "g": 0.78,
+        "b": 0.98,
+        "a": 0.2
+      },
+      "lightAngle": 35.0,
+      "intensity": 0.35,
+      "roughness": 0.55,
+      "flowSpeed": 0.35
+    },
+    "target": "swiftui",
+    "kernel": {
+      "id": "worldbend.foil.rgba@0.1",
+      "sha256": "sha256:ff9e68c4ca8f54e28a58a5b6f2b89e8d67c8662bbaf16738041eaa74f969dd8a",
+      "source": "// Generated from foil.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 baseColor;\n    metal::float4 highlightColor;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_foil_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(123.34, 456.21));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(45.32)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_foil_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_foil_hash21_(i_1);\n    float _e20 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_foil_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_foil_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_foil_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_foil_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.03) + metal::float2(11.7, 9.2);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_foil_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv [[attribute(1)]];\n};\nstruct worldbend_foil_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_foil_vs_mainOutput worldbend_foil_vs_main(\n  worldbend_foil_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_foil_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_foil_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_foil_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_foil_fs_mainOutput worldbend_foil_fs_main(\n  worldbend_foil_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    metal::float2 p_3 = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    float lightAngle = u.surface.x;\n    float _e32 = u.surface.y;\n    float intensity = metal::clamp(_e32, 0.0, 1.0);\n    float _e39 = u.surface.z;\n    float roughness = metal::clamp(_e39, 0.0, 1.0);\n    float _e46 = u.surface.w;\n    float flowSpeed = metal::max(_e46, 0.0);\n    float _e52 = u.frameData.x;\n    float flow = _e52 * flowSpeed;\n    metal::float2 dir = metal::float2(metal::cos(lightAngle), metal::sin(lightAngle));\n    float along = metal::dot(p_3, dir);\n    float _e66 = worldbend_foil_fbm((p_3 * 3.0) + metal::float2(flow * 0.35, flow * 0.21));\n    float warp = (_e66 - 0.5) * roughness;\n    float phase = metal::fract(((along + (warp * 0.85)) * 2.4) - (flow * 0.28));\n    float opening = metal::smoothstep(0.08, 0.1, phase);\n    float face = (opening * (1.0 - metal::smoothstep(0.16, 0.86, phase))) * 0.75;\n    float glint = metal::smoothstep(0.1, 0.14, phase) * (1.0 - metal::smoothstep(0.14, 0.152 + (roughness * 0.025), phase));\n    float weight = intensity * metal::clamp(face + (glint * 0.7), 0.0, 1.0);\n    float _e112 = u.baseColor.w;\n    float _e116 = u.highlightColor.w;\n    float alpha = metal::mix(_e112, _e116, weight);\n    metal::float4 _e120 = u.baseColor;\n    float _e125 = u.baseColor.w;\n    metal::float4 _e129 = u.highlightColor;\n    float _e134 = u.highlightColor.w;\n    metal::float3 premultiplied = metal::mix(_e120.xyz * _e125, _e129.xyz * _e134, weight);\n    float _e140 = u.flags.y;\n    if (_e140 > 0.5) {\n        return worldbend_foil_fs_mainOutput { metal::float4(premultiplied, alpha) };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_foil_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_foil_fs_mainOutput { metal::float4(premultiplied / metal::float3(alpha), alpha) };\n}\n",
+      "uniformBytes": 96
+    }
+  },
+  "preserved": [
+    "highlight-color"
+  ]
+}

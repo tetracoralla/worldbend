@@ -1,0 +1,111 @@
+{
+  "schema": "worldbend.video",
+  "version": "0.1",
+  "backgroundRgb": [
+    16,
+    22,
+    34
+  ],
+  "encoding": {
+    "format": "mp4H264",
+    "crf": 18
+  },
+  "motion": {
+    "schema": "worldbend.motion",
+    "version": "0.1",
+    "output": {
+      "width": 960,
+      "height": 640
+    },
+    "timebase": {
+      "numerator": 30,
+      "denominator": 1
+    },
+    "sourceId": "art",
+    "frameCount": 60,
+    "base": {
+      "schema": "worldbend.transform",
+      "version": "0.1",
+      "destination": {
+        "space": "pixel",
+        "reference": {
+          "width": 960,
+          "height": 640
+        },
+        "quad": {
+          "tl": {
+            "x": 150,
+            "y": 80
+          },
+          "tr": {
+            "x": 785,
+            "y": 120
+          },
+          "br": {
+            "x": 750,
+            "y": 565
+          },
+          "bl": {
+            "x": 115,
+            "y": 505
+          }
+        }
+      },
+      "content": {
+        "fit": "stretch",
+        "orientation": "native"
+      }
+    },
+    "keyframes": [
+      {
+        "frame": 0,
+        "quad": {
+          "tl": {
+            "x": 150,
+            "y": 80
+          },
+          "tr": {
+            "x": 785,
+            "y": 120
+          },
+          "br": {
+            "x": 750,
+            "y": 565
+          },
+          "bl": {
+            "x": 115,
+            "y": 505
+          }
+        },
+        "easingToNext": {
+          "kind": "cubicBezier",
+          "x1": 0.42,
+          "y1": 0,
+          "x2": 0.58,
+          "y2": 1
+        }
+      },
+      {
+        "frame": 59,
+        "quad": {
+          "tl": {
+            "x": 97.5,
+            "y": 65
+          },
+          "tr": {
+            "x": 862.5,
+            "y": 65
+          },
+          "br": {
+            "x": 862.5,
+            "y": 575
+          },
+          "bl": {
+            "x": 97.5,
+            "y": 575
+          }
+        }
+      }
+    ]
+  }
+}

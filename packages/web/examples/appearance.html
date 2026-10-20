@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Worldbend · 空间成像试验台</title>
+<link rel="stylesheet" href="appearance.css">
+<body>
+<header><a class="brand" href="effects.html">W<span>↗</span> Worldbend</a><span>SPATIAL APPEARANCE / 01</span></header>
+<main aria-busy="true">
+  <section class="intro">
+    <div><p class="eyebrow">同一相机 · 同一素材 · 同一操作</p><h1>深度不只会移动。<br>它也决定哪里清晰。</h1></div>
+    <p>三份画面共享完全相同的多平面相机。左侧只显示几何，中间加入光学景深，右侧只显示由显式前后状态与曝光比例产生的动态模糊。</p>
+  </section>
+  <section class="comparison" aria-label="空间成像比较">
+    <article><div class="label"><span>01</span><div><h2>清晰基准</h2><p>只有共享相机</p></div></div><div class="viewport" id="clear" tabindex="0" aria-disabled="true" aria-label="清晰基准，拖动观察"></div></article>
+    <article class="featured"><div class="label"><span>02</span><div><h2>光学景深</h2><p id="depth-focus">中景对焦 · 显式深度图</p></div></div><div class="viewport" id="depth" tabindex="0" aria-disabled="true" aria-label="光学景深，拖动观察"></div></article>
+    <article><div class="label"><span>03</span><div><h2>动态模糊</h2><p>速度 × 曝光时间</p></div></div><div class="viewport" id="motion" tabindex="0" aria-disabled="true" aria-label="动态模糊，拖动观察"></div></article>
+  </section>
+  <section class="controls" aria-label="试验控制">
+    <button id="play" class="primary" disabled>播放一次</button>
+    <label>左右观察<input id="pointer-x" type="range" min="-1" max="1" step="0.01" value="0" disabled></label>
+    <label>上下观察<input id="pointer-y" type="range" min="-1" max="1" step="0.01" value="0" disabled></label>
+    <fieldset><legend>光学焦点</legend><button data-focus="1500" disabled>后景</button><button data-focus="1000" aria-pressed="true" disabled>中景</button><button data-focus="650" disabled>前景</button></fieldset>
+    <button id="reset" disabled>复位</button>
+  </section>
+  <div class="status-row"><p id="status" role="status" aria-live="polite">正在准备空间成像…</p><p><span class="dot"></span> 深度图只绑定到中间示例的后景；核心不生成、不猜测它。</p></div>
+</main>
+<script type="module" src="appearance-demo.js"></script>
+</body></html>

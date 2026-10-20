@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Worldbend card — receiving project</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; gap: 24px;
+         font: 14px/1.5 system-ui, sans-serif; background: #101418; color: #e8edf2; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; justify-items: center; padding: 24px;
+    box-sizing: border-box; width: 100%; max-width: 780px; }
+  .stage { position: relative; width: min(100%, 420px); aspect-ratio: 380 / 250; min-height: 260px; }
+  /* The developer's own live card component. Worldbend owns only its pose. */
+  .pricing-card { position: absolute; inset: 0; border-radius: 20px; padding: clamp(16px, 5vw, 22px);
+    background: linear-gradient(155deg, #ffffff 0%, #eef2f7 60%, #dde6ef 100%);
+    color: #17212b; box-shadow: 0 22px 46px rgb(0 0 0 / 45%);
+    display: grid; grid-template-rows: auto 1fr auto; gap: 10px; will-change: transform; }
+  .pricing-card[data-theme="summer"] { background: linear-gradient(155deg, #fff6e8, #ffe2b8 65%, #f7c477); }
+  .pricing-card h2 { margin: 0; font-size: 18px; }
+  .pricing-card .price { font-size: 34px; font-weight: 700; letter-spacing: -.02em; }
+  .pricing-card .price small { font-size: 13px; font-weight: 400; opacity: .7; }
+  .pricing-card .features { margin: 0; padding-left: 18px; color: #46525e; font-size: 12.5px; }
+  .pricing-card footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pricing-card button { font: inherit; padding: 9px 16px; border-radius: 10px; cursor: pointer;
+    border: 1px solid rgb(0 0 0 / 18%); background: #fff; color: inherit; }
+  .pricing-card button.cta { background: #0d99ff; border-color: #0d99ff; color: #fff; font-weight: 600; }
+  .pricing-card:focus-visible { outline: 3px solid #7bb8ff; outline-offset: 3px; }
+  .panel { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .panel button { font: inherit; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid rgb(255 255 255 / 22%); background: #1b232c; color: inherit; }
+  output, .status { font-variant-numeric: tabular-nums; opacity: .8; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="stage" id="stage">
+    <div class="pricing-card" id="card" tabindex="0" role="group" aria-label="Pricing card">
+      <h2 id="card-title">Studio</h2>
+      <div>
+        <div class="price">$24<small>/mo</small></div>
+        <ul class="features" id="card-features">
+          <li>Unlimited perspectives</li><li>Editable native results</li><li>Agent handoff</li>
+        </ul>
+      </div>
+      <footer>
+        <button type="button" id="flip" disabled>Flip card</button>
+        <button type="button" class="cta" id="cta">Sign up</button>
+      </footer>
+    </div>
+  </div>
+  <div class="panel">
+    <button type="button" id="swap-content">Swap campaign content</button>
+    <button type="button" id="revise" disabled>Load design revision v2</button>
+    <button type="button" id="detach">Detach effect</button>
+    <button type="button" id="reattach">Reattach from artifact</button>
+    <span class="status" id="status" role="status"></span>
+  </div>
+  <p class="status">Sign-ups: <output id="signups">0</output> · Flips: <output id="flips">0</output></p>
+</main>
+<script type="module">
+// Receiving project: the only Worldbend inputs are the published runtime
+// module and the delivered card-rig artifact. No authoring UI, no source
+// checkout, no handwritten geometry.
+import { attachCardController } from '../../dist/card.js';
+
+const artifact = (revision) => fetch(new URL(`card-rig.v${revision}.json`, import.meta.url))
+  .then(async (response) => {
+    if (!response.ok) throw new Error(`artifact v${revision} unavailable`);
+    const delivery = await response.json();
+    if (delivery.schema !== "worldbend.card-delivery" || delivery.version !== "0.1") throw new Error("Unsupported card delivery");
+    return delivery.rig;
+  });
+
+const card = document.getElementById('card');
+const stage = document.getElementById('stage');
+let controller;
+let flips = 0;
+let signups = 0;
+let paintFrame = 0;
+let bindingGeneration = 0;
+let artifactRequest = 0;
+let failure = '';
+let effectWanted = true;
+const status = document.getElementById('status');
+const showError = error => { failure = String(error.message ?? error); status.textContent = failure; };
+
+function detach() {
+  ++bindingGeneration; ++artifactRequest;
+  cancelAnimationFrame(paintFrame); paintFrame = 0;
+  controller?.dispose(); controller = undefined;
+  document.getElementById('flip').disabled = true;
+  document.getElementById('revise').disabled = true;
+  if (window.__receiving) window.__receiving.controller = undefined;
+  failure = '';
+  status.textContent = 'Effect detached';
+}
+
+async function bind(rig) {
+  // Activation belongs to this project's own controls: the business flip
+  // button and keyboard activation on the focusable card.
+  detach();
+  status.textContent = 'Connecting effect…';
+  const generation = bindingGeneration;
+  let next;
+  try {
+    next = attachCardController(card, rig, {
+      surface: stage,
+      activateOnClick: false,
+      onError: showError,
+    });
+  } catch (error) {
+    if (generation === bindingGeneration) showError(error);
+    return false;
+  }
+  controller = next;
+  const receiving = window.__receiving = {
+    controller: next,
+    artifact,
+    currentRig: rig,
+    paint() {
+      const state = next.getState();
+      const text = failure ||
+        `${state.face} · ${state.revolutions.toFixed(2)} rev · active=${state.actionActive}`;
+      // The status element is an aria-live region; write only on change.
+      if (status.textContent !== text) status.textContent = text;
+    },
+  };
+  if (!await next.ready || controller !== next || generation !== bindingGeneration) return false;
+  document.getElementById('flip').disabled = false;
+  document.getElementById('revise').disabled = false;
+  const paint = () => {
+    if (controller !== next || generation !== bindingGeneration) return;
+    receiving.paint(); paintFrame = requestAnimationFrame(paint);
+  };
+  paint();
+  return true;
+}
+
+// The business CTA is completely independent of the spatial effect.
+document.getElementById('cta').addEventListener('click', () => {
+  signups += 1;
+  document.getElementById('signups').value = String(signups);
+  document.getElementById('signups').textContent = String(signups);
+});
+// The developer-owned activation trigger routes into the controller.
+document.getElementById('flip').addEventListener('click', () => {
+  if (controller?.activate()) {
+    flips += 1;
+    document.getElementById('flips').textContent = String(flips);
+  }
+});
+// Source change: this project swaps its own card content; the accepted
+// behavior keeps driving the new content without rebinding.
+let summer = false;
+document.getElementById('swap-content').addEventListener('click', () => {
+  summer = !summer;
+  card.dataset.theme = summer ? 'summer' : '';
+  document.getElementById('card-title').textContent = summer ? 'Studio · Summer' : 'Studio';
+  document.getElementById('card-features').innerHTML = summer
+    ? '<li>Seasonal perspectives</li><li>Priority renders</li><li>Agent handoff</li>'
+    : '<li>Unlimited perspectives</li><li>Editable native results</li><li>Agent handoff</li>';
+});
+// Design revision: a later Figma edit arrives as the v2 artifact and updates
+// the owned behavior in place; handlers and content are untouched.
+document.getElementById('revise').addEventListener('click', async () => {
+  const owner = controller, request = ++artifactRequest;
+  if (!owner) return;
+  try {
+    const rig = await artifact(2);
+    if (request !== artifactRequest || owner !== controller) return;
+    const accepted = await owner.update(rig);
+    if (request === artifactRequest && owner === controller) {
+      if (accepted) { window.__receiving.currentRig = rig; failure = ''; }
+      else showError(new Error('Design revision not applied; the previous behavior is retained.'));
+    }
+  } catch (error) { if (request === artifactRequest && owner === controller) showError(error); }
+});
+// Teardown and reattachment keep working from the same artifact alone.
+document.getElementById('detach').addEventListener('click', () => { effectWanted = false; detach(); });
+async function reattach() {
+  effectWanted = true;
+  const request = ++artifactRequest;
+  try {
+    const rig = window.__receiving?.currentRig ?? (await artifact(1));
+    if (request === artifactRequest) await bind(rig);
+  } catch (error) { if (request === artifactRequest) showError(error); }
+}
+document.getElementById('reattach').addEventListener('click', reattach);
+
+const initialRequest = ++artifactRequest;
+status.textContent = 'Loading design…';
+window.__receivingReady = artifact(1).then(async (rig) => {
+  if (initialRequest === artifactRequest && await bind(rig)) return rig;
+}).catch(error => {
+  if (initialRequest === artifactRequest) showError(error);
+});
+window.addEventListener('pagehide', detach);
+window.addEventListener('pageshow', event => {
+  // A back/forward-cache return resumes the accepted effect. An explicit
+  // user detachment remains detached, including across repeated returns.
+  if (event.persisted && effectWanted && !controller) void reattach();
+});
+</script>
+</body>
+</html>

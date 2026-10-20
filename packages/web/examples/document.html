@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Worldbend · 可持续修改的空间作品</title>
+<link rel="stylesheet" href="document.css">
+<body>
+<header><a class="brand" href="effects.html">W<span>↗</span> Worldbend</a><span>DOCUMENT DELIVERY / 01</span></header>
+<main aria-busy="true">
+  <section class="copy">
+    <p class="eyebrow">一份作品 · 下一次发布继续用</p>
+    <h1>让每一次产品更新，<br>都从已经成立、可以继续修改的空间表达开始。</h1>
+    <p class="lede">这里不是一次性的视差演示。画面的空间关系来自一份核心编译的 Spatial Document 交付计划；换成下一版产品素材时，宿主只需要说出资产身份，不需要重新知道它落在哪一层。</p>
+    <div class="actions">
+      <button id="replace" class="primary" disabled>换成 Release 02</button>
+      <button id="reset" disabled>回到正面</button>
+    </div>
+    <dl>
+      <div><dt>作品身份</dt><dd>showcase-hero</dd></div>
+      <div><dt>当前内容</dt><dd id="release">Release 01</dd></div>
+      <div><dt>再次交付</dt><dd>保留镜头、层级与动效</dd></div>
+    </dl>
+    <p id="status" role="status" aria-live="polite">正在验证交付计划并准备作品…</p>
+  </section>
+  <section class="showcase" aria-label="可持续修改的空间作品">
+    <div class="frame">
+      <div class="frame-bar"><span>WORLDBEND / LIVE WORK</span><span id="frame-release">R01</span></div>
+      <div id="viewport" class="viewport" tabindex="0" aria-disabled="true" aria-label="空间作品；拖动或用方向键改变视点">
+        <div id="stage" class="stage">
+          <canvas id="background" aria-hidden="true"></canvas>
+          <canvas id="middle" aria-hidden="true"></canvas>
+          <canvas id="foreground" aria-hidden="true"></canvas>
+        </div>
+        <p class="gesture">拖动观察 · 方向键也可以</p>
+      </div>
+    </div>
+    <p class="caption"><span></span>三张纹理仍由宿主提供；Worldbend 保存并执行的是它们之间可复用、可校验的关系。</p>
+  </section>
+</main>
+<script type="module" src="document-demo.js"></script>
+</body></html>

@@ -1,0 +1,40 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Color study · Worldbend</title><link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f0ede5;color:#232820;font:14px Arial,Helvetica,sans-serif}main{max-width:1400px;margin:auto;padding:36px 4vw}header{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid #26332360;padding-bottom:24px;margin-bottom:32px}h1{font-size:70px;letter-spacing:-.06em;line-height:.9;margin:0}header p{margin:0;font-size:12px;letter-spacing:.07em}.studies{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}h2{font-size:15px;margin:0 0 14px;font-weight:500}.chart{position:relative;height:420px;border-radius:16px;overflow:hidden;background:#ddd7c9}.swatch{height:50px}.grid{height:120px;background:repeating-linear-gradient(0deg,transparent 0 11px,#273a4160 11px 12px),repeating-linear-gradient(90deg,#f6efdb 0 11px,#273a4160 11px 12px)}.pane{position:absolute;inset:0;border-radius:16px}.pane button{position:absolute;bottom:18px;left:18px;border:1px solid #253a3266;border-radius:20px;background:#fcf6e8;padding:8px 13px;font:inherit;color:inherit;cursor:pointer}button:focus-visible,input:focus-visible{outline:3px solid #c34531;outline-offset:4px}.controls{margin-top:32px;display:flex;gap:25px;align-items:center;flex-wrap:wrap}label{display:flex;align-items:center;gap:10px}output{min-height:20px;font-size:12px}.note{font-size:12px;max-width:600px;margin:28px 0 0;line-height:1.5;color:#495345}input{width:130px;accent-color:#23482e}@media(max-width:800px){.studies{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:30px 6vw}header{align-items:start}h1{font-size:48px}.chart{height:360px}.swatch{height:40px}.grid{height:120px}.controls{gap:14px}}@media(max-width:430px){header p{max-width:95px;font-size:10px}.studies{gap:14px}h2{font-size:12px}.pane button{left:10px;padding:7px 9px;font-size:11px}.chart{border-radius:12px}.pane{border-radius:12px}}
+</style><main><header><h1>Color<br>study.</h1><p>WORLDBEND / OPTICAL MATERIALS</p></header>
+<section class="studies" aria-label="Glass color comparison">
+<article><h2>Original</h2><div id="original-chart" class="chart"><div class="pane"><button>Open artwork</button></div></div></article>
+<article><h2>Vivid glass</h2><div id="vivid-chart" class="chart"><div id="vivid" class="pane"><button>Open artwork</button></div></div></article>
+<article><h2>Faithful glass</h2><div id="faithful-chart" class="chart"><div id="faithful" class="pane"><button>Open artwork</button></div></div></article>
+<article><h2>Frost fallback</h2><div id="fallback-chart" class="chart"><div id="fallback" class="pane"><button>Open artwork</button></div></div></article>
+</section><div class="controls"><label>Refraction <input id="refraction" type="range" min="0" max="1" step="0.05" value="1" disabled></label><label>Frost <input id="frost" type="range" min="0" max="20" step="1" value="0" disabled></label><label>Dispersion <input id="dispersion" type="range" min="0" max="1" step="0.05" value="0" disabled></label><output id="status" role="status">Opening materials…</output></div>
+<p class="note">The same artwork sits behind each surface. Refraction bends its position; dispersion separates its colors. Faithful glass keeps the backdrop’s color treatment unchanged. Foreground controls stay sharp and usable.</p></main>
+<script type="module">
+import {attachAppearanceGroup} from '../../dist/appearance-receiving.js';
+const colors=['#b05043','#418873','#5969a3','#c39a59','#855f86','#6f7673'];
+for(const chart of document.querySelectorAll('.chart')){
+ const pane=chart.querySelector('.pane');
+ for(const color of colors){const swatch=document.createElement('div');swatch.className='swatch';swatch.style.background=color;chart.insertBefore(swatch,pane);}
+ const grid=document.createElement('div');grid.className='grid';chart.insertBefore(grid,pane);
+}
+let handles=[],plans,actions=0;
+const status=document.getElementById('status');
+for(const button of document.querySelectorAll('.pane button'))button.addEventListener('click',()=>{actions++;status.textContent='Artwork action '+actions;});
+try{
+ const response=await fetch(new URL('plans.json',import.meta.url));if(!response.ok)throw Error('Color study receipts unavailable');plans=await response.json();
+ handles=[['vivid',plans.refracted,{exposure:plans.exposure?.web}],['faithful',plans.faithful??plans.original,{exposure:plans.exposure?.['web-color-preserving']}],['fallback',plans.faithful??plans.original,{optics:'frost-only',exposure:plans.fallbackExposure}]].map(([id,plan,options])=>attachAppearanceGroup([document.getElementById(id)],plan,options));
+ const update=()=>{
+  const changes=[['refraction','refraction'],['radius','frost'],['dispersion','dispersion']].map(([field,id])=>({field,value:Number(document.getElementById(id).value),actor:'user'}));
+  handles.forEach(h=>{h.propose(changes);h.commitCandidate();});
+  status.textContent='Materials updated.';
+ };
+ for(const input of document.querySelectorAll('input')){input.disabled=false;input.addEventListener('input',update);}
+ status.textContent=plans.faithful?'Materials ready.':'Baseline: vivid refraction versus unchanged colors.';
+ // Receiving application owns this boundary. An Agent supplies the ordinary
+ // guarded appearance_update receipt plus its new pure source delivery.
+ window.worldbendColorStudy={getState:()=>({actions,groups:handles.map(h=>h.getState())}),
+  receiveFaithfulUpdate:(plan,source)=>{handles[1].update(plan,source);status.textContent='Faithful source updated.';},
+  dispose:()=>handles.forEach(h=>h.destroy())};
+}catch(error){for(const h of handles)h.destroy();status.textContent=error.message;window.worldbendColorStudyError=error.message;}
+addEventListener('pagehide',()=>handles.forEach(h=>h.destroy()));
+</script></html>

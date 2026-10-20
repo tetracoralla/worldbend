@@ -1,0 +1,84 @@
+# Surface Deformation contract
+
+`worldbend.surface-deformation@0.1` is an Agent/full-only, deterministic
+authoring operation that resolves bounded Split/Bezier controls, anchors, and
+ordered stroke samples into the existing canonical `worldbend.mesh-warp@0.1`
+execution model. It does not introduce a second rasterizer or an inferred
+Liquify model.
+
+## Input
+
+A `SurfaceDeformationSpec` contains one ordinary `TransformSpec`, its optional
+normalized `targetSize`, a `meshSubdivisions` value from 4 through 16, one
+Bezier envelope, zero or more anchors, and zero or more ordered strokes. The
+base transform must not also contain a preset Warp.
+
+The envelope declares 1..4 horizontal and 1..4 vertical cubic patches. Its
+row-major control lattice has exactly `(columns * 3 + 1) * (rows * 3 + 1)`
+normalized points. `meshSubdivisions` must be divisible by both patch counts.
+Optional `boundary: "fixed" | "free"` defaults to `fixed`. In Fixed mode, every
+boundary control equals the corresponding regular unit-square point. Free mode
+evaluates the complete cubic envelope including its outer curves; the resulting
+mesh must have a simple boundary and contain no folded faces. Outward curves
+retain their authored coordinates; the shared core produces a unit-bounded
+execution mesh and an expanded output canvas, with `authoredView` retaining the
+raw mesh, authoring solve and canvas origin for later editing. The base
+TransformSpec continues to own the authored plane. All authored controls and
+resolved free samples are finite and bounded to `[-2,3]` per axis. An expansion
+through the projective horizon is rejected before rendering.
+
+An anchor has a unique bounded ID plus a concrete `column,row` vertex in the
+resolved mesh. Boundary vertices cannot be repeated as anchors; in Free mode their position
+comes from the authored cubic envelope. An anchor locks the Bezier-resolved position of that vertex while all
+later strokes are replayed.
+
+A stroke has a unique bounded ID and 1..256 ordered samples. The complete spec
+may contain at most 64 anchors, 64 strokes, and 1,024 samples. Each sample has:
+
+- a normalized source-space `position` in `[0,1]`;
+- a normalized `delta` with each component in `[-1,1]`;
+- `radius` in `[0.001,2]` and `strength` in `[0,1]`.
+
+For every sample, each unlocked interior mesh vertex receives
+`delta * strength * smoothstep(1 - distance/radius)` when it is inside the
+radius. Samples and strokes apply in their declared order. Distance is always
+measured in the undeformed normalized source grid, so replay does not depend on
+pointer sampling rate, host events, or prior raster output.
+
+## Plan and execution
+
+The planner evaluates each tensor-product cubic patch with de Casteljau interpolation,
+retaining constant edge coordinates exactly without clamping authored curves,
+applies the ordered strokes, restores anchored vertices, and validates the
+resolved `WarpMesh`. Folded, degenerate, non-finite, over-limit, malformed, or
+fixed-boundary-moving or out-of-placement free results fail with the existing stable error classes. A valid
+plan contains the original spec, the resolved canonical MeshWarp plan, the
+resolved anchor indices, and the total stroke-sample count.
+
+Native rendering delegates to the current mesh renderer, including inverse
+mapping, premultiplied-alpha filtering, configured limits, cancellation, dry
+run, and atomic PNG publication. CLI and compact Agent operations expose plan
+and render. This spec remains the owning contract for its interior rules; the
+deformation work in `docs/DEFORMATION_WORK_CONTRACT.md` nests exactly these
+controls as its Pin view and replays them unchanged inside one persistent
+work. Figma's Pin Warp workspace authors the Bezier envelope, mesh
+density, interior pins, and explicit source-space brush samples, then stores
+the complete spec. Adding a representable split preserves the cubic surface
+exactly; removing a split that its current curves still need is rejected instead
+of silently approximating the shape. A mesh-density change preserves pins at
+their exact source positions or asks the user to unpin them first. Controls and
+the brush footprint project through the core's matrices and resolved mesh.
+The workspace rejects a sixty-fifth pin with a visible recovery action instead
+of silently ignoring it.
+Brush authoring owns one pointer through its final release, uses the grab-start
+source mapping throughout the stroke, and keeps each stroke as one undoable
+edit. Escape restores the stroke's starting spec. Brush samples are the spec,
+not a reconstruction of host pointer history. It does not claim Liquify or Puppet Warp. Web, ComfyUI, and
+the conditional portable Capability do not gain this operation merely because
+it exists in the source superset.
+
+## Non-goals
+
+The contract does not infer strokes from pointer history, solve a cage from an
+image, simulate cloth or physics, move the outer quad, accept arbitrary
+triangulation, or claim Photoshop Liquify/Puppet Warp compatibility.

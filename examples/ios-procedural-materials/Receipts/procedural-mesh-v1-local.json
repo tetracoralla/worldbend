@@ -1,0 +1,47 @@
+{
+  "schema": "worldbend.mesh-gradient-delivery@0.1",
+  "version": "0.1",
+  "fingerprint": "sha256:75166625ca90e83cff29597c7bdf8451b9bb9631e10b8f719f6f29795b09e1ed",
+  "recipeId": "native-fluid-light",
+  "recipeVersion": 1,
+  "recipeFingerprint": "sha256:8e97db72ded63b5ac694efe3ecc66e32dc9ef614f906173c672ec359078978a3",
+  "material": {
+    "visible": true,
+    "colorTl": {
+      "r": 0.12,
+      "g": 0.28,
+      "b": 0.78,
+      "a": 0.8
+    },
+    "colorTr": {
+      "r": 0.18,
+      "g": 0.52,
+      "b": 0.86,
+      "a": 0.4
+    },
+    "colorBl": {
+      "r": 0.14,
+      "g": 0.62,
+      "b": 0.54,
+      "a": 1.0
+    },
+    "colorBr": {
+      "r": 0.96,
+      "g": 0.44,
+      "b": 0.22,
+      "a": 0.65
+    },
+    "warp": 0.65,
+    "softness": 0.75,
+    "durationMs": 6000.0,
+    "phaseMs": 3400.0,
+    "flowSpeed": 0.6
+  },
+  "target": "swiftui",
+  "kernel": {
+    "id": "worldbend.mesh-gradient.rgba@0.1",
+    "sha256": "sha256:0d05e7dde510e0a93b50ec2a8b64fda317d3c0f3713297b8fa924ce1086ca926",
+    "source": "// Generated from mesh_gradient.wgsl by Naga 30.0.1. Do not edit.\n// Canonical source: sha256:ad079f0f3abe8cb33db40842e34a1f7758ce32184f1839854c21ecf3d12bd6a6\n// language: metal2.4\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing metal::uint;\n\nstruct Uniforms {\n    metal::float4 frameData;\n    metal::float4 outputDimsData;\n    metal::float4 colorTl;\n    metal::float4 colorTr;\n    metal::float4 colorBl;\n    metal::float4 colorBr;\n    metal::float4 surface;\n    metal::float4 flags;\n};\nstruct VsIn {\n    metal::float2 pos;\n    metal::float2 uv;\n};\nstruct VsOut {\n    metal::float4 position;\n    metal::float2 uv;\n    char _pad2[8];\n};\n\nfloat worldbend_mesh_gradient_hash21_(\n    metal::float2 p\n) {\n    metal::float2 q = {};\n    q = metal::fract(p * metal::float2(127.1, 311.7));\n    metal::float2 _e7 = q;\n    metal::float2 _e8 = q;\n    metal::float2 _e9 = q;\n    q = _e7 + metal::float2(metal::dot(_e8, _e9 + metal::float2(74.13)));\n    float _e17 = q.x;\n    float _e19 = q.y;\n    return metal::fract(_e17 * _e19);\n}\n\nfloat worldbend_mesh_gradient_valueNoise(\n    metal::float2 p_1\n) {\n    metal::float2 i_1 = metal::floor(p_1);\n    metal::float2 f = metal::fract(p_1);\n    metal::float2 t = ((f * f) * f) * ((f * ((f * 6.0) - metal::float2(15.0))) + metal::float2(10.0));\n    float _e15 = worldbend_mesh_gradient_hash21_(i_1);\n    float _e20 = worldbend_mesh_gradient_hash21_(i_1 + metal::float2(1.0, 0.0));\n    float _e25 = worldbend_mesh_gradient_hash21_(i_1 + metal::float2(0.0, 1.0));\n    float _e30 = worldbend_mesh_gradient_hash21_(i_1 + metal::float2(1.0, 1.0));\n    return metal::mix(metal::mix(_e15, _e20, t.x), metal::mix(_e25, _e30, t.x), t.y);\n}\n\nfloat worldbend_mesh_gradient_fbm(\n    metal::float2 p_2\n) {\n    float value = 0.0;\n    float amplitude = 0.5;\n    metal::float2 point = {};\n    int i = 0;\n    point = p_2;\n    uint2 loop_bound = uint2(4294967295u);\n    bool loop_init = true;\n    while(true) {\n        if (metal::all(loop_bound == uint2(0u))) { break; }\n        loop_bound -= uint2(loop_bound.y == 0u, 1u);\n        if (!loop_init) {\n            int _e28 = i;\n            i = as_type<int>(as_type<uint>(_e28) + as_type<uint>(1));\n        }\n        loop_init = false;\n        int _e8 = i;\n        if (_e8 < 4) {\n        } else {\n            break;\n        }\n        {\n            float _e11 = value;\n            float _e12 = amplitude;\n            metal::float2 _e13 = point;\n            float _e14 = worldbend_mesh_gradient_valueNoise(_e13);\n            value = _e11 + (_e12 * _e14);\n            metal::float2 _e17 = point;\n            point = (_e17 * 2.07) + metal::float2(17.3, 13.1);\n            float _e24 = amplitude;\n            amplitude = _e24 * 0.5;\n        }\n    }\n    float _e30 = value;\n    return _e30;\n}\n\nstruct worldbend_mesh_gradient_vs_mainInput {\n    metal::float2 pos [[attribute(0)]];\n    metal::float2 uv_1 [[attribute(1)]];\n};\nstruct worldbend_mesh_gradient_vs_mainOutput {\n    metal::float4 position [[position]];\n    metal::float2 uv [[user(loc0), center_perspective]];\n};\nvertex worldbend_mesh_gradient_vs_mainOutput worldbend_mesh_gradient_vs_main(\n  worldbend_mesh_gradient_vs_mainInput varyings [[stage_in]]\n) {\n    const VsIn in = { varyings.pos, varyings.uv_1 };\n    VsOut out = {};\n    out.position = metal::float4(in.pos, 0.0, 1.0);\n    out.uv = in.uv;\n    VsOut _e9 = out;\n    const auto _tmp = _e9;\n    return worldbend_mesh_gradient_vs_mainOutput { _tmp.position, _tmp.uv };\n}\n\n\nstruct worldbend_mesh_gradient_fs_mainInput {\n    metal::float2 outputUv_in [[user(loc0), center_perspective]];\n};\nstruct worldbend_mesh_gradient_fs_mainOutput {\n    metal::float4 member_1 [[color(0)]];\n};\nfragment worldbend_mesh_gradient_fs_mainOutput worldbend_mesh_gradient_fs_main(\n  worldbend_mesh_gradient_fs_mainInput varyings_1 [[stage_in]]\n, constant Uniforms& u [[buffer(0)]]\n) {\n    const auto outputUv_in = varyings_1.outputUv_in;\n    metal::float2 uv = {};\n    float sx = {};\n    float sy = {};\n    float _e4 = u.flags.x;\n    if (_e4 < 0.5) {\n        return worldbend_mesh_gradient_fs_mainOutput { metal::float4(0.0) };\n    }\n    metal::float4 _e11 = u.outputDimsData;\n    metal::float2 dims = metal::max(_e11.xy, metal::float2(1.0));\n    float aspect = dims.x / metal::max(dims.y, 1.0);\n    float _e24 = u.frameData.y;\n    float duration = metal::max(_e24, 0.001);\n    float phase = u.frameData.z;\n    float _e34 = u.frameData.w;\n    float flowSpeed = metal::max(_e34, 0.0);\n    float _e40 = u.frameData.x;\n    float loopT = metal::fract((_e40 + phase) / duration);\n    float motion = (loopT * 6.2831855) * flowSpeed;\n    float _e50 = u.surface.x;\n    float warp = metal::clamp(_e50, 0.0, 1.0);\n    float _e57 = u.surface.y;\n    float softness = metal::clamp(_e57, 0.0, 1.0);\n    uv = metal::float2(outputUv_in.x * aspect, outputUv_in.y);\n    metal::float2 _e66 = uv;\n    float _e75 = worldbend_mesh_gradient_fbm((_e66 * 2.4) + metal::float2(motion * 0.17, motion * 0.11));\n    metal::float2 _e78 = uv;\n    float _e91 = worldbend_mesh_gradient_fbm((_e78 * 2.4) + metal::float2(19.0 + (motion * 0.13), 7.0 - (motion * 0.19)));\n    metal::float2 drift = metal::float2(_e75 - 0.5, _e91 - 0.5);\n    metal::float2 _e95 = uv;\n    uv = _e95 + ((drift * warp) * 0.35);\n    float _e101 = uv.x;\n    sx = metal::clamp(_e101 / metal::max(aspect, 0.0001), 0.0, 1.0);\n    float _e110 = uv.y;\n    sy = metal::clamp(_e110, 0.0, 1.0);\n    float power = metal::mix(1.35, 0.55, softness);\n    float _e118 = sx;\n    sx = metal::pow(_e118, power);\n    float _e120 = sy;\n    sy = metal::pow(_e120, power);\n    metal::float4 _e124 = u.colorTl;\n    float _e129 = u.colorTl.w;\n    float _e134 = u.colorTl.w;\n    metal::float4 _e138 = u.colorTr;\n    float _e143 = u.colorTr.w;\n    float _e148 = u.colorTr.w;\n    float _e150 = sx;\n    metal::float4 top = metal::mix(metal::float4(_e124.xyz * _e129, _e134), metal::float4(_e138.xyz * _e143, _e148), _e150);\n    metal::float4 _e154 = u.colorBl;\n    float _e159 = u.colorBl.w;\n    float _e164 = u.colorBl.w;\n    metal::float4 _e168 = u.colorBr;\n    float _e173 = u.colorBr.w;\n    float _e178 = u.colorBr.w;\n    float _e180 = sx;\n    metal::float4 bottom = metal::mix(metal::float4(_e154.xyz * _e159, _e164), metal::float4(_e168.xyz * _e173, _e178), _e180);\n    float _e182 = sy;\n    metal::float4 premultiplied = metal::mix(top, bottom, _e182);\n    float alpha = premultiplied.w;\n    float _e188 = u.flags.y;\n    if (_e188 > 0.5) {\n        return worldbend_mesh_gradient_fs_mainOutput { premultiplied };\n    }\n    if (alpha <= 0.0) {\n        return worldbend_mesh_gradient_fs_mainOutput { metal::float4(0.0) };\n    }\n    return worldbend_mesh_gradient_fs_mainOutput { metal::float4(premultiplied.xyz / metal::float3(alpha), alpha) };\n}\n",
+    "uniformBytes": 128
+  }
+}

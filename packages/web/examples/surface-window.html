@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Worldbend · 空间窗口</title><link rel="icon" href="data:,"><link rel="stylesheet" href="./surface-window.css"></head>
+<body>
+<header><a href="./perspective.html">Worldbend</a><span>交互实验 / 02</span></header>
+<main>
+  <div class="intro"><p class="eyebrow">SPACE, IN YOUR HANDS</p><h1>屏幕在动。<br>内容，留在原地。</h1><p>翻开一片屏幕，或挪动一扇磨砂窗。<br>距离变成模糊，落回平面，细节重新清晰。</p></div>
+  <section class="experiment" aria-label="空间效果演示">
+    <div class="tabs" role="group" aria-label="选择场景"><button id="fold-tab" aria-pressed="true">01 折叠屏</button><button id="glass-tab" aria-pressed="false">02 磨砂窗口</button></div>
+    <div class="viewport" id="viewport"><div id="stage" class="stage" tabindex="0" role="slider" aria-label="拖动或用方向键改变开合" aria-valuemin="0" aria-valuemax="180" aria-valuenow="130">
+      <canvas id="base" width="620" height="400" aria-hidden="true"></canvas>
+      <canvas id="outer" class="surface" aria-hidden="true"></canvas><canvas id="inner" class="surface" aria-hidden="true"></canvas>
+      <canvas id="glass" class="surface glass" aria-hidden="true"></canvas>
+      <div class="hinge" aria-hidden="true"></div>
+    </div></div>
+    <div class="readout"><span id="hint">左右拖动屏幕，或使用下方滑杆</span><output id="value">130°</output></div>
+    <div id="fold-controls"><label for="angle">开合角度</label><input id="angle" type="range" min="0" max="180" value="130" step="1"><div class="ends"><span>合上</span><span>铺平</span></div></div>
+    <div id="glass-controls" hidden><label for="distance">离开内容平面的距离</label><input id="distance" type="range" min="0" max="180" value="90"><div class="ends"><span>贴合 · 清晰</span><span>抬起 · 模糊</span></div></div>
+    <div class="actions"><button id="play">播放开合</button><button id="content">换一张内容</button><button id="reset">复位</button></div>
+    <p id="feedback" role="status">正在准备画面…</p>
+  </section>
+  <aside><strong>试着找一个字，一直盯住它。</strong><p>窗口翻转时，字的位置和方向保持不变。两侧使用同一套空间关系；磨砂窗口也复用同一模块。</p><p>这是可持续更新的画布内容。下方的按钮仍是普通网页控件。任意网页表单不会被自动转换为纹理。</p><a href="../SURFACE_WINDOW_CONTRACT.md" id="contract">集成说明 ↗</a></aside>
+</main>
+<footer>本机交互驱动 · 无需逐帧调用 Agent <span>Worldbend / Spatial window</span></footer>
+<script type="module" src="./surface-window-demo.js"></script>
+</body></html>

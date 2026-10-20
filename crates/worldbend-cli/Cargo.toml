@@ -1,0 +1,73 @@
+[package]
+license.workspace = true
+name = "worldbend-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Structured CLI adapter for Worldbend"
+
+[features]
+default = ["full"]
+full = [
+    "worldbend-core/surface-window",
+    "worldbend-core/spatial-effects",
+    "worldbend-core/appearance",
+    "dep:worldbend-interop",
+    "dep:worldbend-perception",
+    "worldbend-core/css",
+    "worldbend-core/place",
+    "worldbend-core/deform",
+    "worldbend-core/remap",
+    "worldbend-core/timeline",
+    "worldbend-core/program",
+    "worldbend-core/template",
+    "worldbend-core/document",
+    "worldbend-core/surface-deformation",
+    "worldbend-core/deformation-work",
+    "worldbend-core/motion",
+    "worldbend-core/video",
+    "worldbend-render/place",
+    "worldbend-render/deform",
+    "worldbend-render/remap",
+    "worldbend-render/timeline",
+    "worldbend-render/program",
+    "worldbend-render/template",
+    "worldbend-render/surface-deformation",
+    "worldbend-render/deformation-work",
+    "worldbend-render/motion",
+    "worldbend-render/video",
+    "worldbend-render/svg-source",
+]
+comfy = [
+    "worldbend-core/remap",
+    "worldbend-render/remap",
+]
+
+[[bin]]
+name = "worldbend"
+path = "src/main.rs"
+
+[[bin]]
+name = "worldbend-capability"
+path = "src/capability.rs"
+
+[[bin]]
+name = "worldbend-transport-schema-probe"
+path = "src/transport_schema_probe.rs"
+
+[dependencies]
+clap.workspace = true
+libc.workspace = true
+worldbend-agent-fs = { path = "../worldbend-agent-fs" }
+worldbend-core = { path = "../worldbend-core", default-features = false }
+worldbend-render = { path = "../worldbend-render", default-features = false }
+worldbend-perception = { path = "../worldbend-perception", optional = true }
+worldbend-interop = { path = "../worldbend-interop", optional = true }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+image.workspace = true

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Worldbend · Field notes editions</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f2ea;color:#182725;font-family:Arial,sans-serif}header{display:flex;justify-content:space-between;margin:28px 4vw 0;padding-bottom:20px;border-bottom:1px solid #cecfc3;font-size:13px;letter-spacing:.09em}header span:last-child{letter-spacing:0;color:#52625d}main{max-width:1400px;margin:auto;padding:42px 4vw 50px;display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:40px;align-items:center}.scene{background:#e9e5db;min-width:0}small{font-size:12px;letter-spacing:.09em;color:#52625d}h1{font-size:39px;line-height:1.08;letter-spacing:-1.6px;margin:18px 0 30px}button,select{font:inherit;color:inherit;background:transparent;border:1px solid #667a6c;padding:11px 14px;border-radius:2px;min-height:44px;cursor:pointer;width:100%}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #267c87;outline-offset:3px}button:disabled,input:disabled,select:disabled{opacity:.45}#play{background:#182725;color:#f5f2ea;border-color:#182725;font-weight:600}label{display:block;font-size:13px;margin:20px 0 7px}.row{display:flex;gap:12px;align-items:center}input{width:100%;accent-color:#267c87;min-height:32px}output{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:40px}.actions{border-top:1px solid #cecfc3;margin-top:24px;padding-top:20px;display:grid;gap:10px}#status{min-height:34px;font-size:13px;line-height:1.45;color:#52625d}.footer{margin:0 4vw 28px;padding-top:18px;border-top:1px solid #cecfc3;font-size:12px;color:#52625d;display:flex;justify-content:space-between}@media(max-width:760px){header{margin:20px 20px 0;font-size:11px}main{grid-template-columns:1fr;gap:26px;padding:25px 20px}h1{font-size:32px;margin:12px 0 24px}.actions{grid-template-columns:1fr 1fr}.footer{margin:0 20px 25px}}
+</style></head><body>
+<header><span>WORLDBEND / FIELD NOTES</span><span>Edition study</span></header>
+<main><div id="scene" class="scene" role="img" aria-label="Field Notes covers suspended over a warm paper surface"></div>
+<aside><small>EDITIONS / 01</small><h1>Across the<br>ordinary.</h1><button id="play" disabled>Play scene</button>
+<label for="position">Position</label><div class="row"><input id="position" type="range" min="0" max="1000" value="0" disabled><output id="time">0.0 s</output></div>
+<label for="presentation">Presentation</label><select id="presentation" disabled><option value="cover">Cover</option><option value="series">Series</option></select>
+<label for="strength">Shadow</label><div class="row"><input id="strength" type="range" min="0" max="60" value="25" disabled><output id="strength-value">25%</output></div>
+<label for="softness">Softness</label><div class="row"><input id="softness" type="range" min="0" max="40" value="12" disabled><output id="softness-value">12 px</output></div>
+<div class="actions"><button id="artwork" disabled>Next artwork</button><button id="save" disabled>Save image</button></div><p id="status" role="status">Preparing scene…</p></aside></main>
+<div class="footer"><span>Original artwork · editable source</span><span>Image / motion / continued use</span></div>
+<script type="module">
+import {attachMockupMotion} from '../../dist/mockup-motion.js';
+import {artwork} from '../scene-motion/artwork.js';
+import {scene} from './scene.js';
+const element=id=>document.getElementById(id),host=element('scene'),play=element('play'),position=element('position'),status=element('status');
+let controller, spec=scene(), sources=[artwork().find(source=>source.id==='cover')], accepted={series:false,strength:.25,softness:12,alternate:false}, desired={...accepted}, running=false, pending=false, abort, reopening, resume={timeMs:0,paused:true};
+const display=state=>{play.textContent=state.paused?'Play scene':'Pause';play.disabled=state.reducedMotion||state.status!=='ready';position.value=String(Math.round(state.timeMs/state.durationMs*1000));element('time').textContent=(state.timeMs/1000).toFixed(1)+' s'};
+const sync=()=>{element('presentation').value=accepted.series?'series':'cover';element('strength').value=String(accepted.strength*100);element('softness').value=String(accepted.softness);element('strength-value').value=Math.round(accepted.strength*100)+'%';element('softness-value').value=accepted.softness+' px';element('artwork').textContent=accepted.alternate?'Original artwork':'Next artwork'};
+async function pump(){if(running)return;running=true;try{while(pending){pending=false;const candidate={...desired},nextSpec=scene(candidate),nextSources=[artwork(candidate.alternate).find(source=>source.id==='cover')];abort=new AbortController();try{await controller.update(nextSpec,nextSources,{expectedRevision:controller.getState().revision,signal:abort.signal});accepted=candidate;spec=nextSpec;sources=nextSources;if(!pending){sync();status.textContent=accepted.alternate?'2027 / 02':'2026 / 10'}}catch(error){if(error.name!=='AbortError'){desired={...accepted};pending=false;sync();status.textContent=error.message}}}}finally{running=false;abort=undefined}}
+function change(patch){desired={...desired,...patch};pending=true;abort?.abort();void pump()}
+try{
+ controller=await attachMockupMotion(host,spec,sources,{paused:true,onChange:display,onError:error=>status.textContent=error.message});
+ for(const id of ['position','presentation','strength','softness','artwork','save'])element(id).disabled=false;status.textContent='2026 / 10';
+ play.onclick=()=>controller.getState().paused?controller.play():controller.pause();
+ position.oninput=()=>{const requested=Number(position.value);controller.pause();controller.seek(requested/1000*controller.getState().durationMs)};
+ element('presentation').onchange=event=>change({series:event.target.value==='series'});
+ element('strength').oninput=event=>{element('strength-value').value=event.target.value+'%';change({strength:Number(event.target.value)/100})};
+ element('softness').oninput=event=>{element('softness-value').value=event.target.value+' px';change({softness:Number(event.target.value)})};
+ element('artwork').onclick=()=>change({alternate:!desired.alternate});
+ element('save').onclick=()=>controller.canvas.toBlob(blob=>{if(!blob){status.textContent='Image could not be saved';return}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='field-notes-'+(accepted.series?'series':'cover')+'.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)},'image/png');
+ globalThis.shadowStudy={get controller(){return controller},change,scene,artwork,host,get spec(){return spec},get sources(){return sources},get settled(){return !running&&!pending&&!reopening}};
+}catch(error){status.textContent=error.message;globalThis.shadowStudyError=error.stack}
+window.addEventListener('pagehide',()=>{if(!controller||controller.getState().status==='disposed')return;const state=controller.getState();resume={timeMs:state.timeMs,paused:state.paused};pending=false;abort?.abort();controller.destroy();for(const id of ['play','position','presentation','strength','softness','artwork','save'])element(id).disabled=true});
+window.addEventListener('pageshow',()=>{if(!controller||controller.getState().status!=='disposed'||reopening)return;reopening=(async()=>{try{controller=await attachMockupMotion(host,spec,sources,{paused:true,onChange:display,onError:error=>status.textContent=error.message});controller.seek(resume.timeMs);if(!resume.paused)controller.play();desired={...accepted};sync();for(const id of ['position','presentation','strength','softness','artwork','save'])element(id).disabled=false;status.textContent=accepted.alternate?'2027 / 02':'2026 / 10'}catch(error){status.textContent=error.message}finally{reopening=undefined}})()});
+</script></body></html>

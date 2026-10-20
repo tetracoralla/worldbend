@@ -1,0 +1,16 @@
+{
+  "name": "Worldbend",
+  "id": "1675767923532475446",
+  "api": "1.0.0",
+  "editorType": ["figma"],
+  "main": "dist/main.js",
+  "ui": "dist/ui.html",
+  "relaunchButtons": [{ "command": "edit", "name": "Edit in Worldbend" }],
+  "documentAccess": "dynamic-page",
+  "permissions": [],
+  "capabilities": [],
+  "enableProposedApi": false,
+  "networkAccess": {
+    "allowedDomains": ["none"]
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "profile": "worldbend.wet-glass-surface@0.1",
+  "provenance": {
+    "project": "Raindrop FX",
+    "revision": "bae4081bc15815bb094ea040a976dca083bbc3a5",
+    "license": "MIT",
+    "source": "https://github.com/SardineFish/raindrop-fx"
+  },
+  "simulation": {
+    "capacity": 1200,
+    "stepSeconds": 0.016666666666666666,
+    "maxCatchupSeconds": 0.1,
+    "initialDrops": {
+      "light": 130,
+      "medium": 280,
+      "heavy": 500
+    },
+    "spawnPerSecond": {
+      "light": 4,
+      "medium": 10,
+      "heavy": 24
+    },
+    "gravityInUnits": {
+      "light": 180,
+      "medium": 240,
+      "heavy": 310
+    },
+    "smallRadiusUnits": {
+      "min": 1.8,
+      "max": 4.9
+    },
+    "largeRadiusUnits": {
+      "min": 6.5,
+      "max": 12
+    },
+    "largeProbability": 0.16,
+    "releaseRadiusUnits": {
+      "min": 6.8,
+      "max": 10.6
+    },
+    "initialSlidingSpeedUnits": {
+      "min": 18,
+      "max": 53
+    },
+    "maximumRadiusUnits": 12,
+    "maximumSpeedUnits": 220,
+    "dragPerSecond": 0.65,
+    "evaporationUnitSquaredPerSecond": 0.16,
+    "mergeReach": 0.74,
+    "mergeGridMinimumUnits": 24,
+    "trailMinimumSpeedUnits": 12,
+    "trailMinimumDistanceUnits": 4,
+    "trailRelativeDistance": 0.85,
+    "trailMaximumRadiusUnits": 2.6,
+    "trailRelativeRadius": 0.2,
+    "trailAdhesionUnitSquared": 400,
+    "drainingSpeedUnits": 120,
+    "fieldBands": {
+      "light": {
+        "count": 18,
+        "radius": 2.4,
+        "speed": 0.18,
+        "trail": 34
+      },
+      "medium": {
+        "count": 46,
+        "radius": 3.8,
+        "speed": 0.46,
+        "trail": 64
+      },
+      "heavy": {
+        "count": 92,
+        "radius": 5.6,
+        "speed": 0.92,
+        "trail": 108
+      }
+    }
+  },
+  "optics": {
+    "normalStrength": 8,
+    "refractionBasePoints": 0.6,
+    "refractionHeightPoints": 1.5,
+    "surfaceLightVector": [
+      -0.45,
+      -0.8,
+      1.4
+    ],
+    "specularPower": 90,
+    "specularGain": 0.1,
+    "diffuseGain": 0.1,
+    "diffuseReference": 0.72,
+    "rimShadeGain": 0.14,
+    "coverageHeightRange": {
+      "min": 0.09,
+      "max": 0.17
+    },
+    "edgeSafetyPoints": 2,
+    "occlusionRayProbes": 4,
+    "cardLightDirection": [
+      -0.6,
+      -0.8
+    ],
+    "cardGleamGain": 0.32,
+    "cardShadeGain": 0.2
+  }
+}

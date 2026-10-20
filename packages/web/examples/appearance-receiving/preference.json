@@ -1,0 +1,11 @@
+{
+  "schema": "worldbend.appearance-preference@0.1",
+  "version": "0.1",
+  "revision": 3,
+  "fields": {
+    "radius": {
+      "value": 1,
+      "actor": "user"
+    }
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "affectedExpressions": [
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "cover"
+        }
+      ],
+      "id": "paper-theatre",
+      "kind": "scene3d"
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "artwork"
+        }
+      ],
+      "id": "cover-proof",
+      "kind": "static"
+    }
+  ],
+  "changed": true,
+  "document": {
+    "assets": [
+      {
+        "contentVersion": "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38",
+        "id": "paper-stage"
+      },
+      {
+        "contentVersion": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+        "id": "field-notes"
+      }
+    ],
+    "expressions": [
+      {
+        "bindings": [
+          {
+            "assetId": "paper-stage",
+            "role": "content",
+            "slotId": "scene"
+          },
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "cover"
+          }
+        ],
+        "id": "paper-theatre",
+        "kind": "scene3d",
+        "scene": {
+          "ambientIntensity": 2,
+          "animation": "Scene",
+          "artworks": [
+            {
+              "fit": "contain",
+              "material": "CoverPrint",
+              "slotId": "cover",
+              "surfaceSize": {
+                "height": 1120,
+                "width": 840
+              }
+            }
+          ],
+          "backgroundRgb": [
+            209,
+            204,
+            180
+          ],
+          "camera": "RevealCamera",
+          "canvas": {
+            "height": 720,
+            "width": 960
+          },
+          "exposure": 1,
+          "frameCount": 96,
+          "sceneSlot": "scene",
+          "schema": "worldbend.scene3d",
+          "timebase": {
+            "denominator": 1,
+            "numerator": 24
+          },
+          "version": "0.1"
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "artwork"
+          }
+        ],
+        "id": "cover-proof",
+        "kind": "static",
+        "template": {
+          "operation": {
+            "kind": "rasterProgram",
+            "program": {
+              "schema": "worldbend.raster-program",
+              "stages": [
+                {
+                  "id": "fit",
+                  "kind": "canvas",
+                  "spec": {
+                    "operation": {
+                      "anchor": {
+                        "x": 0.5,
+                        "y": 0.5
+                      },
+                      "background": {
+                        "kind": "transparent"
+                      },
+                      "kind": "contain",
+                      "output": {
+                        "height": 1120,
+                        "width": 840
+                      }
+                    },
+                    "schema": "worldbend.canvas",
+                    "version": "0.1"
+                  }
+                }
+              ],
+              "version": "0.1"
+            },
+            "sourceSlot": "artwork"
+          },
+          "output": {
+            "id": "cover",
+            "kind": "single"
+          },
+          "schema": "worldbend.spatial-template",
+          "version": "0.1"
+        }
+      }
+    ],
+    "schema": "worldbend.spatial-document",
+    "version": "0.1"
+  },
+  "fingerprint": "sha256:e81efe889ca73b86535016316f27e385dec39ef43aa640f03df3cd07a60debb8",
+  "previousFingerprint": "sha256:c112d9645431cc2d967833bde6d6697d156891d189f5feb85c1cda5aba41308b",
+  "revisions": [
+    {
+      "assetId": "field-notes",
+      "changed": true,
+      "contentVersion": "sha256:cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+      "previousContentVersion": "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653"
+    }
+  ],
+  "schema": "worldbend.spatial-document-update-plan",
+  "version": "0.1"
+}

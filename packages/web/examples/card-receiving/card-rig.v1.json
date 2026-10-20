@@ -1,0 +1,42 @@
+{
+  "schema": "worldbend.card-delivery",
+  "version": "0.1",
+  "rig": {
+    "schema": "worldbend.card",
+    "version": "0.1",
+    "elementSize": {
+      "width": 380,
+      "height": 250
+    },
+    "geometry": {
+      "perspective": 950
+    },
+    "tilt": {
+      "maxRotateX": 8,
+      "maxRotateY": 12,
+      "smoothingMs": 100,
+      "settleMs": 380,
+      "idle": {
+        "amplitudeX": 2,
+        "amplitudeY": 3,
+        "periodMs": 6400
+      }
+    },
+    "action": {
+      "axis": "y",
+      "direction": 1,
+      "turns": 1,
+      "durationMs": 640,
+      "easing": {
+        "kind": "cubicBezier",
+        "x1": 0.4,
+        "y1": 0,
+        "x2": 0.2,
+        "y2": 1
+      }
+    }
+  },
+  "front": {
+    "name": "Studio pricing card"
+  }
+}

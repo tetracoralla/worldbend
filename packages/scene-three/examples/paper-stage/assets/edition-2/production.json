@@ -1,0 +1,25 @@
+{
+  "schema": "worldbend.scene-production-evidence",
+  "version": "0.1",
+  "direction": "micro-stage",
+  "revision": 2,
+  "blenderVersion": "5.2.2 LTS",
+  "gltf": "scene-cf450c061c11.glb",
+  "lightingExport": "COMPAT",
+  "camera": "RevealCamera",
+  "animation": "Scene",
+  "slotMaterial": "CoverPrint",
+  "authoredFps": 24,
+  "frameCount": 96,
+  "posterFrame": 39,
+  "background": "#d1ccb4",
+  "sourceSha256": "e865712cf087fe4ccd3b43561801a57cda8bd17e1a986c723ea737f7c01b1a7d",
+  "gltfSha256": "cf450c061c11ad4ec25b2d3a519cf787cf67e344f18516f73bb1d33663e300cd",
+  "artworkSha256": "cafd429d7718857ce7ae4250320b6eedab425f55162df975931a6c3acd6e91cb",
+  "losses": [
+    "Blender AgX/Cycles is a production reference; Three rendering uses its own declared color/shadow pipeline",
+    "COMPAT unitless lighting export is explicitly selected for the real-time receiver; physical lux/candela parity is not claimed",
+    "Directional light angular softness and Cycles world illumination are not standard glTF fields"
+  ],
+  "source": "scene-cf450c061c11.blend"
+}

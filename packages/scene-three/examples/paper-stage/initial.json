@@ -1,0 +1,1324 @@
+{
+  "document": {
+    "schema": "worldbend.spatial-document",
+    "version": "0.1",
+    "assets": [
+      {
+        "id": "paper-stage",
+        "contentVersion": "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38"
+      },
+      {
+        "id": "field-notes",
+        "contentVersion": "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653"
+      }
+    ],
+    "expressions": [
+      {
+        "kind": "scene3d",
+        "id": "paper-theatre",
+        "scene": {
+          "schema": "worldbend.scene3d",
+          "version": "0.1",
+          "sceneSlot": "scene",
+          "camera": "RevealCamera",
+          "animation": "Scene",
+          "canvas": {
+            "width": 960,
+            "height": 720
+          },
+          "timebase": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "frameCount": 96,
+          "artworks": [
+            {
+              "slotId": "cover",
+              "material": "CoverPrint",
+              "surfaceSize": {
+                "width": 840,
+                "height": 1120
+              },
+              "fit": "contain"
+            }
+          ],
+          "backgroundRgb": [
+            209,
+            204,
+            180
+          ],
+          "exposure": 1,
+          "ambientIntensity": 2
+        },
+        "bindings": [
+          {
+            "role": "content",
+            "slotId": "scene",
+            "assetId": "paper-stage"
+          },
+          {
+            "role": "content",
+            "slotId": "cover",
+            "assetId": "field-notes"
+          }
+        ]
+      },
+      {
+        "kind": "static",
+        "id": "cover-proof",
+        "bindings": [
+          {
+            "role": "content",
+            "slotId": "artwork",
+            "assetId": "field-notes"
+          }
+        ],
+        "template": {
+          "schema": "worldbend.spatial-template",
+          "version": "0.1",
+          "operation": {
+            "kind": "rasterProgram",
+            "sourceSlot": "artwork",
+            "program": {
+              "schema": "worldbend.raster-program",
+              "version": "0.1",
+              "stages": [
+                {
+                  "kind": "canvas",
+                  "id": "fit",
+                  "spec": {
+                    "schema": "worldbend.canvas",
+                    "version": "0.1",
+                    "operation": {
+                      "kind": "contain",
+                      "output": {
+                        "width": 840,
+                        "height": 1120
+                      },
+                      "anchor": {
+                        "x": 0.5,
+                        "y": 0.5
+                      },
+                      "background": {
+                        "kind": "transparent"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "output": {
+            "kind": "single",
+            "id": "cover"
+          }
+        }
+      }
+    ]
+  },
+  "inspection": {
+    "assets": [
+      {
+        "contentVersion": "sha256:bd6574f413231c520f2146f83dd738ba62e4f3c90caf758d7e1610011e4a4b38",
+        "id": "paper-stage"
+      },
+      {
+        "contentVersion": "sha256:baf389851d3a30b05a7ecb47ab89ae4dd6c1c292d9fe604da84782a374a39653",
+        "id": "field-notes"
+      }
+    ],
+    "expressions": [
+      {
+        "bindings": [
+          {
+            "assetId": "paper-stage",
+            "role": "content",
+            "slotId": "scene"
+          },
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "cover"
+          }
+        ],
+        "id": "paper-theatre",
+        "kind": "scene3d",
+        "scene": {
+          "durationMs": 4000,
+          "fingerprint": "sha256:4975b1e3ee49292841f01b4e1b45b325fb51a66f7e25fa8aee2ea071a776d000",
+          "samples": [
+            {
+              "frame": 0,
+              "milliseconds": 0,
+              "progress": 0
+            },
+            {
+              "frame": 1,
+              "milliseconds": 41.666666666666664,
+              "progress": 0.010526315789473684
+            },
+            {
+              "frame": 2,
+              "milliseconds": 83.33333333333333,
+              "progress": 0.021052631578947368
+            },
+            {
+              "frame": 3,
+              "milliseconds": 125,
+              "progress": 0.031578947368421054
+            },
+            {
+              "frame": 4,
+              "milliseconds": 166.66666666666666,
+              "progress": 0.042105263157894736
+            },
+            {
+              "frame": 5,
+              "milliseconds": 208.33333333333331,
+              "progress": 0.05263157894736842
+            },
+            {
+              "frame": 6,
+              "milliseconds": 250,
+              "progress": 0.06315789473684211
+            },
+            {
+              "frame": 7,
+              "milliseconds": 291.66666666666663,
+              "progress": 0.07368421052631578
+            },
+            {
+              "frame": 8,
+              "milliseconds": 333.3333333333333,
+              "progress": 0.08421052631578947
+            },
+            {
+              "frame": 9,
+              "milliseconds": 375,
+              "progress": 0.09473684210526316
+            },
+            {
+              "frame": 10,
+              "milliseconds": 416.66666666666663,
+              "progress": 0.10526315789473684
+            },
+            {
+              "frame": 11,
+              "milliseconds": 458.3333333333333,
+              "progress": 0.11578947368421053
+            },
+            {
+              "frame": 12,
+              "milliseconds": 500,
+              "progress": 0.12631578947368421
+            },
+            {
+              "frame": 13,
+              "milliseconds": 541.6666666666666,
+              "progress": 0.1368421052631579
+            },
+            {
+              "frame": 14,
+              "milliseconds": 583.3333333333333,
+              "progress": 0.14736842105263157
+            },
+            {
+              "frame": 15,
+              "milliseconds": 625,
+              "progress": 0.15789473684210525
+            },
+            {
+              "frame": 16,
+              "milliseconds": 666.6666666666666,
+              "progress": 0.16842105263157894
+            },
+            {
+              "frame": 17,
+              "milliseconds": 708.3333333333333,
+              "progress": 0.17894736842105263
+            },
+            {
+              "frame": 18,
+              "milliseconds": 750,
+              "progress": 0.18947368421052632
+            },
+            {
+              "frame": 19,
+              "milliseconds": 791.6666666666666,
+              "progress": 0.2
+            },
+            {
+              "frame": 20,
+              "milliseconds": 833.3333333333333,
+              "progress": 0.21052631578947367
+            },
+            {
+              "frame": 21,
+              "milliseconds": 875,
+              "progress": 0.22105263157894736
+            },
+            {
+              "frame": 22,
+              "milliseconds": 916.6666666666666,
+              "progress": 0.23157894736842105
+            },
+            {
+              "frame": 23,
+              "milliseconds": 958.3333333333333,
+              "progress": 0.24210526315789474
+            },
+            {
+              "frame": 24,
+              "milliseconds": 1000,
+              "progress": 0.25263157894736843
+            },
+            {
+              "frame": 25,
+              "milliseconds": 1041.6666666666665,
+              "progress": 0.2631578947368421
+            },
+            {
+              "frame": 26,
+              "milliseconds": 1083.3333333333333,
+              "progress": 0.2736842105263158
+            },
+            {
+              "frame": 27,
+              "milliseconds": 1125,
+              "progress": 0.28421052631578947
+            },
+            {
+              "frame": 28,
+              "milliseconds": 1166.6666666666665,
+              "progress": 0.29473684210526313
+            },
+            {
+              "frame": 29,
+              "milliseconds": 1208.3333333333333,
+              "progress": 0.30526315789473685
+            },
+            {
+              "frame": 30,
+              "milliseconds": 1250,
+              "progress": 0.3157894736842105
+            },
+            {
+              "frame": 31,
+              "milliseconds": 1291.6666666666665,
+              "progress": 0.3263157894736842
+            },
+            {
+              "frame": 32,
+              "milliseconds": 1333.3333333333333,
+              "progress": 0.3368421052631579
+            },
+            {
+              "frame": 33,
+              "milliseconds": 1375,
+              "progress": 0.3473684210526316
+            },
+            {
+              "frame": 34,
+              "milliseconds": 1416.6666666666665,
+              "progress": 0.35789473684210527
+            },
+            {
+              "frame": 35,
+              "milliseconds": 1458.3333333333333,
+              "progress": 0.3684210526315789
+            },
+            {
+              "frame": 36,
+              "milliseconds": 1500,
+              "progress": 0.37894736842105264
+            },
+            {
+              "frame": 37,
+              "milliseconds": 1541.6666666666665,
+              "progress": 0.3894736842105263
+            },
+            {
+              "frame": 38,
+              "milliseconds": 1583.3333333333333,
+              "progress": 0.4
+            },
+            {
+              "frame": 39,
+              "milliseconds": 1625,
+              "progress": 0.4105263157894737
+            },
+            {
+              "frame": 40,
+              "milliseconds": 1666.6666666666665,
+              "progress": 0.42105263157894735
+            },
+            {
+              "frame": 41,
+              "milliseconds": 1708.3333333333333,
+              "progress": 0.43157894736842106
+            },
+            {
+              "frame": 42,
+              "milliseconds": 1750,
+              "progress": 0.4421052631578947
+            },
+            {
+              "frame": 43,
+              "milliseconds": 1791.6666666666665,
+              "progress": 0.45263157894736844
+            },
+            {
+              "frame": 44,
+              "milliseconds": 1833.3333333333333,
+              "progress": 0.4631578947368421
+            },
+            {
+              "frame": 45,
+              "milliseconds": 1875,
+              "progress": 0.47368421052631576
+            },
+            {
+              "frame": 46,
+              "milliseconds": 1916.6666666666665,
+              "progress": 0.4842105263157895
+            },
+            {
+              "frame": 47,
+              "milliseconds": 1958.3333333333333,
+              "progress": 0.49473684210526314
+            },
+            {
+              "frame": 48,
+              "milliseconds": 2000,
+              "progress": 0.5052631578947369
+            },
+            {
+              "frame": 49,
+              "milliseconds": 2041.6666666666665,
+              "progress": 0.5157894736842106
+            },
+            {
+              "frame": 50,
+              "milliseconds": 2083.333333333333,
+              "progress": 0.5263157894736842
+            },
+            {
+              "frame": 51,
+              "milliseconds": 2125,
+              "progress": 0.5368421052631579
+            },
+            {
+              "frame": 52,
+              "milliseconds": 2166.6666666666665,
+              "progress": 0.5473684210526316
+            },
+            {
+              "frame": 53,
+              "milliseconds": 2208.333333333333,
+              "progress": 0.5578947368421052
+            },
+            {
+              "frame": 54,
+              "milliseconds": 2250,
+              "progress": 0.5684210526315789
+            },
+            {
+              "frame": 55,
+              "milliseconds": 2291.6666666666665,
+              "progress": 0.5789473684210527
+            },
+            {
+              "frame": 56,
+              "milliseconds": 2333.333333333333,
+              "progress": 0.5894736842105263
+            },
+            {
+              "frame": 57,
+              "milliseconds": 2375,
+              "progress": 0.6
+            },
+            {
+              "frame": 58,
+              "milliseconds": 2416.6666666666665,
+              "progress": 0.6105263157894737
+            },
+            {
+              "frame": 59,
+              "milliseconds": 2458.333333333333,
+              "progress": 0.6210526315789474
+            },
+            {
+              "frame": 60,
+              "milliseconds": 2500,
+              "progress": 0.631578947368421
+            },
+            {
+              "frame": 61,
+              "milliseconds": 2541.6666666666665,
+              "progress": 0.6421052631578947
+            },
+            {
+              "frame": 62,
+              "milliseconds": 2583.333333333333,
+              "progress": 0.6526315789473685
+            },
+            {
+              "frame": 63,
+              "milliseconds": 2625,
+              "progress": 0.6631578947368421
+            },
+            {
+              "frame": 64,
+              "milliseconds": 2666.6666666666665,
+              "progress": 0.6736842105263158
+            },
+            {
+              "frame": 65,
+              "milliseconds": 2708.333333333333,
+              "progress": 0.6842105263157895
+            },
+            {
+              "frame": 66,
+              "milliseconds": 2750,
+              "progress": 0.6947368421052632
+            },
+            {
+              "frame": 67,
+              "milliseconds": 2791.6666666666665,
+              "progress": 0.7052631578947368
+            },
+            {
+              "frame": 68,
+              "milliseconds": 2833.333333333333,
+              "progress": 0.7157894736842105
+            },
+            {
+              "frame": 69,
+              "milliseconds": 2875,
+              "progress": 0.7263157894736842
+            },
+            {
+              "frame": 70,
+              "milliseconds": 2916.6666666666665,
+              "progress": 0.7368421052631579
+            },
+            {
+              "frame": 71,
+              "milliseconds": 2958.333333333333,
+              "progress": 0.7473684210526316
+            },
+            {
+              "frame": 72,
+              "milliseconds": 3000,
+              "progress": 0.7578947368421053
+            },
+            {
+              "frame": 73,
+              "milliseconds": 3041.6666666666665,
+              "progress": 0.7684210526315789
+            },
+            {
+              "frame": 74,
+              "milliseconds": 3083.333333333333,
+              "progress": 0.7789473684210526
+            },
+            {
+              "frame": 75,
+              "milliseconds": 3125,
+              "progress": 0.7894736842105263
+            },
+            {
+              "frame": 76,
+              "milliseconds": 3166.6666666666665,
+              "progress": 0.8
+            },
+            {
+              "frame": 77,
+              "milliseconds": 3208.333333333333,
+              "progress": 0.8105263157894737
+            },
+            {
+              "frame": 78,
+              "milliseconds": 3250,
+              "progress": 0.8210526315789474
+            },
+            {
+              "frame": 79,
+              "milliseconds": 3291.6666666666665,
+              "progress": 0.8315789473684211
+            },
+            {
+              "frame": 80,
+              "milliseconds": 3333.333333333333,
+              "progress": 0.8421052631578947
+            },
+            {
+              "frame": 81,
+              "milliseconds": 3375,
+              "progress": 0.8526315789473684
+            },
+            {
+              "frame": 82,
+              "milliseconds": 3416.6666666666665,
+              "progress": 0.8631578947368421
+            },
+            {
+              "frame": 83,
+              "milliseconds": 3458.333333333333,
+              "progress": 0.8736842105263158
+            },
+            {
+              "frame": 84,
+              "milliseconds": 3500,
+              "progress": 0.8842105263157894
+            },
+            {
+              "frame": 85,
+              "milliseconds": 3541.6666666666665,
+              "progress": 0.8947368421052632
+            },
+            {
+              "frame": 86,
+              "milliseconds": 3583.333333333333,
+              "progress": 0.9052631578947369
+            },
+            {
+              "frame": 87,
+              "milliseconds": 3625,
+              "progress": 0.9157894736842105
+            },
+            {
+              "frame": 88,
+              "milliseconds": 3666.6666666666665,
+              "progress": 0.9263157894736842
+            },
+            {
+              "frame": 89,
+              "milliseconds": 3708.333333333333,
+              "progress": 0.9368421052631579
+            },
+            {
+              "frame": 90,
+              "milliseconds": 3750,
+              "progress": 0.9473684210526315
+            },
+            {
+              "frame": 91,
+              "milliseconds": 3791.6666666666665,
+              "progress": 0.9578947368421052
+            },
+            {
+              "frame": 92,
+              "milliseconds": 3833.333333333333,
+              "progress": 0.968421052631579
+            },
+            {
+              "frame": 93,
+              "milliseconds": 3875,
+              "progress": 0.9789473684210527
+            },
+            {
+              "frame": 94,
+              "milliseconds": 3916.6666666666665,
+              "progress": 0.9894736842105263
+            },
+            {
+              "frame": 95,
+              "milliseconds": 3958.333333333333,
+              "progress": 1
+            }
+          ],
+          "schema": "worldbend.scene3d-plan",
+          "spec": {
+            "ambientIntensity": 2,
+            "animation": "Scene",
+            "artworks": [
+              {
+                "fit": "contain",
+                "material": "CoverPrint",
+                "slotId": "cover",
+                "surfaceSize": {
+                  "height": 1120,
+                  "width": 840
+                }
+              }
+            ],
+            "backgroundRgb": [
+              209,
+              204,
+              180
+            ],
+            "camera": "RevealCamera",
+            "canvas": {
+              "height": 720,
+              "width": 960
+            },
+            "exposure": 1,
+            "frameCount": 96,
+            "sceneSlot": "scene",
+            "schema": "worldbend.scene3d",
+            "timebase": {
+              "denominator": 1,
+              "numerator": 24
+            },
+            "version": "0.1"
+          },
+          "version": "0.1"
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "artwork"
+          }
+        ],
+        "id": "cover-proof",
+        "kind": "static",
+        "template": {
+          "operation": "rasterProgram",
+          "output": "single",
+          "outputs": [
+            {
+              "filename": "cover.png",
+              "id": "cover"
+            }
+          ],
+          "rasterProgram": {
+            "schema": "worldbend.raster-program-inspection",
+            "stageCount": 1,
+            "stages": [
+              {
+                "id": "fit",
+                "kind": "canvas"
+              }
+            ],
+            "version": "0.1"
+          },
+          "schema": "worldbend.spatial-template-inspection",
+          "sourceSlots": [
+            "artwork"
+          ],
+          "version": "0.1"
+        }
+      }
+    ],
+    "fingerprint": "sha256:c112d9645431cc2d967833bde6d6697d156891d189f5feb85c1cda5aba41308b",
+    "schema": "worldbend.spatial-document-inspection",
+    "unusedAssetIds": [],
+    "version": "0.1"
+  },
+  "delivery": {
+    "deliveries": [
+      {
+        "bindings": [
+          {
+            "assetId": "paper-stage",
+            "role": "content",
+            "slotId": "scene"
+          },
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "cover"
+          }
+        ],
+        "id": "paper-theatre",
+        "kind": "scene3d",
+        "scene": {
+          "durationMs": 4000,
+          "fingerprint": "sha256:4975b1e3ee49292841f01b4e1b45b325fb51a66f7e25fa8aee2ea071a776d000",
+          "samples": [
+            {
+              "frame": 0,
+              "milliseconds": 0,
+              "progress": 0
+            },
+            {
+              "frame": 1,
+              "milliseconds": 41.666666666666664,
+              "progress": 0.010526315789473684
+            },
+            {
+              "frame": 2,
+              "milliseconds": 83.33333333333333,
+              "progress": 0.021052631578947368
+            },
+            {
+              "frame": 3,
+              "milliseconds": 125,
+              "progress": 0.031578947368421054
+            },
+            {
+              "frame": 4,
+              "milliseconds": 166.66666666666666,
+              "progress": 0.042105263157894736
+            },
+            {
+              "frame": 5,
+              "milliseconds": 208.33333333333331,
+              "progress": 0.05263157894736842
+            },
+            {
+              "frame": 6,
+              "milliseconds": 250,
+              "progress": 0.06315789473684211
+            },
+            {
+              "frame": 7,
+              "milliseconds": 291.66666666666663,
+              "progress": 0.07368421052631578
+            },
+            {
+              "frame": 8,
+              "milliseconds": 333.3333333333333,
+              "progress": 0.08421052631578947
+            },
+            {
+              "frame": 9,
+              "milliseconds": 375,
+              "progress": 0.09473684210526316
+            },
+            {
+              "frame": 10,
+              "milliseconds": 416.66666666666663,
+              "progress": 0.10526315789473684
+            },
+            {
+              "frame": 11,
+              "milliseconds": 458.3333333333333,
+              "progress": 0.11578947368421053
+            },
+            {
+              "frame": 12,
+              "milliseconds": 500,
+              "progress": 0.12631578947368421
+            },
+            {
+              "frame": 13,
+              "milliseconds": 541.6666666666666,
+              "progress": 0.1368421052631579
+            },
+            {
+              "frame": 14,
+              "milliseconds": 583.3333333333333,
+              "progress": 0.14736842105263157
+            },
+            {
+              "frame": 15,
+              "milliseconds": 625,
+              "progress": 0.15789473684210525
+            },
+            {
+              "frame": 16,
+              "milliseconds": 666.6666666666666,
+              "progress": 0.16842105263157894
+            },
+            {
+              "frame": 17,
+              "milliseconds": 708.3333333333333,
+              "progress": 0.17894736842105263
+            },
+            {
+              "frame": 18,
+              "milliseconds": 750,
+              "progress": 0.18947368421052632
+            },
+            {
+              "frame": 19,
+              "milliseconds": 791.6666666666666,
+              "progress": 0.2
+            },
+            {
+              "frame": 20,
+              "milliseconds": 833.3333333333333,
+              "progress": 0.21052631578947367
+            },
+            {
+              "frame": 21,
+              "milliseconds": 875,
+              "progress": 0.22105263157894736
+            },
+            {
+              "frame": 22,
+              "milliseconds": 916.6666666666666,
+              "progress": 0.23157894736842105
+            },
+            {
+              "frame": 23,
+              "milliseconds": 958.3333333333333,
+              "progress": 0.24210526315789474
+            },
+            {
+              "frame": 24,
+              "milliseconds": 1000,
+              "progress": 0.25263157894736843
+            },
+            {
+              "frame": 25,
+              "milliseconds": 1041.6666666666665,
+              "progress": 0.2631578947368421
+            },
+            {
+              "frame": 26,
+              "milliseconds": 1083.3333333333333,
+              "progress": 0.2736842105263158
+            },
+            {
+              "frame": 27,
+              "milliseconds": 1125,
+              "progress": 0.28421052631578947
+            },
+            {
+              "frame": 28,
+              "milliseconds": 1166.6666666666665,
+              "progress": 0.29473684210526313
+            },
+            {
+              "frame": 29,
+              "milliseconds": 1208.3333333333333,
+              "progress": 0.30526315789473685
+            },
+            {
+              "frame": 30,
+              "milliseconds": 1250,
+              "progress": 0.3157894736842105
+            },
+            {
+              "frame": 31,
+              "milliseconds": 1291.6666666666665,
+              "progress": 0.3263157894736842
+            },
+            {
+              "frame": 32,
+              "milliseconds": 1333.3333333333333,
+              "progress": 0.3368421052631579
+            },
+            {
+              "frame": 33,
+              "milliseconds": 1375,
+              "progress": 0.3473684210526316
+            },
+            {
+              "frame": 34,
+              "milliseconds": 1416.6666666666665,
+              "progress": 0.35789473684210527
+            },
+            {
+              "frame": 35,
+              "milliseconds": 1458.3333333333333,
+              "progress": 0.3684210526315789
+            },
+            {
+              "frame": 36,
+              "milliseconds": 1500,
+              "progress": 0.37894736842105264
+            },
+            {
+              "frame": 37,
+              "milliseconds": 1541.6666666666665,
+              "progress": 0.3894736842105263
+            },
+            {
+              "frame": 38,
+              "milliseconds": 1583.3333333333333,
+              "progress": 0.4
+            },
+            {
+              "frame": 39,
+              "milliseconds": 1625,
+              "progress": 0.4105263157894737
+            },
+            {
+              "frame": 40,
+              "milliseconds": 1666.6666666666665,
+              "progress": 0.42105263157894735
+            },
+            {
+              "frame": 41,
+              "milliseconds": 1708.3333333333333,
+              "progress": 0.43157894736842106
+            },
+            {
+              "frame": 42,
+              "milliseconds": 1750,
+              "progress": 0.4421052631578947
+            },
+            {
+              "frame": 43,
+              "milliseconds": 1791.6666666666665,
+              "progress": 0.45263157894736844
+            },
+            {
+              "frame": 44,
+              "milliseconds": 1833.3333333333333,
+              "progress": 0.4631578947368421
+            },
+            {
+              "frame": 45,
+              "milliseconds": 1875,
+              "progress": 0.47368421052631576
+            },
+            {
+              "frame": 46,
+              "milliseconds": 1916.6666666666665,
+              "progress": 0.4842105263157895
+            },
+            {
+              "frame": 47,
+              "milliseconds": 1958.3333333333333,
+              "progress": 0.49473684210526314
+            },
+            {
+              "frame": 48,
+              "milliseconds": 2000,
+              "progress": 0.5052631578947369
+            },
+            {
+              "frame": 49,
+              "milliseconds": 2041.6666666666665,
+              "progress": 0.5157894736842106
+            },
+            {
+              "frame": 50,
+              "milliseconds": 2083.333333333333,
+              "progress": 0.5263157894736842
+            },
+            {
+              "frame": 51,
+              "milliseconds": 2125,
+              "progress": 0.5368421052631579
+            },
+            {
+              "frame": 52,
+              "milliseconds": 2166.6666666666665,
+              "progress": 0.5473684210526316
+            },
+            {
+              "frame": 53,
+              "milliseconds": 2208.333333333333,
+              "progress": 0.5578947368421052
+            },
+            {
+              "frame": 54,
+              "milliseconds": 2250,
+              "progress": 0.5684210526315789
+            },
+            {
+              "frame": 55,
+              "milliseconds": 2291.6666666666665,
+              "progress": 0.5789473684210527
+            },
+            {
+              "frame": 56,
+              "milliseconds": 2333.333333333333,
+              "progress": 0.5894736842105263
+            },
+            {
+              "frame": 57,
+              "milliseconds": 2375,
+              "progress": 0.6
+            },
+            {
+              "frame": 58,
+              "milliseconds": 2416.6666666666665,
+              "progress": 0.6105263157894737
+            },
+            {
+              "frame": 59,
+              "milliseconds": 2458.333333333333,
+              "progress": 0.6210526315789474
+            },
+            {
+              "frame": 60,
+              "milliseconds": 2500,
+              "progress": 0.631578947368421
+            },
+            {
+              "frame": 61,
+              "milliseconds": 2541.6666666666665,
+              "progress": 0.6421052631578947
+            },
+            {
+              "frame": 62,
+              "milliseconds": 2583.333333333333,
+              "progress": 0.6526315789473685
+            },
+            {
+              "frame": 63,
+              "milliseconds": 2625,
+              "progress": 0.6631578947368421
+            },
+            {
+              "frame": 64,
+              "milliseconds": 2666.6666666666665,
+              "progress": 0.6736842105263158
+            },
+            {
+              "frame": 65,
+              "milliseconds": 2708.333333333333,
+              "progress": 0.6842105263157895
+            },
+            {
+              "frame": 66,
+              "milliseconds": 2750,
+              "progress": 0.6947368421052632
+            },
+            {
+              "frame": 67,
+              "milliseconds": 2791.6666666666665,
+              "progress": 0.7052631578947368
+            },
+            {
+              "frame": 68,
+              "milliseconds": 2833.333333333333,
+              "progress": 0.7157894736842105
+            },
+            {
+              "frame": 69,
+              "milliseconds": 2875,
+              "progress": 0.7263157894736842
+            },
+            {
+              "frame": 70,
+              "milliseconds": 2916.6666666666665,
+              "progress": 0.7368421052631579
+            },
+            {
+              "frame": 71,
+              "milliseconds": 2958.333333333333,
+              "progress": 0.7473684210526316
+            },
+            {
+              "frame": 72,
+              "milliseconds": 3000,
+              "progress": 0.7578947368421053
+            },
+            {
+              "frame": 73,
+              "milliseconds": 3041.6666666666665,
+              "progress": 0.7684210526315789
+            },
+            {
+              "frame": 74,
+              "milliseconds": 3083.333333333333,
+              "progress": 0.7789473684210526
+            },
+            {
+              "frame": 75,
+              "milliseconds": 3125,
+              "progress": 0.7894736842105263
+            },
+            {
+              "frame": 76,
+              "milliseconds": 3166.6666666666665,
+              "progress": 0.8
+            },
+            {
+              "frame": 77,
+              "milliseconds": 3208.333333333333,
+              "progress": 0.8105263157894737
+            },
+            {
+              "frame": 78,
+              "milliseconds": 3250,
+              "progress": 0.8210526315789474
+            },
+            {
+              "frame": 79,
+              "milliseconds": 3291.6666666666665,
+              "progress": 0.8315789473684211
+            },
+            {
+              "frame": 80,
+              "milliseconds": 3333.333333333333,
+              "progress": 0.8421052631578947
+            },
+            {
+              "frame": 81,
+              "milliseconds": 3375,
+              "progress": 0.8526315789473684
+            },
+            {
+              "frame": 82,
+              "milliseconds": 3416.6666666666665,
+              "progress": 0.8631578947368421
+            },
+            {
+              "frame": 83,
+              "milliseconds": 3458.333333333333,
+              "progress": 0.8736842105263158
+            },
+            {
+              "frame": 84,
+              "milliseconds": 3500,
+              "progress": 0.8842105263157894
+            },
+            {
+              "frame": 85,
+              "milliseconds": 3541.6666666666665,
+              "progress": 0.8947368421052632
+            },
+            {
+              "frame": 86,
+              "milliseconds": 3583.333333333333,
+              "progress": 0.9052631578947369
+            },
+            {
+              "frame": 87,
+              "milliseconds": 3625,
+              "progress": 0.9157894736842105
+            },
+            {
+              "frame": 88,
+              "milliseconds": 3666.6666666666665,
+              "progress": 0.9263157894736842
+            },
+            {
+              "frame": 89,
+              "milliseconds": 3708.333333333333,
+              "progress": 0.9368421052631579
+            },
+            {
+              "frame": 90,
+              "milliseconds": 3750,
+              "progress": 0.9473684210526315
+            },
+            {
+              "frame": 91,
+              "milliseconds": 3791.6666666666665,
+              "progress": 0.9578947368421052
+            },
+            {
+              "frame": 92,
+              "milliseconds": 3833.333333333333,
+              "progress": 0.968421052631579
+            },
+            {
+              "frame": 93,
+              "milliseconds": 3875,
+              "progress": 0.9789473684210527
+            },
+            {
+              "frame": 94,
+              "milliseconds": 3916.6666666666665,
+              "progress": 0.9894736842105263
+            },
+            {
+              "frame": 95,
+              "milliseconds": 3958.333333333333,
+              "progress": 1
+            }
+          ],
+          "schema": "worldbend.scene3d-plan",
+          "spec": {
+            "ambientIntensity": 2,
+            "animation": "Scene",
+            "artworks": [
+              {
+                "fit": "contain",
+                "material": "CoverPrint",
+                "slotId": "cover",
+                "surfaceSize": {
+                  "height": 1120,
+                  "width": 840
+                }
+              }
+            ],
+            "backgroundRgb": [
+              209,
+              204,
+              180
+            ],
+            "camera": "RevealCamera",
+            "canvas": {
+              "height": 720,
+              "width": 960
+            },
+            "exposure": 1,
+            "frameCount": 96,
+            "sceneSlot": "scene",
+            "schema": "worldbend.scene3d",
+            "timebase": {
+              "denominator": 1,
+              "numerator": 24
+            },
+            "version": "0.1"
+          },
+          "version": "0.1"
+        }
+      },
+      {
+        "bindings": [
+          {
+            "assetId": "field-notes",
+            "role": "content",
+            "slotId": "artwork"
+          }
+        ],
+        "id": "cover-proof",
+        "job": {
+          "failurePolicy": "allOrNone",
+          "items": [
+            {
+              "bindings": [
+                {
+                  "assetId": "field-notes",
+                  "slotId": "artwork"
+                }
+              ],
+              "id": "cover-proof"
+            }
+          ],
+          "schema": "worldbend.variation-job",
+          "template": {
+            "operation": {
+              "kind": "rasterProgram",
+              "program": {
+                "schema": "worldbend.raster-program",
+                "stages": [
+                  {
+                    "id": "fit",
+                    "kind": "canvas",
+                    "spec": {
+                      "operation": {
+                        "anchor": {
+                          "x": 0.5,
+                          "y": 0.5
+                        },
+                        "background": {
+                          "kind": "transparent"
+                        },
+                        "kind": "contain",
+                        "output": {
+                          "height": 1120,
+                          "width": 840
+                        }
+                      },
+                      "schema": "worldbend.canvas",
+                      "version": "0.1"
+                    }
+                  }
+                ],
+                "version": "0.1"
+              },
+              "sourceSlot": "artwork"
+            },
+            "output": {
+              "id": "cover",
+              "kind": "single"
+            },
+            "schema": "worldbend.spatial-template",
+            "version": "0.1"
+          },
+          "version": "0.1"
+        },
+        "kind": "static"
+      }
+    ],
+    "documentFingerprint": "sha256:c112d9645431cc2d967833bde6d6697d156891d189f5feb85c1cda5aba41308b",
+    "schema": "worldbend.spatial-document-delivery-plan",
+    "version": "0.1"
+  }
+}

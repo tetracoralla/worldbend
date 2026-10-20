@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Worldbend · 空间试验台</title>
+<link rel="stylesheet" href="effects.css">
+<body>
+<header><a class="brand" href="effects.html">W<span>↗</span> Worldbend</a><span class="edition">SPATIAL STUDIES / 01</span><div class="file-actions"><button id="load">打开方案</button><button id="save" class="primary">保存方案</button></div></header>
+<main>
+  <aside aria-label="效果目录">
+    <div class="eyebrow">表达方式</div><h1>让画面<br>有另一种可能。</h1>
+    <p class="intro">用同一份内容，比较不同的空间关系。</p>
+    <label class="search"><span class="sr-only">查找效果</span><input id="search" type="search" placeholder="查找：视差、折叠、玻璃…"></label>
+    <div id="filters" class="filters" aria-label="表达目的"><button data-intent="" aria-pressed="true">全部</button><button data-intent="depth" aria-pressed="false">纵深</button><button data-intent="inspect" aria-pressed="false">观察</button><button data-intent="reveal" aria-pressed="false">显现</button></div>
+    <div id="catalog" class="catalog"></div>
+    <p class="aside-note">先比较表达，再决定效果。<br>点击一张画面，选择要替换的方案。<br><a href="stage.html">手写视差是否已经足够？</a></p>
+  </aside>
+  <section class="workspace" aria-label="空间效果比较">
+    <div class="workspace-heading"><div><div class="eyebrow">同一内容 · 同一操作</div><h2>观察差别。</h2></div><div class="content-actions"><button id="theme">换一组内容</button><button id="image">使用图片</button></div></div>
+    <div class="comparisons">
+      <article class="candidate selected" data-index="0"><div class="candidate-header"><button class="select-candidate" data-index="0" aria-pressed="true"><span class="letter">A</span><span class="name">载入中</span></button><span class="tag">正在编辑</span></div><div class="viewport" id="view-0" tabindex="0" role="group" aria-label="方案 A，拖动或用方向键观察"></div><p class="observation"></p></article>
+      <article class="candidate" data-index="1"><div class="candidate-header"><button class="select-candidate" data-index="1" aria-pressed="false"><span class="letter">B</span><span class="name">载入中</span></button><span class="tag">点击选择</span></div><div class="viewport" id="view-1" tabindex="0" role="group" aria-label="方案 B，拖动或用方向键观察"></div><p class="observation"></p></article>
+    </div>
+    <div class="transport"><button id="play" class="play">播放</button><label class="progress-label">展开 / 靠近<input id="progress" type="range" min="0" max="1" step="0.001" value="0.35"></label><output id="progress-value">35%</output><button id="reset">复位</button></div>
+    <div class="adjustments"><label>左右<input id="pointer-x" type="range" min="-1" max="1" step="0.01" value="0"></label><label>上下<input id="pointer-y" type="range" min="-1" max="1" step="0.01" value="0"></label><label>当前方案强度<input id="intensity" type="range" min="0" max="1" step="0.05" value="0.8"></label></div>
+    <div class="below"><span id="hint">拖动任一画面，两边同步响应。方向键也可以操作。</span><label class="quiet-toggle"><input id="reduce" type="checkbox">静态查看</label></div>
+    <p id="feedback" role="status" aria-live="polite">正在准备画面…</p>
+    <details><summary>使用与限制</summary><p id="limits"></p><p>保存的方案包含两份配方、当前操作状态和预览素材；再次打开会检查配方指纹。软件不评价哪一种设计更好。图像显示会受浏览器与设备影响。</p><a href="../SPATIAL_EFFECTS_CONTRACT.md" id="contract">接入与配方说明</a></details>
+  </section>
+</main>
+<input id="load-file" type="file" accept="application/json,.json" hidden><input id="image-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+<script type="module" src="effects-demo.js"></script>
+</body></html>

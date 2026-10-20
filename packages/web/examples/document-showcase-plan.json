@@ -1,0 +1,107 @@
+{
+  "schema": "worldbend.spatial-document-delivery-plan",
+  "version": "0.1",
+  "documentFingerprint": "sha256:ce0f549f961c2d75cf505b173fb33e9a35ce53610ca9b40db5ea5fe8238a4aba",
+  "deliveries": [
+    {
+      "kind": "interactive",
+      "id": "showcase-hero",
+      "recipe": {
+        "schema": "worldbend.effect-recipe",
+        "version": "3",
+        "origin": null,
+        "viewport": {
+          "width": 600,
+          "height": 400
+        },
+        "camera": {
+          "focalLength": 1320,
+          "focusDistance": 1000,
+          "travel": {
+            "x": 49.199999999999996,
+            "y": 32.8
+          }
+        },
+        "appearance": {
+          "depthOfField": {
+            "focusDistance": 650,
+            "focusRange": 300,
+            "maxBlurRadius": 11.479999999999999
+          },
+          "motionBlur": {
+            "exposureFraction": 0.65,
+            "maxBlurRadius": 26.24
+          }
+        },
+        "layers": [
+          {
+            "id": "background",
+            "offset": {
+              "x": -60,
+              "y": -40
+            },
+            "surface": {
+              "kind": "camera-plane",
+              "size": {
+                "width": 720,
+                "height": 480
+              },
+              "distance": 1500
+            },
+            "tracks": []
+          },
+          {
+            "id": "middle",
+            "offset": {
+              "x": -60,
+              "y": -40
+            },
+            "surface": {
+              "kind": "camera-plane",
+              "size": {
+                "width": 720,
+                "height": 480
+              },
+              "distance": 1000
+            },
+            "tracks": []
+          },
+          {
+            "id": "foreground",
+            "offset": {
+              "x": -60,
+              "y": -40
+            },
+            "surface": {
+              "kind": "camera-plane",
+              "size": {
+                "width": 720,
+                "height": 480
+              },
+              "distance": 650
+            },
+            "tracks": []
+          }
+        ]
+      },
+      "recipeFingerprint": "sha256:78994e779d0f23bcdf68ee5d9f806724bc202cd0695a01e5d0ae846d73e34262",
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "background",
+          "assetId": "showcase-backdrop"
+        },
+        {
+          "role": "content",
+          "slotId": "middle",
+          "assetId": "showcase-details"
+        },
+        {
+          "role": "content",
+          "slotId": "foreground",
+          "assetId": "showcase-product"
+        }
+      ]
+    }
+  ]
+}

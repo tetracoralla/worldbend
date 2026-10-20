@@ -1,0 +1,243 @@
+{
+  "schema": "worldbend.spatial-document",
+  "version": "0.1",
+  "assets": [
+    {
+      "id": "field-notes",
+      "contentVersion": "edition-01"
+    }
+  ],
+  "expressions": [
+    {
+      "kind": "material",
+      "id": "poster",
+      "material": {
+        "family": "mesh-gradient",
+        "input": {
+          "recipe": {
+            "schema": "worldbend.mesh-gradient@0.1",
+            "version": "0.1",
+            "recipeId": "field-notes-mesh-gradient",
+            "recipeVersion": 1,
+            "material": {
+              "visible": true,
+              "colorTl": {
+                "r": 0.96,
+                "g": 0.3,
+                "b": 0.15,
+                "a": 1
+              },
+              "colorTr": {
+                "r": 0.05,
+                "g": 0.17,
+                "b": 0.15,
+                "a": 1
+              },
+              "colorBl": {
+                "r": 0.94,
+                "g": 0.62,
+                "b": 0.36,
+                "a": 1
+              },
+              "colorBr": {
+                "r": 0.4,
+                "g": 0.57,
+                "b": 0.49,
+                "a": 1
+              },
+              "warp": 0.57,
+              "softness": 0.48,
+              "durationMs": 12000,
+              "phaseMs": 900,
+              "flowSpeed": 0.32
+            }
+          },
+          "material": {
+            "visible": true,
+            "colorTl": {
+              "r": 0.96,
+              "g": 0.3,
+              "b": 0.15,
+              "a": 1
+            },
+            "colorTr": {
+              "r": 0.05,
+              "g": 0.17,
+              "b": 0.15,
+              "a": 1
+            },
+            "colorBl": {
+              "r": 0.94,
+              "g": 0.62,
+              "b": 0.36,
+              "a": 1
+            },
+            "colorBr": {
+              "r": 0.4,
+              "g": 0.57,
+              "b": 0.49,
+              "a": 1
+            },
+            "warp": 0.57,
+            "softness": 0.48,
+            "durationMs": 12000,
+            "phaseMs": 900,
+            "flowSpeed": 0.32
+          },
+          "target": "web",
+          "kernelProfile": "worldbend.mesh-gradient.rgba@0.2"
+        }
+      },
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "poster",
+          "assetId": "field-notes"
+        }
+      ]
+    },
+    {
+      "kind": "material",
+      "id": "paper-note",
+      "material": {
+        "family": "texture",
+        "input": {
+          "recipe": {
+            "schema": "worldbend.texture@0.1",
+            "version": "0.1",
+            "recipeId": "field-notes-texture",
+            "recipeVersion": 1,
+            "material": {
+              "visible": true,
+              "grain": 0.18,
+              "grainSize": 1.2,
+              "grainColor": "#7b5a39",
+              "etch": 0.4,
+              "etchSize": 3,
+              "clipToShape": true
+            }
+          },
+          "material": {
+            "visible": true,
+            "grain": 0.18,
+            "grainSize": 1.2,
+            "grainColor": "#7b5a39",
+            "etch": 0.4,
+            "etchSize": 3,
+            "clipToShape": true
+          },
+          "target": "web"
+        }
+      },
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "paper-note",
+          "assetId": "field-notes"
+        }
+      ]
+    },
+    {
+      "kind": "material",
+      "id": "foil-seal",
+      "material": {
+        "family": "foil",
+        "input": {
+          "recipe": {
+            "schema": "worldbend.foil@0.1",
+            "version": "0.1",
+            "recipeId": "field-notes-foil",
+            "recipeVersion": 1,
+            "material": {
+              "visible": true,
+              "baseColor": {
+                "r": 0.17,
+                "g": 0.22,
+                "b": 0.19,
+                "a": 1
+              },
+              "highlightColor": {
+                "r": 0.87,
+                "g": 0.94,
+                "b": 0.56,
+                "a": 1
+              },
+              "lightAngle": 130,
+              "intensity": 0.8,
+              "roughness": 0.45,
+              "flowSpeed": 0.25
+            }
+          },
+          "material": {
+            "visible": true,
+            "baseColor": {
+              "r": 0.17,
+              "g": 0.22,
+              "b": 0.19,
+              "a": 1
+            },
+            "highlightColor": {
+              "r": 0.87,
+              "g": 0.94,
+              "b": 0.56,
+              "a": 1
+            },
+            "lightAngle": 130,
+            "intensity": 0.8,
+            "roughness": 0.45,
+            "flowSpeed": 0.25
+          },
+          "target": "web"
+        }
+      },
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "foil-seal",
+          "assetId": "field-notes"
+        }
+      ]
+    },
+    {
+      "kind": "material",
+      "id": "edition-control",
+      "material": {
+        "family": "glass",
+        "input": {
+          "recipe": {
+            "schema": "worldbend.appearance@0.1",
+            "version": "0.1",
+            "recipeId": "field-notes-glass",
+            "recipeVersion": 1,
+            "material": {
+              "visible": true,
+              "lightIntensity": 0.45,
+              "lightAngle": 115,
+              "refraction": 0.25,
+              "depth": 8,
+              "dispersion": 0,
+              "radius": 3
+            }
+          },
+          "material": {
+            "visible": true,
+            "lightIntensity": 0.45,
+            "lightAngle": 115,
+            "refraction": 0.25,
+            "depth": 8,
+            "dispersion": 0,
+            "radius": 3
+          },
+          "target": "web"
+        }
+      },
+      "bindings": [
+        {
+          "role": "content",
+          "slotId": "edition-control",
+          "assetId": "field-notes"
+        }
+      ]
+    }
+  ]
+}

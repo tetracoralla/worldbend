@@ -1,0 +1,194 @@
+{
+  "documents": [
+    {
+      "id": "static",
+      "document": {
+        "schema": "worldbend.spatial-document",
+        "version": "0.1",
+        "assets": [
+          {
+            "id": "product-artwork",
+            "contentVersion": "demo-v1"
+          }
+        ],
+        "expressions": [
+          {
+            "kind": "static",
+            "id": "release-still",
+            "template": {
+              "schema": "worldbend.spatial-template",
+              "version": "0.1",
+              "operation": {
+                "kind": "rasterProgram",
+                "sourceSlot": "artwork",
+                "program": {
+                  "schema": "worldbend.raster-program",
+                  "version": "0.1",
+                  "stages": [
+                    {
+                      "kind": "canvas",
+                      "id": "fit",
+                      "spec": {
+                        "schema": "worldbend.canvas",
+                        "version": "0.1",
+                        "operation": {
+                          "kind": "contain",
+                          "output": {
+                            "width": 1200,
+                            "height": 800
+                          },
+                          "anchor": {
+                            "x": 0.5,
+                            "y": 0.5
+                          },
+                          "background": {
+                            "kind": "transparent"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "output": {
+                "kind": "single",
+                "id": "hero"
+              }
+            },
+            "bindings": [
+              {
+                "role": "content",
+                "slotId": "artwork",
+                "assetId": "product-artwork"
+              }
+            ]
+          }
+        ]
+      },
+      "expectedFingerprint": "sha256:c8311896bc1852f11a356a1fbfe53951b4ee46d32beb4e850773d79938b58dc8"
+    },
+    {
+      "id": "interactive",
+      "document": {
+        "schema": "worldbend.spatial-document",
+        "version": "0.1",
+        "assets": [
+          {
+            "id": "product-artwork",
+            "contentVersion": "demo-v1"
+          }
+        ],
+        "expressions": [
+          {
+            "kind": "interactive",
+            "id": "interactive-hero",
+            "recipe": {
+              "schema": "worldbend.effect-recipe",
+              "version": "1",
+              "origin": {
+                "effect": "rigid-tilt",
+                "version": "1",
+                "viewport": {
+                  "width": 1200,
+                  "height": 800
+                },
+                "intensity": 0.7
+              },
+              "viewport": {
+                "width": 1200,
+                "height": 800
+              },
+              "layers": [
+                {
+                  "id": "content",
+                  "offset": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "surface": {
+                    "kind": "plane",
+                    "size": {
+                      "width": 1200,
+                      "height": 800
+                    },
+                    "pose": {
+                      "perspective": 3600,
+                      "rotateX": 0,
+                      "rotateY": 0,
+                      "rotateZ": 0,
+                      "depth": 0,
+                      "translate": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                      },
+                      "perspectiveOrigin": {
+                        "x": 0.5,
+                        "y": 0.5
+                      }
+                    }
+                  },
+                  "tracks": [
+                    {
+                      "property": "rotate-x",
+                      "axis": "pointer-y",
+                      "from": 8.399999999999999,
+                      "to": -8.399999999999999,
+                      "curve": "linear"
+                    },
+                    {
+                      "property": "rotate-y",
+                      "axis": "pointer-x",
+                      "from": -12.6,
+                      "to": 12.6,
+                      "curve": "linear"
+                    }
+                  ]
+                }
+              ]
+            },
+            "bindings": [
+              {
+                "role": "content",
+                "slotId": "content",
+                "assetId": "product-artwork"
+              }
+            ]
+          }
+        ]
+      },
+      "expectedFingerprint": "sha256:1653501bca34c74b7c5d6cf34da0713213de4eba087de63fbd4cb09669e50318"
+    }
+  ],
+  "assets": [
+    {
+      "id": "product-artwork",
+      "contentVersion": "demo-v1",
+      "members": [
+        {
+          "documentId": "static",
+          "assetId": "product-artwork"
+        },
+        {
+          "documentId": "interactive",
+          "assetId": "product-artwork"
+        }
+      ]
+    }
+  ],
+  "expressions": [
+    {
+      "id": "release-still",
+      "documentId": "static",
+      "expressionId": "release-still"
+    },
+    {
+      "id": "interactive-hero",
+      "documentId": "interactive",
+      "expressionId": "interactive-hero"
+    }
+  ]
+}

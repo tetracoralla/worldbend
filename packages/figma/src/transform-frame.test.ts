@@ -1,0 +1,204 @@
+import { describe, expect, it } from "vitest";
+import {
+  composeAffineTransform,
+  identityTransformRecipe,
+  normalizedSpec,
+  unitQuad,
+  type AffineComposition,
+} from "@worldbend/web";
+import {
+  frameFromComposition,
+  frameFromSource,
+  rebaseTransformFrame,
+  sameTransformFrame,
+  TransformFrameError,
+} from "./transform-frame";
+
+import { deformationTask } from "./stored-designer-task";
+import { deformationWorkFromMesh } from "./deformation-work-state";
+import { createMeshSpec } from "./mesh-workspace";
+import type { SourcePayload } from "./messages";
+
+const identitySpec = () => normalizedSpec(unitQuad());
+
+describe("Figma transform frame", () => {
+  it.each([false, true])("opens the complete deformation plane and output size with draft=%s", draft => {
+    const work = deformationWorkFromMesh(createMeshSpec(330, 160, 4));
+    work.transform.destination.quad.tl = { x: .1, y: .05 };
+    const task = deformationTask(work, "mesh");
+    const payload: SourcePayload = {
+      bytes: new Uint8Array([1]), sourceNodeId: "art", sourceName: "Artwork",
+      renderWidth: 360, renderHeight: 240,
+      placement: { x: 20, y: 30, width: 330, height: 160 },
+      ...(draft ? { deformationDraft: task } : { task }),
+    };
+    const before = structuredClone(payload);
+    const frame = frameFromSource(payload);
+    expect(frame).toEqual({ spec: work.transform, renderWidth: 330, renderHeight: 160, placement: payload.placement });
+    frame.spec.destination.quad.tl.x = .2;
+    expect(payload).toEqual(before);
+  });
+
+  it("maps tight render bounds back to Figma placement without clipping", () => {
+    const base = frameFromSource({
+      bytes: new Uint8Array([1]),
+      sourceNodeId: "source",
+      sourceName: "Poster",
+      renderWidth: 100,
+      renderHeight: 50,
+      placement: { x: 20, y: 30, width: 200, height: 100 },
+    });
+    const composition = {
+      spec: identitySpec(),
+      canvas: { origin: { x: 25, y: -25 }, size: { width: 50, height: 100 } },
+    } as AffineComposition;
+
+    expect(frameFromComposition(base, composition)).toEqual({
+      spec: identitySpec(),
+      renderWidth: 50,
+      renderHeight: 100,
+      placement: { x: 70, y: -20, width: 100, height: 200 },
+    });
+  });
+
+  it("turns an outward Distort into a tight canvas and translated Figma placement", async () => {
+    const base = frameFromSource({
+      bytes: new Uint8Array([1]),
+      sourceNodeId: "source",
+      sourceName: "Poster",
+      renderWidth: 100,
+      renderHeight: 50,
+      placement: { x: 20, y: 30, width: 200, height: 100 },
+    });
+    const outward = normalizedSpec({
+      tl: { x: -0.2, y: -0.2 },
+      tr: { x: 1.2, y: 0 },
+      br: { x: 1, y: 1 },
+      bl: { x: 0, y: 1 },
+    });
+    const composition = await composeAffineTransform(
+      outward,
+      identityTransformRecipe(),
+      { width: base.renderWidth, height: base.renderHeight },
+    );
+
+    const framed = frameFromComposition(base, composition);
+    expect(framed.renderWidth).toBe(140);
+    expect(framed.renderHeight).toBe(60);
+    expect(framed.placement).toEqual({ x: -20, y: 10, width: 280, height: 120 });
+    expect(framed.spec.destination.quad.tl).toEqual({ x: 0, y: 0 });
+  });
+
+  it("keeps logical geometry above the host raster limit for density planning", () => {
+    const base = {
+      spec: identitySpec(),
+      renderWidth: 100,
+      renderHeight: 100,
+      placement: { x: 0, y: 0, width: 100, height: 100 },
+    };
+    const composition = {
+      spec: identitySpec(),
+      canvas: { origin: { x: 0, y: 0 }, size: { width: 4097, height: 100 } },
+    } as AffineComposition;
+    expect(frameFromComposition(base, composition)).toMatchObject({
+      renderWidth: 4097,
+      renderHeight: 100,
+      placement: { width: 4097, height: 100 },
+    });
+  });
+
+  it("rejects a logical frame that cannot be represented exactly", () => {
+    const base = {
+      spec: identitySpec(),
+      renderWidth: 100,
+      renderHeight: 100,
+      placement: { x: 0, y: 0, width: 100, height: 100 },
+    };
+    const composition = {
+      spec: identitySpec(),
+      canvas: {
+        origin: { x: 0, y: 0 },
+        size: { width: Number.MAX_SAFE_INTEGER * 2, height: 100 },
+      },
+    } as AffineComposition;
+    expect(() => frameFromComposition(base, composition)).toThrow(TransformFrameError);
+    expect(() => frameFromComposition(base, composition)).toThrow(
+      expect.objectContaining({ code: "renderDimensionsInvalid" }),
+    );
+  });
+
+  it("reports a typed reason when the placement is not representable", () => {
+    const base = {
+      spec: identitySpec(),
+      renderWidth: 100,
+      renderHeight: 100,
+      placement: { x: 0, y: 0, width: 100, height: 100 },
+    };
+    const composition = {
+      spec: identitySpec(),
+      canvas: { origin: { x: Number.NaN, y: 0 }, size: { width: 50, height: 50 } },
+    } as AffineComposition;
+    expect(() => frameFromComposition(base, composition)).toThrow(
+      expect.objectContaining({ code: "placementInvalid" }),
+    );
+  });
+
+  it("keeps an in-progress frame attached when the selected source moves and resizes", () => {
+    const previousInitial = {
+      spec: identitySpec(),
+      renderWidth: 100,
+      renderHeight: 50,
+      placement: { x: 20, y: 30, width: 200, height: 100 },
+    };
+    const nextInitial = {
+      spec: identitySpec(),
+      renderWidth: 150,
+      renderHeight: 100,
+      placement: { x: 100, y: 80, width: 300, height: 200 },
+    };
+    const current = {
+      spec: identitySpec(),
+      renderWidth: 50,
+      renderHeight: 100,
+      placement: { x: 70, y: -20, width: 100, height: 200 },
+    };
+
+    expect(rebaseTransformFrame(previousInitial, nextInitial, current)).toEqual({
+      spec: identitySpec(),
+      renderWidth: 75,
+      renderHeight: 200,
+      placement: { x: 175, y: -20, width: 150, height: 400 },
+    });
+  });
+
+  it("adopts an externally changed shared operation instead of reviving a stale draft", () => {
+    const previous = { spec: identitySpec(), renderWidth: 200, renderHeight: 160,
+      placement: { x: 500, y: 200, width: 200, height: 160 } };
+    const next = structuredClone(previous);
+    next.spec.destination.quad.tr = { x: .8, y: .1 };
+    const active = structuredClone(previous);
+    active.spec.destination.quad.bl = { x: .2, y: .9 };
+    expect(rebaseTransformFrame(previous, next, previous)).toEqual(next);
+    const adopted = rebaseTransformFrame(previous, next, active);
+    expect(adopted).toEqual(next);
+    adopted.spec.destination.quad.tr.x = .5;
+    expect(next.spec.destination.quad.tr.x).toBe(.8);
+    expect(active.spec.destination.quad.bl).toEqual({ x: .2, y: .9 });
+  });
+
+  it("recognizes a content-only refresh independently of optional defaults and JSON key order", () => {
+    const previous = { spec: identitySpec(), renderWidth: 200, renderHeight: 160,
+      placement: { x: 500, y: 200, width: 200, height: 160 } };
+    previous.spec.content.warp = { preset: "arc", amount: .25 };
+    const next = structuredClone(previous);
+    next.spec.content.orientation = "native";
+    next.spec.content.warp = { amount: .25, preset: "arc" };
+    next.placement = { height: 160, width: 200, y: 200, x: 500 };
+    expect(sameTransformFrame(previous, next)).toBe(true);
+    next.spec.content.warp.amount = .3;
+    expect(sameTransformFrame(previous, next)).toBe(false);
+    next.spec.content.warp.amount = .25;
+    next.placement.width = 200.25;
+    expect(sameTransformFrame(previous, next)).toBe(false);
+  });
+});

@@ -1,0 +1,33 @@
+{
+  "schema": "openadam.release-profile",
+  "version": "0.1",
+  "distribution": {"source": "public", "audience": "public"},
+  "carriers": [
+    {
+      "id": "figma-plugin",
+      "required": true,
+      "manifests": ["packages/figma/manifest.json"],
+      "packages": ["packages/figma/package.json"],
+      "listing": "https://www.figma.com/community/plugin/1675767923532475446/worldbend",
+      "notes": "Figma Community distribution for the designer plugin. Companion effect availability is reported separately."
+    },
+    {
+      "id": "github-actions",
+      "required": true,
+      "workflows": ["ci.yml", "codeql.yml"],
+      "notes": "Continuous integration and code scanning for the public source repository."
+    },
+    {
+      "id": "agent-host",
+      "required": false,
+      "notes": "Optional, separately versioned Agent Host carrier."
+    },
+    {
+      "id": "codex-plugin",
+      "required": false,
+      "manifests": ["plugins/worldbend/.codex-plugin/plugin.json"],
+      "notes": "Optional, separately versioned Codex plugin carrier."
+    }
+  ],
+  "intentionalAbsences": []
+}

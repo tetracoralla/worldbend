@@ -1,0 +1,36 @@
+{
+  "schema": "worldbend.appearance-exposure-policy@0.1",
+  "version": "0.1",
+  "policyRevision": 3,
+  "family": "glass",
+  "target": "web",
+  "scopes": [
+    "hero",
+    "toolbar"
+  ],
+  "exposed": [
+    {
+      "field": "visible"
+    },
+    {
+      "field": "clarity",
+      "label": "Clear ↔ more solid",
+      "step": 0.05
+    },
+    {
+      "field": "radius",
+      "min": 0,
+      "max": 40,
+      "step": 1
+    },
+    {
+      "field": "refraction"
+    },
+    {
+      "field": "light-intensity"
+    },
+    {
+      "field": "splay"
+    }
+  ]
+}

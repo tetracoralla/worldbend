@@ -1,0 +1,12405 @@
+mod deformation_projection;
+mod figma_exact_json;
+mod figma_foil;
+mod figma_handoff;
+mod figma_linked;
+mod figma_mesh_gradient;
+mod figma_publication;
+mod figma_shader_source;
+mod figma_source_raster;
+mod figma_vector;
+mod figma_work;
+mod figma_work_continuation;
+mod motion_authoring;
+mod video_delivery;
+mod worker_limits;
+
+use clap::{Parser, ValueEnum};
+use deformation_projection::{
+    PlanOutput as DeformationPlanOutput, PlanView as DeformationPlanView,
+    RenderOutput as DeformationRenderOutput, project_plan as project_deformation_plan,
+};
+use rmcp::{
+    ServerHandler, ServiceExt,
+    handler::server::{router::tool::ToolRouter, tool::IntoCallToolResult, wrapper::Parameters},
+    model::{
+        CallToolResponse, CallToolResult, ContentBlock, Implementation, ServerCapabilities,
+        ServerInfo,
+    },
+    tool, tool_handler, tool_router,
+    transport::stdio,
+};
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashSet,
+    fs,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    process::{ExitStatus, Stdio},
+    sync::{Arc, OnceLock},
+    time::{Duration, Instant},
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command,
+    sync::{OwnedSemaphorePermit, Semaphore},
+    time::timeout,
+};
+use tokio_util::sync::CancellationToken;
+use worker_limits::apply_worker_self_limits;
+use worldbend_agent_fs::{
+    DirectoryOutputTarget, OutputTarget, StagedDirectoryCommit, StagedFileCommit, WorkspaceRoot,
+    copy_source_to_private_staging,
+};
+use worldbend_core::{
+    AffineComposition, AppearanceDeliveryInput, AppearanceDeliveryPlan, AppearanceExposureInput,
+    AppearanceExposureReport, AppearanceInspection, AppearanceInspectionInput,
+    AppearancePreferenceInput, AppearancePreferencePlan, AppearanceProfileCatalog,
+    AppearanceProfileQuery, AppearanceRevisionInput, AppearanceRevisionPlan, AppearanceUpdateInput,
+    AppearanceUpdatePlan, CanvasBackground, CanvasSetPlan, CanvasSetSpec, CardIdleInput,
+    CardPointerInput, CardPointerOutput, CardPoseInput, CardPoseOutput, CardTurnInput,
+    CardTurnOutput, Content, DeformationWorkMigration, DeformationWorkSourceSpec,
+    DeformationWorkSpec, Destination, EffectCatalog, EffectCatalogInput, EffectPlan,
+    EffectPlanInput, EffectRecipe, EffectRecipeInput, ErrorCode, FoilDeliveryInput,
+    FoilDeliveryPlan, FoilInspection, FoilInspectionInput, FoilRevisionInput, FoilRevisionPlan,
+    FoilUpdateInput, FoilUpdatePlan, InspectOutput, MeshGradientDeliveryInput,
+    MeshGradientDeliveryPlan, MeshGradientInspection, MeshGradientInspectionInput,
+    MeshGradientRevisionInput, MeshGradientRevisionPlan, MeshGradientUpdateInput,
+    MeshGradientUpdatePlan, MeshWarpPlan, MeshWarpSpec, MockupExtractPlan, MockupExtractSpec,
+    MockupPlan, MockupSpec, MotionPlan, MotionSpec, PlanePoseInput, PlanePoseOutput,
+    PlaneStripInput, PlaneStripOutput, RasterProgramInspection, RasterProgramSpec, RectifyPlan,
+    RectifySpec, RemapPlan, RemapSpec, Size, SolveOutput, SpatialDocumentAssemblyInput,
+    SpatialDocumentAssemblyPlan, SpatialDocumentDeliveryInput, SpatialDocumentDeliveryPlan,
+    SpatialDocumentInspection, SpatialDocumentSpec, SpatialDocumentUpdateInput,
+    SpatialDocumentUpdatePlan, SpatialInteractiveMediaBundle, SpatialInteractiveMediaBundleInput,
+    SpatialTemplateInspection, SpatialTemplateSpec, SurfaceDeformationPlan, SurfaceDeformationSpec,
+    SurfaceWindowPlan, SurfaceWindowSpec, TextureDeliveryInput, TextureDeliveryPlan,
+    TextureInspection, TextureInspectionInput, TextureRevisionInput, TextureRevisionPlan,
+    TimelinePlan, TimelineSpec, TransformError, TransformRecipe, TransformResult, TransformSpec,
+    VariationFailurePolicy, VariationJobPlan, VariationJobSpec, bounded_text, compose_affine,
+    discover_appearance_profiles, effect_catalog, effect_plan, effect_recipe, emit_css_transform,
+    inspect_appearance, inspect_foil, inspect_mesh_gradient, inspect_raster_program,
+    inspect_spatial_document, inspect_spatial_template, inspect_spec, inspect_texture,
+    migrate_deformation_work, plan_appearance_delivery, plan_appearance_revision,
+    plan_appearance_update, plan_deformation_work, plan_foil_delivery, plan_foil_revision,
+    plan_foil_update, plan_mesh_gradient_delivery, plan_mesh_gradient_revision,
+    plan_mesh_gradient_update, plan_mesh_warp, plan_mockup, plan_mockup_extract, plan_motion,
+    plan_remap, plan_spatial_document_assembly, plan_spatial_document_delivery,
+    plan_spatial_document_update, plan_surface_deformation, plan_surface_window,
+    plan_texture_delivery, plan_texture_revision, plan_timeline, plan_variation_job,
+    prepare_spatial_interactive_media_bundle, project_card_pose, project_plane_pose,
+    project_plane_strip, rectify_plane, resolve_appearance_exposure, resolve_appearance_preference,
+    sample_card_idle, sample_card_pointer, sample_card_turn, solve_spec,
+};
+use worldbend_interop::{
+    MAX_PSD_SOURCE_BYTES, PsdSmartObjectRequest, PsdSmartObjectResponse,
+    execute_psd_smart_object_request,
+};
+use worldbend_perception::{
+    PlaneCandidateRequest, PlaneCandidateResponse, analyze_plane_candidates_file,
+};
+use worldbend_render::{
+    CanvasMode, CanvasReplayOptions, CanvasReplaySampling, CanvasSetFileRenderResult,
+    CanvasSetProgram, CanvasSetRenderOptions, CanvasSetRenderStatus, DEFAULT_MAX_AXIS,
+    DEFAULT_MAX_SOURCE_BYTES, FileRenderResult, FileRenderStatus, MAX_MEDIA_PIXELS,
+    MAX_TILED_ENCODED_BYTES, MAX_TILED_OUTPUT_PIXELS, MAX_TILED_TILE_PIXELS, MAX_TILED_TILES,
+    MAX_VECTOR_SOURCE_BYTES, MediaFileRenderResult, MediaFormat, MediaOutput, MediaRenderOptions,
+    MediaSourceInfo, MeshWarpFileRenderResult, MeshWarpRenderOptions,
+    MockupExtractFileRenderResult, MockupExtractRenderOptions, MockupExtractRenderStatus,
+    MockupFileRenderResult, MockupFileSource, MockupRenderOptions, MotionFileRenderResult,
+    RasterProgramFileRenderResult, RasterProgramRenderOptions, RectifyFileRenderResult,
+    RectifyRenderOptions, RemapFileMap, RemapFileRenderResult, RemapRenderOptions, RenderLimits,
+    RenderOptions, SamplingQuality, SurfaceDeformationFileRenderResult, TILED_MEDIA_SCHEMA,
+    TILED_MEDIA_VERSION, TiledMediaRenderOptions, TiledMediaRenderResult, TiledMediaStatus,
+    TimelineFileRenderResult, TimelineFileSource, TimelineRenderOptions, TimelineRenderStatus,
+    VariationFileAsset, VariationJobFileRenderResult, VariationJobRenderOptions,
+    VariationJobRenderStatus, VectorCarrier, VectorFileResult, VectorRenderOptions,
+    inspect_media_file, media_output_accepts_extension, media_output_extension,
+    rectify_file_with_source_sha256, render_canvas_set_file,
+    render_deformation_work_file_with_cancel, render_file_with_source_sha256, render_media_file,
+    render_mesh_warp_file_with_cancel, render_mockup_extract_files_with_cancel,
+    render_mockup_files_with_cancel, render_motion_files_with_cancel,
+    render_raster_program_file_with_maps, render_remap_file_with_cancel,
+    render_surface_deformation_file_with_cancel, render_tiled_media_directory,
+    render_timeline_files_with_cancel, render_variation_job_files_with_cancel, render_vector_file,
+};
+
+const MAX_WORKER_REQUEST_BYTES: usize = 1024 * 1024;
+const MAX_WORKER_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_TOOL_RESPONSE_BYTES: usize = 256 * 1024;
+#[cfg(test)]
+const MAX_TOOL_CATALOG_BYTES: usize = 81_920;
+#[cfg(test)]
+const MAX_PROGRESSIVE_TOOL_CATALOG_BYTES: usize = 16_384;
+const MAX_TOOL_ARGUMENT_BYTES: usize = 1024 * 1024;
+const MAX_SCHEMA_ERROR_CHARS: usize = 1024;
+const MAX_CONCURRENT_RENDERS: usize = 2;
+const MAX_IN_FLIGHT_RENDERS: usize = 4;
+const MAX_THREADS_PER_RENDER: usize = 4;
+const WORKER_TIMEOUT: Duration = Duration::from_secs(20);
+const VIDEO_WORKER_TIMEOUT: Duration = Duration::from_secs(120);
+const WORKER_MEMORY_BYTES: u64 = 768 * 1024 * 1024;
+const MCP_MAX_AXIS: u32 = DEFAULT_MAX_AXIS;
+// Worst case one render holds the decoded source, its mip pyramid (4/3 of the
+// source), the output canvas, and one decode working copy: 4 bytes/px times
+// roughly 13/3 px-equivalents. This budget keeps that below the 768 MiB
+// per-worker ceiling so size-legal requests fail fast with E_OUTPUT_LIMIT
+// instead of always dying later under E_MEMORY.
+const MCP_MAX_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_MEDIA_PIXELS: u64 = MAX_MEDIA_PIXELS;
+const MCP_MAX_CANVAS_SET_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_RASTER_PROGRAM_PIXELS: u64 = 64 * 1024 * 1024;
+// Agent Canvas output is an atomic set, so bound the sum of its encoded PNGs
+// before same-parent staging or commit. This is intentionally separate from
+// the pixel and 256 KiB response ceilings.
+const MCP_MAX_CANVAS_ENCODED_BYTES: u64 = 128 * 1024 * 1024;
+const MCP_MAX_MOCKUP_EXTRACT_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES: u64 = 128 * 1024 * 1024;
+const MCP_MAX_TIMELINE_PIXELS: u64 = 64 * 1024 * 1024;
+const MCP_MAX_TIMELINE_ENCODED_BYTES: u64 = 256 * 1024 * 1024;
+const MCP_MAX_VARIATION_SOURCE_PIXELS: u64 = 32 * 1024 * 1024;
+const MCP_MAX_VARIATION_PROCESSED_PIXELS: u64 = 64 * 1024 * 1024;
+const MCP_MAX_VARIATION_OUTPUTS: usize = 128;
+const MCP_MAX_VARIATION_ENCODED_BYTES: u64 = 256 * 1024 * 1024;
+const MCP_MAX_SOURCE_BYTES: u64 = DEFAULT_MAX_SOURCE_BYTES;
+// Covers legal PNG/16-bit media output and generated vector carriers while
+// bounding same-parent disk staging independently of decoded pixel memory.
+const MCP_MAX_FILE_ENCODED_BYTES: u64 = 512 * 1024 * 1024;
+const MCP_MAX_TILED_PIXELS: u64 = 64 * 1024 * 1024;
+const MCP_MAX_TILED_ENCODED_BYTES: u64 = 512 * 1024 * 1024;
+const MCP_MAX_TILED_TILES: u32 = 512;
+static PRIVATE_STAGING_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+fn portable_u32_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({ "type": "integer", "minimum": 0, "maximum": u32::MAX })
+}
+
+#[derive(Debug, Parser)]
+#[command(name = "worldbend-mcp", version, about = "Worldbend MCP server")]
+struct Args {
+    /// Explicit workspace root granted to Agent-authored render paths.
+    #[arg(long)]
+    root: Option<PathBuf>,
+    /// MCP tool projection. `direct` preserves the stable one-tool-per-task API;
+    /// `catalog` keeps tools/list compact and resolves exact schemas on demand.
+    #[arg(long, value_enum, default_value_t = ToolSurface::Direct)]
+    surface: ToolSurface,
+    /// Internal bounded render worker mode.
+    #[arg(long, hide = true)]
+    worker_render: bool,
+    /// Host-configured installed encoder. Agent requests cannot select tools.
+    #[arg(long, requires = "ffprobe")]
+    ffmpeg: Option<PathBuf>,
+    #[arg(long, requires = "ffmpeg")]
+    ffprobe: Option<PathBuf>,
+    #[arg(long, hide = true)]
+    worker_video: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ToolSurface {
+    Direct,
+    Catalog,
+}
+
+const DIRECT_TOOL_NAMES: [&str; 8] = [
+    "worldbend.compose",
+    "worldbend.solve",
+    "worldbend.inspect",
+    "worldbend.render",
+    "worldbend.rectify",
+    "worldbend.rectify_render",
+    "worldbend.canvas_render",
+    "worldbend.css",
+];
+
+const CATALOG_TOOL_NAMES: [&str; 3] = ["worldbend.search", "worldbend.describe", "worldbend.run"];
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields, untagged)]
+enum ToolEnvelope<T>
+where
+    T: JsonSchema,
+{
+    Success {
+        #[schemars(schema_with = "true_schema")]
+        ok: bool,
+        result: T,
+    },
+    Failure {
+        #[schemars(schema_with = "false_schema")]
+        ok: bool,
+        error: TransformError,
+    },
+}
+
+impl<T> ToolEnvelope<T>
+where
+    T: JsonSchema,
+{
+    fn from_result(result: Result<T, TransformError>) -> Self {
+        match result {
+            Ok(result) => Self::Success { ok: true, result },
+            Err(mut error) => {
+                // The structured message is as bounded as the text summary:
+                // error construction sites echo Agent input, and the byte
+                // backstop below must never become the only bound.
+                error.message = bounded_text(&error.message, MAX_SCHEMA_ERROR_CHARS);
+                Self::Failure { ok: false, error }
+            }
+        }
+    }
+
+    fn is_error(&self) -> bool {
+        matches!(self, Self::Failure { .. })
+    }
+}
+
+impl<T> ToolEnvelope<T>
+where
+    T: Serialize + JsonSchema,
+{
+    fn into_value(self) -> ToolEnvelope<Value> {
+        match self {
+            Self::Success { result, .. } => match serde_json::to_value(result) {
+                Ok(result) => ToolEnvelope::Success { ok: true, result },
+                Err(error) => ToolEnvelope::from_result(Err(TransformError::new(
+                    ErrorCode::Internal,
+                    format!("failed to serialize catalog operation result: {error}"),
+                ))),
+            },
+            Self::Failure { error, .. } => ToolEnvelope::Failure { ok: false, error },
+        }
+    }
+}
+
+impl<T> ToolEnvelope<T>
+where
+    T: Serialize + JsonSchema + 'static,
+{
+    /// Build the complete `CallToolResult` exactly as the client will receive
+    /// it. Shared by the final response path and the render preflight so both
+    /// measure the same framing.
+    fn build_complete_result(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        let value = serde_json::to_value(self).map_err(|error| {
+            rmcp::ErrorData::internal_error(
+                format!("failed to serialize Worldbend tool result: {error}"),
+                None,
+            )
+        })?;
+        let summary = match self {
+            Self::Success { .. } => success_summary(&value["result"]),
+            Self::Failure { error, .. } => format!(
+                "{}: {}",
+                error.code.as_str(),
+                bounded_text(&error.message, MAX_SCHEMA_ERROR_CHARS)
+            ),
+        };
+        Ok(build_call_tool_result(value, summary, self.is_error()))
+    }
+}
+
+fn success_summary(result: &Value) -> String {
+    if let Some(kind) = result.get("result").and_then(Value::as_str) {
+        match kind {
+            "inspection" => {
+                let count = result
+                    .get("inspection")
+                    .and_then(|value| value.get("smartObjects"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
+                return bounded_text(
+                    &format!(
+                        "PSD inspection ready: {count} Smart Object{}; source unchanged.",
+                        if count == 1 { "" } else { "s" }
+                    ),
+                    MAX_SCHEMA_ERROR_CHARS,
+                );
+            }
+            "templatePlan" => {
+                let count = result
+                    .get("plan")
+                    .and_then(|value| value.get("bindings"))
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
+                return bounded_text(
+                    &format!(
+                        "PSD template plan ready: {count} selected Smart Object{}; source unchanged.",
+                        if count == 1 { "" } else { "s" }
+                    ),
+                    MAX_SCHEMA_ERROR_CHARS,
+                );
+            }
+            _ => {}
+        }
+    }
+    if let (Some(outcome), Some(candidates), Some(provider)) = (
+        result.get("outcome").and_then(Value::as_str),
+        result.get("candidates").and_then(Value::as_array),
+        result
+            .get("provider")
+            .and_then(|value| value.get("id"))
+            .and_then(Value::as_str),
+    ) {
+        return bounded_text(
+            &format!(
+                "Plane assessment {outcome}: {} candidate{} from {provider}; no transform applied.",
+                candidates.len(),
+                if candidates.len() == 1 { "" } else { "s" }
+            ),
+            MAX_SCHEMA_ERROR_CHARS,
+        );
+    }
+    if let (Some(status), Some(output), Some(evidence)) = (
+        result.get("status").and_then(Value::as_str),
+        result.get("output").and_then(Value::as_str),
+        result.get("evidence"),
+    ) {
+        let width = evidence.get("outputWidth").and_then(Value::as_u64);
+        let height = evidence.get("outputHeight").and_then(Value::as_u64);
+        let bytes = result.get("bytes").and_then(Value::as_u64);
+        if let (Some(width), Some(height), Some(bytes)) = (width, height, bytes) {
+            return bounded_text(
+                &format!("Render {status}: {output} ({width}x{height}, {bytes} bytes)."),
+                MAX_SCHEMA_ERROR_CHARS,
+            );
+        }
+    }
+    if let (Some(status), Some(directory), Some(items)) = (
+        result.get("status").and_then(Value::as_str),
+        result.get("outputDirectory").and_then(Value::as_str),
+        result.get("items").and_then(Value::as_array),
+    ) {
+        if result
+            .get("plan")
+            .and_then(|plan| plan.get("outputCount"))
+            .and_then(Value::as_u64)
+            .is_some()
+        {
+            let planned_items = result
+                .get("plan")
+                .and_then(|plan| plan.get("items"))
+                .and_then(Value::as_array)
+                .map_or(items.len(), Vec::len);
+            let rendered_items = items
+                .iter()
+                .filter(|item| item.get("status").and_then(Value::as_str) == Some("rendered"))
+                .count();
+            let failed_items = items
+                .iter()
+                .filter(|item| item.get("status").and_then(Value::as_str) == Some("failed"))
+                .count();
+            let actual_outputs = items
+                .iter()
+                .filter_map(|item| item.get("outputs").and_then(Value::as_array))
+                .map(Vec::len)
+                .sum::<usize>();
+            let output_state = if status == "written" {
+                "written"
+            } else {
+                "validated"
+            };
+            return bounded_text(
+                &format!(
+                    "Variation Job {status}: {planned_items} planned item{}; {rendered_items} rendered, {failed_items} failed; {actual_outputs} actual output{} {output_state} in {directory}.",
+                    if planned_items == 1 { "" } else { "s" },
+                    if actual_outputs == 1 { "" } else { "s" },
+                ),
+                MAX_SCHEMA_ERROR_CHARS,
+            );
+        }
+        let plan_schema = result
+            .get("plan")
+            .and_then(|plan| plan.get("schema"))
+            .and_then(Value::as_str);
+        let family = match plan_schema {
+            Some("worldbend.motion-plan") => "Motion",
+            Some("worldbend.timeline-plan") => "Timeline",
+            Some("worldbend.mockup-extract-plan") => "Mockup extraction",
+            _ => "Canvas Set",
+        };
+        return bounded_text(
+            &format!(
+                "{family} {status}: {} ordered output{} in {directory}.",
+                items.len(),
+                if items.len() == 1 { "" } else { "s" }
+            ),
+            MAX_SCHEMA_ERROR_CHARS,
+        );
+    }
+    if let (Some(width), Some(height)) = (
+        result.get("width").and_then(Value::as_str),
+        result.get("height").and_then(Value::as_str),
+    ) {
+        return format!("CSS transform ready for a {width} x {height} element.");
+    }
+    if let Some(output) = result.get("outputSpec")
+        && let Some(reference) = output
+            .get("destination")
+            .and_then(|value| value.get("reference"))
+        && let (Some(width), Some(height)) = (
+            reference.get("width").and_then(Value::as_f64),
+            reference.get("height").and_then(Value::as_f64),
+        )
+    {
+        return format!("Rectification plan ready for {width}x{height} output.");
+    }
+    if let Some(size) = result.get("canvas").and_then(|value| value.get("size"))
+        && let (Some(width), Some(height)) = (
+            size.get("width").and_then(Value::as_f64),
+            size.get("height").and_then(Value::as_f64),
+        )
+    {
+        return format!("Transform composed into a {width}x{height} canvas.");
+    }
+    if result.get("resolvedDestination").is_some() {
+        return if result.get("spec").is_some() {
+            "Projective plane solved and validated.".to_owned()
+        } else {
+            "TransformSpec inspected and validated.".to_owned()
+        };
+    }
+    "Worldbend operation completed.".to_owned()
+}
+
+impl<T> IntoCallToolResult for ToolEnvelope<T>
+where
+    T: Serialize + JsonSchema + 'static,
+{
+    fn into_call_tool_result(self) -> Result<CallToolResponse, rmcp::ErrorData> {
+        let result = self.build_complete_result()?;
+        if serialized_call_result_bytes(&result)? > MAX_TOOL_RESPONSE_BYTES {
+            let bounded = json!({
+                "ok": false,
+                "error": {
+                    "code": "E_OUTPUT_LIMIT",
+                    "message": "serialized MCP tool response exceeds the response byte limit",
+                    "details": {
+                        "maximum": MAX_TOOL_RESPONSE_BYTES
+                    }
+                }
+            });
+            let bounded_result = build_call_tool_result(
+                bounded,
+                "E_OUTPUT_LIMIT: serialized MCP tool response exceeds the response byte limit"
+                    .to_owned(),
+                true,
+            );
+            debug_assert!(
+                serialized_call_result_bytes(&bounded_result)
+                    .is_ok_and(|bytes| bytes <= MAX_TOOL_RESPONSE_BYTES)
+            );
+            return Ok(bounded_result.into());
+        }
+        Ok(result.into())
+    }
+}
+
+fn build_call_tool_result(value: Value, summary: String, is_error: bool) -> CallToolResult {
+    let mut result = if is_error {
+        CallToolResult::structured_error(value)
+    } else {
+        CallToolResult::structured(value)
+    };
+    result.content = vec![ContentBlock::text(summary)];
+    result
+}
+
+fn serialized_call_result_bytes(result: &CallToolResult) -> Result<usize, rmcp::ErrorData> {
+    serde_json::to_vec(result)
+        .map(|bytes| bytes.len())
+        .map_err(|error| {
+            rmcp::ErrorData::internal_error(
+                format!("failed to size Worldbend MCP tool response: {error}"),
+                None,
+            )
+        })
+}
+
+fn true_schema(_generator: &mut SchemaGenerator) -> Schema {
+    json_schema!({ "type": "boolean", "const": true })
+}
+
+fn false_schema(_generator: &mut SchemaGenerator) -> Schema {
+    json_schema!({ "type": "boolean", "const": false })
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SolveInput {
+    #[schemars(description = "Explicit destination plane; corners are strict TL, TR, BR, BL")]
+    destination: Destination,
+    #[serde(default)]
+    content: Content,
+    #[serde(default)]
+    #[schemars(
+        description = "Required to resolve normalized coordinates; omit for pixel coordinates"
+    )]
+    target_size: Option<Size>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ComposeInput {
+    #[schemars(description = "Saved worldbend.transform document to compose")]
+    spec: TransformSpec,
+    #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
+    target_size: Option<Size>,
+    #[serde(default)]
+    transform: TransformRecipe,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct InspectInput {
+    #[schemars(description = "Saved worldbend.transform document to validate and inspect")]
+    spec: TransformSpec,
+    #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
+    target_size: Option<Size>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    spec: TransformSpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: RenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(
+        description = "Run solve, render, encode, and destination preflight without publishing"
+    )]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MediaInspectInput {
+    #[schemars(
+        description = "Relative PNG, JPEG, WebP, or TIFF path under the granted workspace root"
+    )]
+    source: String,
+    #[serde(default)]
+    limits: MediaLimitsInput,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct PlaneCandidatesInput {
+    #[schemars(
+        description = "Relative PNG, JPEG, WebP, or TIFF path under the granted workspace root"
+    )]
+    source: String,
+    request: PlaneCandidateRequest,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct PsdSmartObjectsInput {
+    #[schemars(description = "Relative PSD or PSB path under the granted workspace root")]
+    source: String,
+    request: PsdSmartObjectRequest,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MediaRenderInput {
+    #[schemars(
+        description = "Relative PNG, JPEG, WebP, or TIFF path under the granted workspace root"
+    )]
+    source: String,
+    spec: TransformSpec,
+    #[schemars(description = "Relative output path whose extension matches options.output.format")]
+    output: String,
+    options: MediaRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular output file atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(description = "Decode, solve, render, encode, and hash without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct VectorRenderInput {
+    #[schemars(description = "Relative UTF-8 SVG path under the granted workspace root")]
+    source: String,
+    spec: TransformSpec,
+    #[schemars(description = "Relative .svg or .html output matching options.carrier")]
+    output: String,
+    options: VectorRenderOptions,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TiledMediaRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    canvas: CanvasMode,
+    #[serde(default)]
+    target_size: Option<Size>,
+    #[serde(default)]
+    source_limits: MediaLimitsInput,
+    #[schemars(range(min = 1, max = 4096))]
+    tile_width: u32,
+    #[schemars(range(min = 1, max = 4096))]
+    tile_height: u32,
+    #[serde(default = "default_mcp_tiled_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_TILED_PIXELS))]
+    max_output_pixels: u64,
+    #[serde(default = "default_mcp_tiled_encoded_bytes")]
+    #[schemars(range(min = 1, max = MCP_MAX_TILED_ENCODED_BYTES))]
+    max_encoded_bytes: u64,
+    output: MediaOutput,
+}
+
+const fn default_mcp_tiled_pixels() -> u64 {
+    MCP_MAX_TILED_PIXELS
+}
+
+const fn default_mcp_tiled_encoded_bytes() -> u64 {
+    MCP_MAX_TILED_ENCODED_BYTES
+}
+
+impl TryFrom<TiledMediaRenderOptionsInput> for TiledMediaRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: TiledMediaRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.tile_width == 0
+            || value.tile_height == 0
+            || value.tile_width > 4096
+            || value.tile_height > 4096
+            || u64::from(value.tile_width) * u64::from(value.tile_height) > MAX_TILED_TILE_PIXELS
+            || value.max_output_pixels == 0
+            || value.max_output_pixels > MCP_MAX_TILED_PIXELS
+            || value.max_encoded_bytes == 0
+            || value.max_encoded_bytes > MCP_MAX_TILED_ENCODED_BYTES
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "tiled media options exceed the Agent resource ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            canvas: value.canvas,
+            target_size: value.target_size,
+            source_limits: value.source_limits.try_into()?,
+            tile_width: value.tile_width,
+            tile_height: value.tile_height,
+            max_output_pixels: value.max_output_pixels,
+            max_encoded_bytes: value.max_encoded_bytes,
+            max_tiles: MCP_MAX_TILED_TILES,
+            output: value.output,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TiledMediaRenderInput {
+    #[schemars(
+        description = "Relative PNG, JPEG, WebP, or TIFF source under the granted workspace root"
+    )]
+    source: String,
+    spec: TransformSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    options: TiledMediaRenderOptionsInput,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+enum OptionalInput<T> {
+    #[default]
+    Missing,
+    Value(T),
+}
+
+impl<'de, T> Deserialize<'de> for OptionalInput<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Self::Value)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[schemars(
+    description = "Provide exactly one of spec or plan; plan requires sampling and outsideFill."
+)]
+struct CanvasRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    #[schemars(with = "CanvasSetSpec")]
+    spec: OptionalInput<CanvasSetSpec>,
+    #[serde(default)]
+    #[schemars(with = "CanvasSetPlan")]
+    plan: OptionalInput<CanvasSetPlan>,
+    #[serde(default)]
+    #[schemars(with = "SamplingQuality")]
+    quality: OptionalInput<SamplingQuality>,
+    #[serde(default)]
+    #[schemars(with = "CanvasReplaySampling")]
+    sampling: OptionalInput<CanvasReplaySampling>,
+    #[serde(default)]
+    #[schemars(with = "CanvasBackground")]
+    outside_fill: OptionalInput<CanvasBackground>,
+    #[serde(default)]
+    #[schemars(description = "Render and preflight the Canvas Set without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RectifyInput {
+    spec: RectifySpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RectifyRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    spec: RectifySpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: RectifyRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(
+        description = "Run rectify, render, encode, and destination preflight without publishing"
+    )]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramInspectInput {
+    spec: RasterProgramSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    #[serde(default)]
+    #[schemars(length(max = 8))]
+    maps: Vec<ProgramMapInput>,
+    spec: RasterProgramSpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: ProgramRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(description = "Execute every stage and encode the final PNG without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramMapInput {
+    #[schemars(
+        length(min = 1, max = 64),
+        regex(pattern = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    )]
+    slot_id: String,
+    #[schemars(
+        description = "Relative PNG, JPEG, or WebP path for the declared immutable mapSlot"
+    )]
+    source: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TemplateInspectInput {
+    spec: SpatialTemplateSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DocumentInspectInput {
+    spec: SpatialDocumentSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct VariationPlanInput {
+    spec: VariationJobSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct VariationAssetInput {
+    #[schemars(description = "Exact assetId referenced by one or more Variation Job bindings")]
+    id: String,
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct VariationRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_variation_source_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_VARIATION_SOURCE_PIXELS))]
+    max_source_pixels: u64,
+    #[serde(default = "default_mcp_variation_processed_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_VARIATION_PROCESSED_PIXELS))]
+    max_processed_pixels: u64,
+}
+
+impl Default for VariationRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_source_pixels: MCP_MAX_VARIATION_SOURCE_PIXELS,
+            max_processed_pixels: MCP_MAX_VARIATION_PROCESSED_PIXELS,
+        }
+    }
+}
+
+const fn default_mcp_variation_source_pixels() -> u64 {
+    MCP_MAX_VARIATION_SOURCE_PIXELS
+}
+
+const fn default_mcp_variation_processed_pixels() -> u64 {
+    MCP_MAX_VARIATION_PROCESSED_PIXELS
+}
+
+impl TryFrom<VariationRenderOptionsInput> for VariationJobRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: VariationRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_source_pixels == 0
+            || value.max_source_pixels > MCP_MAX_VARIATION_SOURCE_PIXELS
+            || value.max_processed_pixels == 0
+            || value.max_processed_pixels > MCP_MAX_VARIATION_PROCESSED_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "Variation Job limits exceed the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_source_pixels: value.max_source_pixels,
+            max_processed_pixels: value.max_processed_pixels,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct VariationRenderInput {
+    #[schemars(
+        length(max = 64),
+        description = "Unique entries for bound assetId values. Under continue, omitted assets fail their items; invalid paths still abort the job."
+    )]
+    assets: Vec<VariationAssetInput>,
+    spec: VariationJobSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    options: VariationRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Render, encode, hash, and same-parent stage without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct CssInput {
+    #[schemars(description = "worldbend.transform document to express as CSS matrix3d")]
+    spec: TransformSpec,
+    #[schemars(description = "Untransformed element border-box size in CSS pixels")]
+    element_size: Size,
+    #[serde(default)]
+    #[schemars(description = "Required for normalized specs; omit for pixel-space specs")]
+    destination_size: Option<Size>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum OperationId {
+    FigmaInspect,
+    FigmaNativeCreate,
+    FigmaApply,
+    FigmaAppearanceInspect,
+    FigmaAppearanceApply,
+    FigmaTextureInspect,
+    FigmaTextureApply,
+    FigmaFoil,
+    FigmaMeshGradient,
+    FigmaEffectInspect,
+    FigmaEffectSources,
+    FigmaLinkedResults,
+    FigmaEffectContinuation,
+    FigmaEffectStage,
+    FigmaEffectPublish,
+    FigmaEffectCreate,
+    FigmaWorkCreate,
+    FigmaWorkRevise,
+    FigmaWorkContinuation,
+    FigmaVectorWork,
+    FigmaMockupInspect,
+    FigmaTemplatesInspect,
+    FigmaSceneCreate,
+    FigmaMockupPublish,
+    FigmaPublicationStep,
+    FigmaCompositionContinuation,
+    FigmaMockupStage,
+    PlaneStrip,
+    WindowPlan,
+    EffectCatalog,
+    EffectRecipe,
+    EffectPlan,
+    AppearanceInspect,
+    AppearanceDelivery,
+    AppearanceProfiles,
+    AppearanceUpdate,
+    AppearanceExposure,
+    AppearancePreference,
+    MaterialPreference,
+    AppearanceRevision,
+    TextureInspect,
+    TextureDelivery,
+    TextureRevision,
+    FoilInspect,
+    FoilRevision,
+    FoilDelivery,
+    FoilUpdate,
+    MeshGradientInspect,
+    MeshGradientRevision,
+    MeshGradientDelivery,
+    MeshGradientUpdate,
+    Pose,
+    CardPose,
+    CardPointer,
+    CardIdle,
+    CardTurn,
+    Compose,
+    Solve,
+    Inspect,
+    Render,
+    MediaInspect,
+    PlaneCandidates,
+    PsdSmartObjects,
+    MediaRender,
+    VectorRender,
+    TiledMediaRender,
+    Rectify,
+    RectifyRender,
+    ProgramInspect,
+    ProgramRender,
+    TemplateInspect,
+    DocumentInspect,
+    DocumentAssemble,
+    DocumentUpdatePlan,
+    DocumentDeliveryPlan,
+    InteractiveMediaBundlePlan,
+    VariationPlan,
+    VariationRender,
+    CanvasRender,
+    MockupPlan,
+    MockupRender,
+    MockupExtractPlan,
+    MockupExtractRender,
+    MeshPlan,
+    MeshRender,
+    SurfacePlan,
+    SurfaceRender,
+    DeformationPlan,
+    DeformationRender,
+    DeformationMigrate,
+    RemapPlan,
+    RemapRender,
+    TimelinePlan,
+    TimelineRender,
+    MotionPlan,
+    MockupMotionAuthoring,
+    MotionRender,
+    VideoPlan,
+    VideoRender,
+    Css,
+}
+
+impl OperationId {
+    const ALL: [Self; 100] = [
+        Self::FigmaInspect,
+        Self::FigmaNativeCreate,
+        Self::FigmaApply,
+        Self::FigmaAppearanceInspect,
+        Self::FigmaAppearanceApply,
+        Self::FigmaTextureInspect,
+        Self::FigmaTextureApply,
+        Self::FigmaFoil,
+        Self::FigmaMeshGradient,
+        Self::FigmaEffectInspect,
+        Self::FigmaEffectSources,
+        Self::FigmaLinkedResults,
+        Self::FigmaEffectContinuation,
+        Self::FigmaEffectStage,
+        Self::FigmaEffectPublish,
+        Self::FigmaEffectCreate,
+        Self::FigmaWorkCreate,
+        Self::FigmaWorkRevise,
+        Self::FigmaWorkContinuation,
+        Self::FigmaVectorWork,
+        Self::FigmaMockupInspect,
+        Self::FigmaTemplatesInspect,
+        Self::FigmaSceneCreate,
+        Self::FigmaMockupPublish,
+        Self::FigmaPublicationStep,
+        Self::FigmaCompositionContinuation,
+        Self::FigmaMockupStage,
+        Self::PlaneStrip,
+        Self::WindowPlan,
+        Self::EffectCatalog,
+        Self::EffectRecipe,
+        Self::EffectPlan,
+        Self::AppearanceInspect,
+        Self::AppearanceDelivery,
+        Self::AppearanceUpdate,
+        Self::AppearanceProfiles,
+        Self::AppearanceExposure,
+        Self::AppearancePreference,
+        Self::MaterialPreference,
+        Self::AppearanceRevision,
+        Self::TextureInspect,
+        Self::TextureDelivery,
+        Self::TextureRevision,
+        Self::FoilInspect,
+        Self::FoilRevision,
+        Self::FoilDelivery,
+        Self::FoilUpdate,
+        Self::MeshGradientInspect,
+        Self::MeshGradientRevision,
+        Self::MeshGradientDelivery,
+        Self::MeshGradientUpdate,
+        Self::Pose,
+        Self::CardPose,
+        Self::CardPointer,
+        Self::CardIdle,
+        Self::CardTurn,
+        Self::Compose,
+        Self::Solve,
+        Self::Inspect,
+        Self::Render,
+        Self::MediaInspect,
+        Self::PlaneCandidates,
+        Self::PsdSmartObjects,
+        Self::MediaRender,
+        Self::VectorRender,
+        Self::TiledMediaRender,
+        Self::Rectify,
+        Self::RectifyRender,
+        Self::ProgramInspect,
+        Self::ProgramRender,
+        Self::TemplateInspect,
+        Self::DocumentInspect,
+        Self::DocumentAssemble,
+        Self::DocumentUpdatePlan,
+        Self::DocumentDeliveryPlan,
+        Self::InteractiveMediaBundlePlan,
+        Self::VariationPlan,
+        Self::VariationRender,
+        Self::CanvasRender,
+        Self::MockupPlan,
+        Self::MockupRender,
+        Self::MockupExtractPlan,
+        Self::MockupExtractRender,
+        Self::MeshPlan,
+        Self::MeshRender,
+        Self::SurfacePlan,
+        Self::SurfaceRender,
+        Self::DeformationPlan,
+        Self::DeformationRender,
+        Self::DeformationMigrate,
+        Self::RemapPlan,
+        Self::RemapRender,
+        Self::TimelinePlan,
+        Self::TimelineRender,
+        Self::MotionPlan,
+        Self::MockupMotionAuthoring,
+        Self::MotionRender,
+        Self::VideoPlan,
+        Self::VideoRender,
+        Self::Css,
+    ];
+
+    const fn id(self) -> &'static str {
+        match self {
+            Self::FigmaAppearanceInspect => "figma_appearance_inspect",
+            Self::FigmaAppearanceApply => "figma_appearance_apply",
+            Self::FigmaTextureInspect => "figma_texture_inspect",
+            Self::FigmaTextureApply => "figma_texture_apply",
+            Self::FigmaFoil => "figma_foil",
+            Self::FigmaMeshGradient => "figma_mesh_gradient",
+            Self::FigmaNativeCreate => "figma_native_create",
+            Self::FigmaInspect => "figma_inspect",
+            Self::FigmaApply => "figma_apply",
+            Self::FigmaEffectInspect => "figma_effect_inspect",
+            Self::FigmaEffectSources => "figma_effect_sources",
+            Self::FigmaLinkedResults => "figma_linked_results",
+            Self::FigmaEffectContinuation => "figma_effect_continuation",
+            Self::FigmaEffectStage => "figma_effect_stage",
+            Self::FigmaEffectPublish => "figma_effect_publish",
+            Self::FigmaEffectCreate => "figma_effect_create",
+            Self::FigmaWorkCreate => "figma_work_create",
+            Self::FigmaWorkRevise => "figma_work_revise",
+            Self::FigmaWorkContinuation => "figma_work_continuation",
+            Self::FigmaVectorWork => "figma_vector_work",
+            Self::FigmaMockupInspect => "figma_mockup_inspect",
+            Self::FigmaTemplatesInspect => "figma_templates_inspect",
+            Self::FigmaSceneCreate => "figma_scene_create",
+            Self::FigmaMockupPublish => "figma_mockup_publish",
+            Self::FigmaPublicationStep => "figma_publication_step",
+            Self::FigmaCompositionContinuation => "figma_composition_continuation",
+            Self::FigmaMockupStage => "figma_mockup_stage",
+            Self::PlaneStrip => "plane_strip",
+            Self::WindowPlan => "window_plan",
+            Self::EffectCatalog => "effect_catalog",
+            Self::EffectRecipe => "effect_recipe",
+            Self::EffectPlan => "effect_plan",
+            Self::AppearanceInspect => "appearance_inspect",
+            Self::AppearanceRevision => "appearance_revision",
+            Self::AppearanceDelivery => "appearance_delivery",
+            Self::AppearanceUpdate => "appearance_update",
+            Self::AppearanceExposure => "appearance_exposure",
+            Self::AppearancePreference => "appearance_preference",
+            Self::MaterialPreference => "material_preference",
+            Self::AppearanceProfiles => "appearance_profiles",
+            Self::FoilUpdate => "foil_update",
+            Self::MeshGradientUpdate => "mesh_gradient_update",
+            Self::MeshGradientInspect => "mesh_gradient_inspect",
+            Self::MeshGradientRevision => "mesh_gradient_revision",
+            Self::MeshGradientDelivery => "mesh_gradient_delivery",
+            Self::TextureInspect => "texture_inspect",
+            Self::FoilInspect => "foil_inspect",
+            Self::TextureRevision => "texture_revision",
+            Self::FoilRevision => "foil_revision",
+            Self::TextureDelivery => "texture_delivery",
+            Self::FoilDelivery => "foil_delivery",
+            Self::Pose => "pose",
+            Self::CardPose => "card_pose",
+            Self::CardPointer => "card_pointer",
+            Self::CardIdle => "card_idle",
+            Self::CardTurn => "card_turn",
+            Self::Compose => "compose",
+            Self::Solve => "solve",
+            Self::Inspect => "inspect",
+            Self::Render => "render",
+            Self::MediaInspect => "media_inspect",
+            Self::PlaneCandidates => "plane_candidates",
+            Self::PsdSmartObjects => "psd_smart_objects",
+            Self::MediaRender => "media_render",
+            Self::VectorRender => "vector_render",
+            Self::TiledMediaRender => "tiled_media_render",
+            Self::Rectify => "rectify",
+            Self::RectifyRender => "rectify_render",
+            Self::ProgramInspect => "program_inspect",
+            Self::ProgramRender => "program_render",
+            Self::TemplateInspect => "template_inspect",
+            Self::DocumentInspect => "document_inspect",
+            Self::DocumentAssemble => "document_assemble",
+            Self::DocumentUpdatePlan => "document_update_plan",
+            Self::DocumentDeliveryPlan => "document_delivery_plan",
+            Self::InteractiveMediaBundlePlan => "interactive_media_bundle_plan",
+            Self::VariationPlan => "variation_plan",
+            Self::VariationRender => "variation_render",
+            Self::CanvasRender => "canvas_render",
+            Self::MockupPlan => "mockup_plan",
+            Self::MockupRender => "mockup_render",
+            Self::MockupExtractPlan => "mockup_extract_plan",
+            Self::MockupExtractRender => "mockup_extract_render",
+            Self::MeshPlan => "mesh_plan",
+            Self::MeshRender => "mesh_render",
+            Self::SurfacePlan => "surface_plan",
+            Self::SurfaceRender => "surface_render",
+            Self::DeformationPlan => "deformation_plan",
+            Self::DeformationRender => "deformation_render",
+            Self::DeformationMigrate => "deformation_migrate",
+            Self::RemapPlan => "remap_plan",
+            Self::RemapRender => "remap_render",
+            Self::TimelinePlan => "timeline_plan",
+            Self::TimelineRender => "timeline_render",
+            Self::MotionPlan => "motion_plan",
+            Self::MockupMotionAuthoring => "mockup_motion_authoring",
+            Self::MotionRender => "motion_render",
+            Self::VideoPlan => "video_plan",
+            Self::VideoRender => "video_render",
+            Self::Css => "css",
+        }
+    }
+
+    const fn title(self) -> &'static str {
+        match self {
+            Self::FigmaAppearanceInspect => "Read native Figma appearance",
+            Self::FigmaAppearanceApply => "Update native Figma appearance",
+            Self::FigmaTextureInspect => "Read native Figma texture",
+            Self::FigmaTextureApply => "Update native Figma texture",
+            Self::FigmaFoil => "Read or edit actual native Figma Foil",
+            Self::FigmaMeshGradient => "Read or edit actual native Figma mesh gradient",
+            Self::FigmaNativeCreate => "Create editable native Figma Perspective work",
+            Self::FigmaInspect => "Prepare an editable Figma inspection",
+            Self::FigmaApply => "Prepare an editable Figma update",
+            Self::FigmaEffectInspect => "Prepare a Figma Spatial inspection",
+            Self::FigmaEffectSources => "Inspect proposed Depth sources",
+            Self::FigmaLinkedResults => "Refresh linked Figma results",
+            Self::FigmaEffectContinuation => "Continue Figma Depth work on Web",
+            Self::FigmaEffectStage => "Stage a Figma Spatial draft",
+            Self::FigmaEffectPublish => "Publish a Figma Depth result",
+            Self::FigmaEffectCreate => "Create an editable Figma Depth task",
+            Self::FigmaWorkCreate => "Create linked Figma raster work",
+            Self::FigmaWorkRevise => "Read and revise linked Figma work",
+            Self::FigmaWorkContinuation => {
+                "Continue Figma work in a document and revise its authoring carrier"
+            }
+            Self::FigmaVectorWork => "Create and revise native Figma Vector work",
+            Self::FigmaMockupInspect => "Inspect a Figma Composition result",
+            Self::FigmaTemplatesInspect => "Discover reusable Figma scene templates",
+            Self::FigmaSceneCreate => "Create an editable Figma scene",
+            Self::FigmaMockupPublish => "Publish a Figma Composition result",
+            Self::FigmaPublicationStep => "Continue a bounded Figma publication",
+            Self::FigmaCompositionContinuation => "Continue a Figma Composition downstream",
+            Self::FigmaMockupStage => "Stage a Figma Composition draft",
+            Self::PlaneStrip => "Place cards on one shared plane",
+            Self::WindowPlan => "Plan a spatial window",
+            Self::EffectCatalog => "Discover spatial expressions",
+            Self::EffectRecipe => "Create a reusable spatial recipe",
+            Self::EffectPlan => "Evaluate a spatial recipe",
+            Self::AppearanceInspect => "Inspect a native appearance instance",
+            Self::AppearanceRevision => "Upgrade a material seed preserving native edits",
+            Self::AppearanceDelivery => "Plan an appearance frontend delivery",
+            Self::AppearanceUpdate => "Update received appearance without losing local edits",
+            Self::AppearanceProfiles => "Discover glass/texture backends and required mechanisms",
+            Self::AppearanceExposure => "Resolve what a product exposure policy actually exposes",
+            Self::AppearancePreference => "Evaluate explicit personal overrides against a delivery",
+            Self::MaterialPreference => "Resolve typed Texture, Foil and mesh personal intent",
+            Self::FoilUpdate => "Update received foil without losing local edits",
+            Self::MeshGradientUpdate => "Update received mesh-gradient without losing local edits",
+            Self::MeshGradientInspect => "Inspect resolved mesh-gradient properties",
+            Self::MeshGradientRevision => {
+                "Plan a mesh-gradient seed upgrade that preserves local edits"
+            }
+            Self::MeshGradientDelivery => "Plan a mesh-gradient frontend delivery",
+            Self::TextureInspect => "Inspect a native texture instance",
+            Self::FoilInspect => "Inspect resolved Foil properties",
+            Self::TextureRevision => "Upgrade a texture seed preserving native edits",
+            Self::FoilRevision => "Upgrade a foil seed preserving native edits",
+            Self::TextureDelivery => "Plan a texture frontend delivery",
+            Self::FoilDelivery => "Plan a foil frontend delivery",
+            Self::Pose => "Pose a live plane",
+            Self::CardPose => "Project an interactive card view",
+            Self::CardPointer => "Sample card pointer tilt",
+            Self::CardIdle => "Sample card idle tilt",
+            Self::CardTurn => "Sample card turn progress",
+            Self::Compose => "Compose transform",
+            Self::Solve => "Solve projective plane",
+            Self::Inspect => "Inspect projective plane",
+            Self::Render => "Render projective raster",
+            Self::MediaInspect => "Inspect production raster",
+            Self::PlaneCandidates => "Suggest source-plane candidates",
+            Self::PsdSmartObjects => {
+                "Inspect PSD Smart Objects, plan templates, or adopt curve work"
+            }
+            Self::MediaRender => "Render production raster",
+            Self::VectorRender => "Preserve vector placement",
+            Self::TiledMediaRender => "Render tiled production raster",
+            Self::Rectify => "Plan plane rectification",
+            Self::RectifyRender => "Render plane rectification",
+            Self::ProgramInspect => "Inspect raster program",
+            Self::ProgramRender => "Render raster program",
+            Self::TemplateInspect => "Inspect Spatial Template",
+            Self::DocumentInspect => "Inspect Spatial Document",
+            Self::DocumentAssemble => "Assemble Spatial Documents",
+            Self::DocumentUpdatePlan => "Plan Spatial Document update",
+            Self::DocumentDeliveryPlan => "Plan Spatial Document delivery",
+            Self::InteractiveMediaBundlePlan => "Prepare interactive media bundle",
+            Self::VariationPlan => "Plan Variation Job",
+            Self::VariationRender => "Render Variation Job",
+            Self::CanvasRender => "Render Canvas Set",
+            Self::MockupPlan => "Plan multi-plane mockup",
+            Self::MockupRender => "Render multi-plane mockup",
+            Self::MockupExtractPlan => "Plan multi-plane extraction",
+            Self::MockupExtractRender => "Render multi-plane extraction",
+            Self::MeshPlan => "Plan custom mesh warp",
+            Self::MeshRender => "Render custom mesh warp",
+            Self::SurfacePlan => "Plan cubic surface deformation",
+            Self::SurfaceRender => "Render cubic surface deformation",
+            Self::DeformationPlan => "Plan one replayable deformation work",
+            Self::DeformationRender => "Render one replayable deformation work",
+            Self::DeformationMigrate => "Migrate deformation state into one work",
+            Self::RemapPlan => "Plan lens or displacement remap",
+            Self::RemapRender => "Render lens or displacement remap",
+            Self::TimelinePlan => "Plan ordered transform timeline",
+            Self::TimelineRender => "Render ordered transform timeline",
+            Self::MotionPlan => "Plan eased motion keyframes",
+            Self::MockupMotionAuthoring => "Create and revise editable scene motion",
+            Self::MotionRender => "Render eased motion keyframes",
+            Self::VideoPlan => "Plan playable video delivery",
+            Self::VideoRender => "Render a playable MP4 video",
+            Self::Css => "Emit projective CSS",
+        }
+    }
+
+    const fn summary(self) -> &'static str {
+        match self {
+            Self::FigmaAppearanceInspect => {
+                "Prepare a request reading native Glass, shared provenance, visual warnings and an expected-state guard; works without the plugin UI."
+            }
+            Self::FigmaAppearanceApply => {
+                "Validate a recipe and prepare a guarded native Glass update. Reread after native edits; no Figma access until the returned request runs."
+            }
+            Self::FigmaTextureInspect => {
+                "Prepare a request reading the native NOISE and TEXTURE effects, shared texture provenance, native extras and an expected-state guard; works without the plugin UI."
+            }
+            Self::FigmaTextureApply => {
+                "Validate a worldbend.texture@0.1 recipe and prepare a guarded native NOISE/TEXTURE update that preserves unrelated effects. Reread after native edits; no Figma access until the returned request runs."
+            }
+            Self::FigmaFoil => {
+                "Validate exact get_shader main.ts evidence, then prepare native Foil resource-state/acquisition, paged material reads, guarded edits or explicit renderer adoption. Acquisition observes import/paint aliases with an owned temporary probe and retains availability separately from the adopted renderer. Reads actual assignments and consumer variable values; edits preserve other fills and unedited aliases. Source evidence is supplied by the caller. Preparation never contacts Figma; returned acquisition can import an existing file resource but never builds, commits or deploys Shader source."
+            }
+            Self::FigmaMeshGradient => {
+                "Validate exact get_shader main.ts evidence, then prepare native mesh-gradient resource-state/acquisition, paged material reads, guarded edits or explicit renderer adoption. Acquisition observes import/paint aliases with an owned temporary probe and retains availability separately from the adopted renderer. Reads actual assignments and consumer variable values; edits preserve other fills and unedited aliases. Source evidence is supplied by the caller. Preparation never contacts Figma; returned acquisition can import an existing file resource but never builds, commits or deploys Shader source."
+            }
+            Self::FigmaNativeCreate => {
+                "Cold-create a published native Perspective work from a bounded clipped axis-aligned Frame. Keeps the original and independent editable Content; solves geometry in the core. A stable requestId recovers the original current work across native edits, copies and reparenting. Use figma_inspect/figma_apply to continue; unavailable samplers fail without a flattened fallback. Preparing does not access Figma."
+            }
+            Self::FigmaInspect => {
+                "Prepare a bounded Figma use_figma request to read an editable result and visual preview. No Figma access until that tool runs."
+            }
+            Self::FigmaApply => {
+                "Solve geometry and prepare one stale-safe Figma update request from a current snapshot. Run the returned request with Figma use_figma to publish. The external carrier has no Worldbend Undo contract; recover a successful change only by re-inspecting and applying retained prior geometry as a new guarded revision."
+            }
+            Self::FigmaEffectInspect => {
+                "Prepare a bounded Figma request to read one published Spatial recipe, ordered source bindings and any staged Agent draft."
+            }
+            Self::FigmaEffectSources => {
+                "Read 2..8 proposed same-page Depth sources without changing the inspected result. Returns a revision-bound sourceSet and optional actual PNGs for replacement, addition or removal through figma_effect_publish; cyclic dependencies and stale state are rejected."
+            }
+            Self::FigmaLinkedResults => {
+                "Inspect a changed source's affected linked results in dependency order; read fresh PNG artifacts and core-publish one unchanged saved operation at a time. Includes native containers and multiple branches. Preserve optional sourceState for admitted native/text/variable freshness; exact captured PNG proofs and byte limits remain mandatory. Publish sources accept inline base64 or a relative path under the explicitly granted workspace. Verify successful prerequisite receipts before downstream reads; keep completed results on failure or cancellation and discover fresh state to retry. Execute all prepared transfer steps, including any trusted runtime chunks. Preparation may read those input files and does not access Figma."
+            }
+            Self::FigmaEffectContinuation => {
+                "Project one inspected, published Figma Depth relationship into the existing Spatial Document and ready Web delivery contracts without re-placing its layers. Preserves origin and initial state, excludes unpublished drafts, and discloses media and placement loss."
+            }
+            Self::FigmaEffectStage => {
+                "Validate one bounded two-through-eight-plane Spatial recipe and stage it behind an expected-state guard. The Figma plugin must render and publish it; existing pixels stay truthful."
+            }
+            Self::FigmaEffectPublish => {
+                "Core-render an edited Depth recipe/state from ordered inspected source rasters and publish pixels, task and source roles together. Sources accept exact inline base64 or a relative path under the explicitly granted workspace, with unchanged PNG proofs and byte limits. Use figma_effect_sources and its sourceSet for source replacement, addition or removal; otherwise sourceNodeIds reorders the bound set. Guards result and live source pixels; unchanged refreshes retain pending drafts."
+            }
+            Self::FigmaEffectCreate => {
+                "Prepare cold creation of a linked Depth task from 2..8 existing same-page artwork nodes and a core-validated camera-plane recipe/state. Reuse effect_recipe for a starting preset. The result is empty until source export and figma_effect_publish complete; a stable requestId recovers the same object across retries and sessions. Original artwork remains editable and linked."
+            }
+            Self::FigmaWorkCreate => {
+                "Cold-create Perspective/Rectify, all six Sizes operations, Mesh/Surface/Deformation, lens/two-source displacement Remap, Composition or Depth raster work from current same-page source nodes and a canonical operation. Retains human reopen controls and original editable sources. A stable requestId recovers this exact work across retries and native reparenting. Returns needs-publication plus actual linked snapshot; use figma_linked_results inspect/read/publish to obtain media and finish the image. Preparing does not access Figma."
+            }
+            Self::FigmaWorkRevise => {
+                "Read exact saved work and pending human edits in bounded JSON parts, even if old sources are missing. Propose selective controls, source slots or output-size changes against its current revision; retrieve actual PNG artifacts and core-publish the whole guarded revision. Publish sources accept exact inline base64 or a relative path under the explicitly granted workspace, with unchanged PNG proofs and byte limits. Join json parts with the same token before parsing; when returned, carry the first page's sourceFingerprints on later parts without repeating media capture. Optional sourceState guards native graph/text/variables independently of exact captured PNG bytes. Preserve local appearance, placement and pixel density; native/source edits reject stale publication. Large media uses figma_publication_step. The external carrier has no Worldbend Undo contract; byte-exact recovery after success requires retained prior task, bindings and exact media for a new guarded revision. Preparation may read those input files and does not access Figma."
+            }
+            Self::FigmaWorkContinuation => {
+                "projectMaterial projects actual live Glass/Texture/Foil/Mesh-gradient native reads into ordinary material Spatial Documents, retaining seed, live values, native extras and host origin with explicit carrier losses; untagged native needs an explicit documentSeed while native provenance stays untagged. reviseMaterial prepares selective same-seed native edits from a fingerprint-guarded document plus fresh native state, explicit asset/surface binding and exact Shader source evidence; execute its existing family request and reread. Inspect published linked raster work in exact tokened parts and acquire actual source artifacts; project it into an ordinary Spatial Document and delivery. projectTemporal binds published Mockup composition plus an authored mockup-video Spec into a temporal Spatial Document (motion/encode stay document-side; Figma does not host MP4). inspectNative reads native Frame/Vector state and current unprojected SVG source facts; nativeSource returns exact bounded base64 media parts, and projectNative compiles the same ordinary Transform expression with explicit native editing/appearance losses. reviseNative prepares guarded document authoring: execute a Frame publication request on its editable Content, or read a Vector proposal and publish it through figma_vector_work, including explicit Vector replacement sources. Revise prepares current-media capture for a fingerprint-guarded static, interactive or temporal document expression with explicit asset-to-node bindings, then figma_work_revise publish applies that captured revision; temporal revise returns Mockup authoring poses while motion keyframes and video delivery remain in the document. Retains supported authoring controls, Composition named previews, interactive state and live fitting-guide identity; single-family named delivery stays in the document. Rejects unrepresentable programs instead of flattening. Large projections return exact tokened JSON parts. Proposed controls never enter published inspection. Reports sampling quality, carrier losses and excluded drafts. Preparation accesses no host and writes no files."
+            }
+            Self::FigmaVectorWork => {
+                "Reserve then initialize recoverable native Vector work with a complete Transform/Warp or Deformation Work operation and ordered artwork/guide source roles. Read exact full controls through lossless envelope pages; capture one selective revision against the current light reference, including source replacement and view/size edits. Publish the full proposal or its encoded envelope through one canonical core artwork job and guarded native publication. Run every figma_publication_step for initialization, capture or publication; only published receipts establish visible success. Cold updates preserve full Pin/Mesh/Liquify/guide controls and stable identity; original artwork and independent native copies remain unchanged. Source, generated-path, lease or payload changes reject stale writes. Preparation does not contact Figma."
+            }
+            Self::FigmaMockupInspect => {
+                "Resolve a Figma result link and prepare a bounded request to inspect the same-file Composition result, source slots and staged draft."
+            }
+            Self::FigmaTemplatesInspect => {
+                "Prepare a read-only request that discovers current file-native saved scenes and built-in ready scenes with their editable slots and appearance boundaries. Client storage and incomplete scan status are explicit. No node is required or written."
+            }
+            Self::FigmaSceneCreate => {
+                "Prepare native Figma cold creation using a built-in ready scene or a freshly inspected native scene, ordered artwork nodes and Cover/Contain fitting. Creates an independent editable instance beside the artwork, preserves master and original sources, and returns a needs-publication snapshot. Export that snapshot through figma_mockup_inspect, render and publish with figma_mockup_publish to finish the scene. No handwritten geometry is needed."
+            }
+            Self::FigmaPublicationStep => {
+                "Fetch one bounded Figma request from a prepared publication transfer. Execute all chunks, then its final guarded publication. Retries are safe. inspect=true with explicit scope prepares read-only staged-state discovery; cancel=true with scope can clear that exact identity across sessions. Failed, cancelled and expired transfers retain the prior artwork. release=true frees local preparation. Transfers expire after ten minutes. Preparing these requests does not access Figma."
+            }
+            Self::FigmaMockupPublish => {
+                "Render one inspected Composition task through the shared core renderer from the Agent-supplied bound source rasters, then prepare a guarded request that publishes the pixels onto the linked Figma result in place — advancing the revision without the manual designer Apply. Sources accept exact inline base64 or a relative path under the explicitly granted workspace, with unchanged PNG proofs and byte limits. The task must target the selected single whole-result output; Canvas Set variants remain Variation Job work."
+            }
+            Self::FigmaCompositionContinuation => {
+                "Project one inspected, published Figma Composition into a standard Spatial Document and executable delivery plan. Preserves ordered stable source slots, the combine-then-transform program, output variants and bounded source change tokens; excludes unpublished drafts and reports carrier loss."
+            }
+            Self::FigmaMockupStage => {
+                "Core-validate a Composition edit and stage it on the same Figma result. The designer previews and publishes it in the plugin; published pixels stay unchanged until Apply."
+            }
+            Self::PlaneStrip => {
+                "Partition one perspective mapping into ordered panels with aligned top/bottom edges, caller-chosen gaps and live CSS."
+            }
+            Self::Pose => {
+                "Turn explicit tilt angles and perspective into reusable four-corner geometry and live CSS for a card, video or DOM element."
+            }
+            Self::CardPose => {
+                "Project one view of a worldbend.card rig through the shared rigid pose geometry. Edge-on and back-facing views return their raw quad and face instead of failing; spec/css appear only when the ordinary front-facing solver accepts the quad."
+            }
+            Self::CardPointer => {
+                "Map a pointer position onto a card rig's declared tilt envelope and region, returning clamped coordinates and tilt angles."
+            }
+            Self::CardIdle => {
+                "Sample a card rig's idle wobble at a deterministic time; the two axes trace an ellipse inside the envelope."
+            }
+            Self::CardTurn => {
+                "Evaluate a card rig's triggered complete turn at linear progress using its own easing, reporting the cumulative angle, revolutions and face."
+            }
+            Self::Compose => {
+                "Compose explicit affine, flip, and bounded Warp values over a saved plane without rasterizing."
+            }
+            Self::Solve => {
+                "Validate an explicit destination quadrilateral and solve its reusable projective mapping."
+            }
+            Self::Inspect => {
+                "Validate a saved TransformSpec and return bounds and numerical diagnostics."
+            }
+            Self::Render => {
+                "Render a local raster through a saved plane under the granted workspace root."
+            }
+            Self::MediaInspect => {
+                "Inspect one production raster's format, precision, alpha, orientation, digest, and ICC metadata."
+            }
+            Self::PlaneCandidates => {
+                "Ask one explicit local Provider for source-plane candidates, uncalibrated confidence, uncertainty, and source facts without applying a transform."
+            }
+            Self::PsdSmartObjects => {
+                "Read bounded PSD/PSB Smart Object placement metadata and optionally project selected eligible objects into a Spatial Template without modifying the document."
+            }
+            Self::MediaRender => {
+                "Render PNG, JPEG, WebP, or TIFF with explicit output precision, ICC policy, and loss disclosure."
+            }
+            Self::VectorRender => {
+                "Preserve an SVG source in an affine SVG or projective HTML matrix3d carrier without rasterizing it."
+            }
+            Self::TiledMediaRender => {
+                "Render a large destination as an atomic tile directory and deterministic manifest without allocating one full output canvas."
+            }
+            Self::Rectify => {
+                "Plan flattening of one explicit source quadrilateral into a declared output rectangle."
+            }
+            Self::RectifyRender => {
+                "Render an explicit planar rectification to a local PNG under the granted root."
+            }
+            Self::ProgramInspect => {
+                "Validate ordered Transform, Rectify, Canvas, Mesh/Pin/Liquify and Remap stages and derive their immutable control-map slots without decoding pixels."
+            }
+            Self::ProgramRender => {
+                "Execute ordered raster stages with exact immutable control-map bindings in memory and atomically publish only the final PNG."
+            }
+            Self::TemplateInspect => {
+                "Validate one reusable Spatial Template and derive its exact source slots and outputs."
+            }
+            Self::DocumentInspect => {
+                "Validate one durable Spatial Document, its assets and exact bindings across static, interactive, temporal and typed glass/texture/foil/mesh-gradient material expressions without merging their execution semantics."
+            }
+            Self::DocumentAssemble => {
+                "Assemble two or more current projected Spatial Documents into one durable multi-expression work through explicit asset-equivalence and expression mappings. Rejects stale, missing, duplicate or ambiguous source mappings, then returns ready delivery for every assembled expression."
+            }
+            Self::DocumentUpdatePlan => {
+                "Revise asset content versions, complete existing expressions or add explicitly bound local assets with a stale-document guard. Preserves unrelated expressions and historical sources, validates the combined candidate, and reports canonical affected expressions for redelivery."
+            }
+            Self::DocumentDeliveryPlan => {
+                "Compile selected or all Spatial Document expressions into static Variation Jobs, interactive Effect Recipes, mockup-video specs and typed material delivery receipts, preserving canonical asset bindings and a stale-document guard."
+            }
+            Self::InteractiveMediaBundlePlan => {
+                "Bind explicit upstream media facts to one version-3 interactive Spatial recipe, canonical document and ready Web delivery plan. Validates content hashes, dimensions and complete role bindings without fetching, decoding or writing media."
+            }
+            Self::VariationPlan => {
+                "Validate an ordered Variation Job and canonicalize its slot-to-asset bindings without decoding pixels."
+            }
+            Self::VariationRender => {
+                "Render every item in one Variation Job and atomically publish the nested PNG directory. failurePolicy continue records per-item failures in order instead of aborting the whole job."
+            }
+            Self::CanvasRender => {
+                "Render one ordered explicit Canvas Set atomically, or replay its resolved plan."
+            }
+            Self::MockupPlan => {
+                "Validate ordered flat, cylindrical or folded-fabric planes, connected edges, curved grids and measurements."
+            }
+            Self::MockupRender => {
+                "Composite local source rasters onto ordered flat, cylindrical or folded-fabric surfaces with authored shading."
+            }
+            Self::MockupExtractPlan => {
+                "Validate and plan ordered explicit source-plane extractions from one raster."
+            }
+            Self::MockupExtractRender => {
+                "Extract ordered explicit source planes into one atomically published PNG directory."
+            }
+            Self::MeshPlan => {
+                "Validate and solve a caller-authored bounded custom deformation mesh."
+            }
+            Self::MeshRender => {
+                "Render one caller-authored bounded custom mesh through the native rasterizer."
+            }
+            Self::SurfacePlan => {
+                "Resolve a bounded cubic Bezier envelope plus explicit anchors and ordered strokes into the canonical custom mesh contract."
+            }
+            Self::SurfaceRender => {
+                "Render a bounded cubic Bezier envelope plus explicit ordered deformation strokes through the native rasterizer."
+            }
+            Self::DeformationPlan => {
+                "Plan replayable plane, Pin, Liquify and mesh edits, optionally fitting one closed Line/Cubic domain with saved corner landmarks and a compound clip retaining holes and independent regions. planView:state returns the complete recipe, solve and mesh counts without generated meshes or projected mask; full remains the default."
+            }
+            Self::DeformationRender => {
+                "Render replayable deformation work, including one fitted closed domain, saved corner landmarks and a compound clip retaining holes and independent regions, through the native rasterizer under the granted workspace root. Use planView:state for a compact receipt with the complete recipe; full remains the default."
+            }
+            Self::DeformationMigrate => {
+                "Migrate one persisted mesh-warp or surface-deformation document into the deformation work and return the equivalent plan."
+            }
+            Self::RemapPlan => {
+                "Validate and plan explicit Brown-Conrady lens or channel displacement remapping."
+            }
+            Self::RemapRender => {
+                "Render an explicit lens remap or displacement-map program through the native rasterizer."
+            }
+            Self::TimelinePlan => {
+                "Validate and expand explicit frames or linearly interpolated corner keyframes."
+            }
+            Self::TimelineRender => {
+                "Render an ordered frame set into one atomically published PNG directory."
+            }
+            Self::MotionPlan => {
+                "Expand explicit keyframes, rational frame timing, and declared easing into the canonical Timeline contract."
+            }
+            Self::MockupMotionAuthoring => {
+                "Create motion from a complete Mockup scene, inspect exact editable work, or apply a fingerprint-guarded pose/timing/plane revision. Large results return tokened exact JSON parts."
+            }
+            Self::MotionRender => {
+                "Render explicit eased motion keyframes into one atomically published PNG directory."
+            }
+            Self::VideoPlan => {
+                "Plan exact video duration, frame timing and explicit opaque matte from saved Motion work."
+            }
+            Self::VideoRender => {
+                "Render saved Motion work and a workspace source into a decoded, verified MP4 using the host-configured encoder; publish only after complete response and cancellation preflight."
+            }
+            Self::WindowPlan => {
+                "Plan a fixed content plane seen through a moving window, with explicit visibility and distance-based frost. Embed the surface-window Web module for local interaction."
+            }
+            Self::EffectCatalog => {
+                "Filter the versioned spatial-effects catalog by intent, content or literal terms, including version-2 shared-camera parallax and version-3 spatial appearance. Stable ordering, supported carriers and comparison guidance; no aesthetic ranking."
+            }
+            Self::EffectRecipe => {
+                "Expand a named/versioned spatial effect into an editable, reusable data-only recipe. Explicit viewport and intensity, no generated code."
+            }
+            Self::EffectPlan => {
+                "Evaluate a saved recipe at explicit progress/pointer state with canonical SHA-256 identity. Camera planes share one deterministic viewpoint and report source coverage; version 3 adds optical depth-of-field plans, caller-bound depth-map metadata and motion blur from an explicit previous state and elapsed time. No hidden history, model, clock or network; optional expected fingerprint guards against drift."
+            }
+            Self::AppearanceInspect => {
+                "Reconcile one native appearance instance against its worldbend.appearance@0.1 seed. Live native GLASS values stay authoritative: the inspection reports the resolved material, the drifted fields as the designer's own edits, untagged native glass, and native removal."
+            }
+            Self::AppearanceRevision => {
+                "appearance material seed version upgrade preserve native edits removal 材质 配方 版本 升级 原生 修改 保留"
+            }
+            Self::AppearanceDelivery => {
+                "Project one resolved appearance state onto Web CSS/SVG, color-preserving Web optics, SwiftUI system glass or explicit Metal optics with per-field fidelity disclosure and a fingerprint that binds values and target."
+            }
+            Self::AppearanceProfiles => {
+                "Discover implemented glass and texture receiving backends with their required fields and mechanisms; incompatible required mechanisms fail with a precise missing-mechanism error."
+            }
+            Self::AppearanceUpdate => {
+                "Merge a later native appearance delivery against the accepted source, preserving destination material edits and removal. An expected source fingerprint rejects stale planning; native edits need no preset version bump. The consumer path passes live:null with an explicit preference record so overrides survive even when equal to the new source defaults."
+            }
+            Self::AppearanceExposure => {
+                "Resolve a product exposure policy against actual target capabilities. Each control reports exposed, not-exposed, unsupported or temporarily-adapted state with unit, direction, authored/effective range, default, change cost and couplings; a clarity composite reports its versioned frost mapping. The report is fingerprinted so receivers pin it like a delivery receipt."
+            }
+            Self::MaterialPreference => {
+                "Evaluate typed Texture/Foil/mesh preference intent against a versioned product policy and canonical source. Explicit equal-to-default choices survive design changes; hidden or out-of-range intent stays recoverable. Report target availability, per-control meaning, scope and independent source/policy/preference identities. This operation plans only; the receiving product guards and commits human/Agent actions."
+            }
+            Self::AppearancePreference => {
+                "Evaluate one explicit preference record against a base delivery: typed overrides with their own revision, resolved material and canonical delivery. A policy argument keeps hidden overrides saved but out of the effective material, with per-field receipts; equal-to-default overrides stay representable and survive design updates."
+            }
+            Self::FoilUpdate => {
+                "Merge a later native foil delivery against the accepted source, preserving destination material edits and removal. An expected source fingerprint rejects stale planning; native edits need no preset version bump."
+            }
+            Self::TextureInspect => {
+                "Reconcile one native texture instance against its worldbend.texture@0.1 seed. Live native NOISE/TEXTURE values stay authoritative: the inspection reports the resolved material, drifted fields as the designer's own edits, untagged native texture, and native removal."
+            }
+            Self::FoilInspect => {
+                "Reconcile captured Foil properties against the versioned seed. Live RGBA tints, direction, highlight strength, roughness and motion remain authoritative. This operation accepts captured values; it does not read a Figma file or attest renderer compatibility."
+            }
+            Self::TextureRevision => {
+                "Upgrade a worldbend.texture@0.1 seed to a newer version while preserving the designer's native grain and etch edits; a natively removed material stays removed."
+            }
+            Self::FoilRevision => {
+                "Upgrade a Foil seed while retaining current tint, opacity and motion edits; native removal remains removed."
+            }
+            Self::TextureDelivery => {
+                "Project one resolved texture state onto the self-contained Web route: a deterministic grain tile, overlay declarations and an SVG etch filter, with per-field fidelity disclosure and a fingerprint binding the delivered values."
+            }
+            Self::MeshGradientUpdate => {
+                "Merge a later native mesh-gradient delivery against the accepted source, preserving destination material edits and removal. An expected source fingerprint rejects stale planning."
+            }
+            Self::MeshGradientInspect => {
+                "Reconcile captured mesh-gradient properties against the versioned seed. Live corner colors, warp, softness, duration, phase and flow speed are authoritative when present."
+            }
+            Self::MeshGradientRevision => {
+                "Upgrade a mesh-gradient seed while retaining current color, timing and warp edits; native removal remains removed."
+            }
+            Self::MeshGradientDelivery => {
+                "Deliver resolved mesh-gradient parameters with the obtainable versioned WGSL kernel and its integrity hash. The Web binding executes independent clocks, pause and reduced-motion."
+            }
+            Self::FoilDelivery => {
+                "Deliver resolved Foil parameters with the obtainable versioned WGSL kernel and its integrity hash. The Web binding executes that kernel with independent timing, pause and reduced-motion support; downstream host compositing remains separate evidence."
+            }
+            Self::Css => "Emit CSS matrix3d values for a non-Warp live element mapping.",
+        }
+    }
+
+    const fn search_terms(self) -> &'static str {
+        match self {
+            Self::FigmaAppearanceInspect => {
+                "figma native glass liquid material appearance read inspect handoff 原生 玻璃 材质 读取 交接"
+            }
+            Self::FigmaAppearanceApply => {
+                "figma native glass liquid material appearance apply update guarded 原生 玻璃 材质 应用 更新"
+            }
+            Self::FigmaTextureInspect => {
+                "figma native noise texture paper grain etch material read inspect handoff 原生 噪点 纹理 纸张 颗粒 蚀刻 读取 交接"
+            }
+            Self::FigmaTextureApply => {
+                "figma native noise texture paper grain etch material apply update guarded 原生 噪点 纹理 纸张 颗粒 蚀刻 应用 更新"
+            }
+            Self::FigmaFoil => {
+                "figma native foil metal shader material current rgba variable read edit guarded acquire source version adopt 原生 金属 箔 材质 颜色 变量 读取 编辑 获取 版本 采用"
+            }
+            Self::FigmaMeshGradient => {
+                "figma native mesh gradient fluid light animation timing shader material current rgba variable read edit guarded acquire source version adopt 原生 渐变 流光 动画 时钟 材质 颜色 变量 读取 编辑 获取 版本 采用"
+            }
+            Self::FigmaNativeCreate => {
+                "figma editable native frame perspective cold create source independent agent 原生 可编辑 透视 冷创建"
+            }
+            Self::FigmaInspect => {
+                "figma editable native frame inspect preview handoff designer selection 设计稿 可编辑 交接"
+            }
+            Self::FigmaApply => {
+                "figma editable native frame apply update handoff designer perspective 设计稿 可编辑 更新 交接"
+            }
+            Self::FigmaEffectInspect => {
+                "figma spatial depth parallax camera recipe inspect handoff roles draft 景深 视差 相机 配方 交接"
+            }
+            Self::FigmaEffectSources => {
+                "figma depth sources rebind replace add remove layers inspect 景深 来源 替换 增加 移除 图层"
+            }
+            Self::FigmaLinkedResults => {
+                "figma linked results update refresh source dependencies containers partial failure cancel retry 更新 来源 关联 依赖 整体 局部"
+            }
+            Self::FigmaEffectContinuation => {
+                "figma depth continue continuation spatial document web delivery replace asset source bindings cross carrier 景深 延续 文档 网页 交付 换素材 跨载体"
+            }
+            Self::FigmaEffectStage => {
+                "figma spatial depth recipe stage propose draft conflict designer review 景深 配方 草稿 设计师 复核"
+            }
+            Self::FigmaEffectPublish => {
+                "figma spatial depth effect publish pixels render revision agent 景深 发布 像素 渲染 修订 自动"
+            }
+            Self::FigmaEffectCreate => {
+                "figma spatial depth camera create cold sources recipe agent 景深 创建 相机 来源 配方"
+            }
+            Self::FigmaWorkCreate => {
+                "figma work create cold perspective sizes mesh surface deformation composition sources editable agent brand brief presentation social product-screen website 创建 作品 尺寸 网格 形变 编辑 品牌 简报 官网 社媒 展示图"
+            }
+            Self::FigmaWorkRevise => {
+                "figma work revise read state parts replace source slots controls sizes missing recovery agent brand brief presentation social weekly screen 修订 状态 分段 换源 参数 尺寸 恢复 品牌 简报 周更"
+            }
+            Self::FigmaWorkContinuation => {
+                "figma work continuation published portable document native frame vector svg source parts revise writeback local override static interactive source artifact transform rectify canvas pin mesh surface liquify lens remap displacement composition depth shared assets brand brief presentation social product-screen 作品 接续 已发布 原生 矢量 文档 素材 置换 回写 修订 品牌 简报 官网 社媒"
+            }
+            Self::FigmaVectorWork => {
+                "figma native vector whole artwork create state read revise project paths replace source copy editable agent 原生 矢量 完整作品 创建 修订 换源 复制"
+            }
+            Self::FigmaMockupInspect => {
+                "figma composition mockup scene result link inspect sources agent designer 平面合成 场景 节点 链接 读取"
+            }
+            Self::FigmaTemplatesInspect => {
+                "figma templates reusable scene slots appearance discover library mockup 可复用 模板 场景 槽位 发现"
+            }
+            Self::FigmaSceneCreate => {
+                "figma scene create cold ready native master template reuse artwork replace cover contain agent 场景 创建 范本 主版 复用 替换素材"
+            }
+            Self::FigmaPublicationStep => {
+                "figma publication transfer chunk resume cancel bounded media image pixels 分段 传输 续传 取消 图片 发布"
+            }
+            Self::FigmaMockupPublish => {
+                "figma composition mockup publish pixels render revision apply agent 平面合成 发布 像素 渲染 修订 自动"
+            }
+            Self::FigmaCompositionContinuation => {
+                "figma composition continue continuation spatial document delivery replace source asset binding output variants web downstream 组合 续接 文档 交付 替换素材 下游 网页"
+            }
+            Self::FigmaMockupStage => {
+                "figma composition mockup cylinder curved fabric folds lighting scene stage draft source slots designer preview 曲面 圆柱 织物 光照 场景 草稿 预览 应用"
+            }
+            Self::PlaneStrip => {
+                "strip cards carousel row shared perspective plane collinear aligned edges gap video css dom 共线 边缘 轮播 卡片 透视"
+            }
+            Self::Pose => {
+                "pose perspective tilt rotateX rotateY rotateZ angle depth card video iframe dom web css projection 倾斜 透视 卡片 网页"
+            }
+            Self::CardPose => {
+                "card pose two-sided back edge front quad revolutions interactive flip 翻面 卡片 两面 交互"
+            }
+            Self::CardPointer => {
+                "card pointer tilt envelope region clamp hover 鼠标 倾斜 包络 卡片"
+            }
+            Self::CardIdle => "card idle wobble ellipse amplitude period 待机 摆动 卡片",
+            Self::CardTurn => {
+                "card turn flip revolutions easing progress click 翻转 圈数 缓动 卡片"
+            }
+            Self::Compose => {
+                "compose transform scale rotate rotation skew translate pivot flip warp affine"
+            }
+            Self::WindowPlan => {
+                "window_plan surface window frost frosted blur fold folding screen fixed content projection web shader 折屏 磨砂 模糊 窗口"
+            }
+            Self::EffectCatalog => {
+                "effect catalog discover explore inspiration compare depth perspective parallax multiplane camera viewpoint focus depth-of-field motion blur exposure depth-map reveal inspect animation spatial appearance effects 创意 探索 灵感 对比 动效 效果 纵深 透视 视差 多平面 相机 视点 对焦 景深 动态模糊 曝光 深度图 显现 空间 成像"
+            }
+            Self::EffectRecipe => {
+                "effect recipe preset compose reusable stable version configuration 配方 预设 组合 复用 版本"
+            }
+            Self::EffectPlan => {
+                "effect plan replay fingerprint deterministic state previous elapsed camera coverage overscan viewpoint focus depth-of-field motion blur exposure depth-map 比较 重放 指纹 确定 状态 前一状态 时间 相机 覆盖 边缘 视点 对焦 景深 动态模糊 曝光 深度图"
+            }
+            Self::AppearanceInspect => {
+                "appearance native glass material recipe inspect reconcile customized untagged native authority 外观 原生 玻璃 材质 配方 读取 调和 自定义"
+            }
+            Self::AppearanceRevision => {
+                "appearance material seed version upgrade preserve native edits removal 材质 配方 版本 升级 原生 修改 保留"
+            }
+            Self::AppearanceDelivery => {
+                "appearance frontend delivery web css svg filter color-preserving refraction swiftui liquid glass target fidelity fingerprint 外观 前端 交付 网页 目标 色彩 保真 折射 指纹 液态玻璃"
+            }
+            Self::AppearanceProfiles => {
+                "appearance profiles discovery backends mechanisms fields glass texture color-preserving refraction splay missing 外观 配置 发现 机制 玻璃 纹理 色彩 保真 折射"
+            }
+            Self::AppearanceUpdate => {
+                "appearance frontend native revision update merge preserve local edits stale receipt preference override 消费 偏好 覆盖 外观 前端 修订 更新 保留 修改"
+            }
+            Self::AppearanceExposure => {
+                "appearance exposure policy product controls clarity tint range cost adapted unsupported consumer 暴露 策略 控制 清晰 范围 消费"
+            }
+            Self::MaterialPreference => {
+                "material preference texture foil mesh gradient exposure policy scope user agent override durable personal runtime reduced motion 材质 偏好 纹理 箔 网格渐变 暴露 策略 用户 持久"
+            }
+            Self::AppearancePreference => {
+                "appearance preference override intent revision user agent personal tune persist 偏好 覆盖 意图 修订 用户 调参 持久"
+            }
+            Self::FoilUpdate => {
+                "foil frontend native revision update merge preserve local edits stale receipt 外观 前端 修订 更新 保留 修改"
+            }
+            Self::MeshGradientUpdate => {
+                "mesh gradient fluid light frontend native revision update merge preserve local timing phase edits stale receipt 网格渐变 流体光 前端 修订 更新 保留 时序"
+            }
+            Self::MeshGradientInspect => {
+                "mesh gradient fluid light soft rgba corner warp softness duration phase flow recipe inspect reconcile native authority 网格渐变 流体光 时长 相位 原生 材质 读取"
+            }
+            Self::MeshGradientRevision => {
+                "mesh gradient fluid light material seed version upgrade preserve native timing edits removal 网格渐变 流体光 材质 配方 版本 升级 修改 保留"
+            }
+            Self::MeshGradientDelivery => {
+                "mesh gradient fluid light soft wgsl webgpu kernel resource rgba animation timing pause reduced motion receiving delivery fingerprint 网格渐变 流体光 内核 资源 动态 时序 暂停 接收 交付 指纹"
+            }
+            Self::TextureInspect => {
+                "texture paper noise grain etch material recipe inspect reconcile customized untagged native authority 纹理 纸张 噪点 颗粒 蚀刻 材质 配方 读取 调和 自定义"
+            }
+            Self::FoilInspect => {
+                "foil metallic shader rgba tint highlight roughness motion recipe inspect reconcile native authority 金属 铝箔 高光 透明度 动态 原生 材质 读取"
+            }
+            Self::TextureRevision => {
+                "texture paper material seed version upgrade preserve native edits removal 纹理 纸张 材质 配方 版本 升级 原生 修改 保留"
+            }
+            Self::FoilRevision => {
+                "foil metallic material seed version upgrade preserve native edits removal 金属 铝箔 材质 配方 版本 升级 修改 保留"
+            }
+            Self::TextureDelivery => {
+                "texture paper grain etch frontend delivery web svg turbulence overlay target fidelity fingerprint 纹理 纸张 颗粒 蚀刻 前端 交付 网页 目标 保真 指纹"
+            }
+            Self::FoilDelivery => {
+                "foil metallic shader wgsl webgpu kernel resource rgba animation receiving delivery fingerprint 金属 铝箔 内核 资源 动态 接收 交付 指纹"
+            }
+            Self::Solve => "solve perspective homography corner pin quadrilateral plane",
+            Self::Inspect => {
+                "inspect validate diagnostics bounds reprojection horizon transform spec"
+            }
+            Self::Render => "render raster png jpeg webp apply replace image",
+            Self::MediaInspect => {
+                "media inspect production raster png jpeg webp tiff icc color precision bit depth alpha orientation digest"
+            }
+            Self::PlaneCandidates => {
+                "perception plane candidates suggest detect quad quadrilateral confidence uncertainty alpha contrast source facts no auto apply"
+            }
+            Self::PsdSmartObjects => {
+                "psd psb photoshop smart object placed layer inspect template import source replacement read only"
+            }
+            Self::MediaRender => {
+                "media render production raster png jpeg webp tiff icc preserve discard u16 f32 quality loss"
+            }
+            Self::VectorRender => {
+                "vector svg preserve affine projective html matrix3d placement no raster"
+            }
+            Self::TiledMediaRender => {
+                "tiled media large huge canvas render tiles manifest streaming bounded memory png tiff"
+            }
+            Self::Rectify => "rectify flatten extract source plane quadrilateral plan",
+            Self::RectifyRender => "rectify render flatten extract source plane png image",
+            Self::ProgramInspect => {
+                "program pipeline ordered transform rectify canvas mesh pin liquify lens remap displacement inspect validate raster control map"
+            }
+            Self::ProgramRender => {
+                "program pipeline ordered transform rectify canvas mesh pin liquify lens remap displacement render in memory atomic png control map"
+            }
+            Self::TemplateInspect => {
+                "template reusable spatial project source slots outputs non destructive inspect brand brief presentation social canvas-set website 品牌 简报 官网 社媒 模板"
+            }
+            Self::DocumentInspect => {
+                "document project work composition assets shared bindings static interactive temporal material glass texture foil mesh-gradient recipe template reuse replace delivery brand brief presentation social product-screen 作品 文档 素材 绑定 静态 交互 材质 复用 交付 品牌 简报 官网 社媒"
+            }
+            Self::DocumentAssemble => {
+                "assemble merge projected works multi result asset equivalence mapping composition depth static interactive unified delivery brand brief presentation social 组装 合并 多结果 资产等价 静态 交互 统一交付 品牌 简报 官网 社媒"
+            }
+            Self::DocumentUpdatePlan => {
+                "document update edit replace asset revision fingerprint stale affected expression slot redelivery reuse local override controls size brand brief presentation social weekly product-screen 改版 换素材 局部 覆盖 效果 尺寸 影响 重新交付 品牌 简报 周更"
+            }
+            Self::DocumentDeliveryPlan => {
+                "document delivery compile static job interactive temporal material glass texture foil mesh-gradient recipe asset binding selected expression publish redelivery brand brief presentation social sizes website 作品 交付 编译 静态 交互 材质 配方 品牌 简报 官网 社媒 尺寸"
+            }
+            Self::InteractiveMediaBundlePlan => {
+                "interactive media bundle web delivery content hash dimensions role bindings provider procedure package 交互 媒体 包 网页 交付 内容哈希 角色绑定"
+            }
+            Self::VariationPlan => {
+                "variation job batch replace source bindings assets plan reusable template brand brief presentation social sizes website product-screen 品牌 简报 官网 社媒"
+            }
+            Self::VariationRender => {
+                "variation job batch replace source bindings assets render atomic directory failure continue brand brief presentation social sizes website 品牌 简报 官网 社媒"
+            }
+            Self::CanvasRender => {
+                "canvas crop trim pad contain cover stretch multi output resize variants"
+            }
+            Self::MockupPlan => {
+                "mockup place plane cylinder curved fabric folds lighting connected shared edge seam grid measurement packaging screen billboard 曲面 圆柱 织物 光照"
+            }
+            Self::MockupRender => {
+                "mockup place composite cylinder curved fabric folds lighting render packaging faces screen replacement billboard sources 曲面 圆柱 织物 光照"
+            }
+            Self::MockupExtractPlan => {
+                "mockup extract reverse rectify flatten planes packaging faces screen billboard plan"
+            }
+            Self::MockupExtractRender => {
+                "mockup extract reverse rectify flatten planes packaging faces screen billboard render"
+            }
+            Self::MeshPlan => "mesh warp envelope grid control points deform plan",
+            Self::MeshRender => "mesh warp envelope grid control points deform render raster",
+            Self::SurfacePlan => {
+                "surface deformation cubic bezier envelope anchors strokes liquify mesh plan"
+            }
+            Self::SurfaceRender => {
+                "surface deformation cubic bezier envelope anchors strokes liquify mesh render"
+            }
+            Self::DeformationPlan => {
+                "deformation work plane pin mesh views replay migration envelope anchors strokes edits liquify fit shape contour outline cubic landmarks clip holes regions 轮廓 拟合 孔洞 plan"
+            }
+            Self::DeformationRender => {
+                "deformation work plane pin mesh views replay render raster source replace liquify fit shape contour outline cubic landmarks clip holes regions 轮廓 拟合 孔洞"
+            }
+            Self::DeformationMigrate => {
+                "deformation work migrate mesh warp surface deformation persisted state version"
+            }
+            Self::RemapPlan => {
+                "remap lens correction barrel pincushion distortion displacement map channels plan"
+            }
+            Self::RemapRender => {
+                "remap lens correction barrel pincushion distortion displacement map channels render"
+            }
+            Self::TimelinePlan => {
+                "timeline animation frames keyframes linear interpolation corner pin plan"
+            }
+            Self::TimelineRender => {
+                "timeline animation frames keyframes sequence png atomic directory render"
+            }
+            Self::MotionPlan => {
+                "motion animation keyframes easing cubic bezier hold rational timebase timeline plan"
+            }
+            Self::MockupMotionAuthoring => {
+                "mockup motion authoring scene pose keyframe capture edit retime reorder guarded fingerprint animation"
+            }
+            Self::MotionRender => {
+                "motion animation keyframes easing frame rate sequence png atomic directory render"
+            }
+            Self::VideoPlan => "video animation movie mp4 h264 motion rational duration matte plan",
+            Self::VideoRender => {
+                "video animation movie mp4 h264 motion encode playback delivery render"
+            }
+            Self::Css => "css matrix3d live element iframe video canvas dom",
+        }
+    }
+
+    const fn mutates_files(self) -> bool {
+        matches!(
+            self,
+            Self::Render
+                | Self::MediaRender
+                | Self::VectorRender
+                | Self::TiledMediaRender
+                | Self::RectifyRender
+                | Self::ProgramRender
+                | Self::VariationRender
+                | Self::CanvasRender
+                | Self::MockupRender
+                | Self::MockupExtractRender
+                | Self::MeshRender
+                | Self::SurfaceRender
+                | Self::DeformationRender
+                | Self::RemapRender
+                | Self::TimelineRender
+                | Self::MotionRender
+                | Self::VideoRender
+        )
+    }
+
+    const fn requires_workspace(self) -> bool {
+        self.mutates_files()
+            || matches!(
+                self,
+                Self::MediaInspect | Self::PlaneCandidates | Self::PsdSmartObjects
+            )
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SearchInput {
+    #[serde(default)]
+    #[schemars(
+        description = "Case-insensitive operation terms; empty returns the compact catalog"
+    )]
+    query: String,
+    #[serde(default = "default_search_limit")]
+    #[schemars(range(min = 1, max = 20))]
+    limit: u8,
+}
+
+const fn default_search_limit() -> u8 {
+    8
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct OperationSummary {
+    operation: OperationId,
+    title: &'static str,
+    summary: &'static str,
+    mutates_files: bool,
+    requires_workspace: bool,
+}
+
+impl From<OperationId> for OperationSummary {
+    fn from(operation: OperationId) -> Self {
+        Self {
+            operation,
+            title: operation.title(),
+            summary: operation.summary(),
+            mutates_files: operation.mutates_files(),
+            requires_workspace: operation.requires_workspace(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SearchResult {
+    operations: Vec<OperationSummary>,
+    #[schemars(schema_with = "portable_u32_schema")]
+    total_matches: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DescribeInput {
+    operation: OperationId,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct OperationDescriptor {
+    operation: OperationId,
+    title: &'static str,
+    summary: &'static str,
+    mutates_files: bool,
+    requires_workspace: bool,
+    input_schema: Value,
+    output_schema: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RunInput {
+    operation: OperationId,
+    #[schemars(
+        description = "Closed operation arguments; call worldbend.describe only when the exact schema is not already known"
+    )]
+    arguments: Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupPlanInput {
+    spec: MockupSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupSourceInput {
+    #[schemars(description = "Exact sourceId referenced by one or more mockup planes")]
+    id: String,
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for MockupRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<MockupRenderOptionsInput> for MockupRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MockupRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupRenderInput {
+    #[schemars(description = "One unique entry for every distinct sourceId in the mockup spec")]
+    sources: Vec<MockupSourceInput>,
+    spec: MockupSpec,
+    #[schemars(description = "Relative PNG output path under the granted workspace root")]
+    output: String,
+    #[serde(default)]
+    options: MockupRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Replace an existing regular PNG atomically")]
+    overwrite: bool,
+    #[serde(default)]
+    #[schemars(description = "Render and encode the complete mockup without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupExtractPlanInput {
+    spec: MockupExtractSpec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupExtractRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_mockup_extract_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_MOCKUP_EXTRACT_PIXELS))]
+    max_cumulative_pixels: u64,
+}
+
+impl Default for MockupExtractRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_cumulative_pixels: MCP_MAX_MOCKUP_EXTRACT_PIXELS,
+        }
+    }
+}
+
+impl TryFrom<MockupExtractRenderOptionsInput> for MockupExtractRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MockupExtractRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_cumulative_pixels == 0
+            || value.max_cumulative_pixels > MCP_MAX_MOCKUP_EXTRACT_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "mockup extraction cumulative pixel limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_cumulative_pixels: value.max_cumulative_pixels,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MockupExtractRenderInput {
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+    spec: MockupExtractSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    options: MockupExtractRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Render, encode, hash, and same-parent stage without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MeshPlanInput {
+    spec: MeshWarpSpec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MeshRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for MeshRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<MeshRenderOptionsInput> for MeshWarpRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MeshRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MeshRenderInput {
+    source: String,
+    spec: MeshWarpSpec,
+    output: String,
+    #[serde(default)]
+    options: MeshRenderOptionsInput,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SurfacePlanInput {
+    spec: SurfaceDeformationSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SurfaceRenderInput {
+    source: String,
+    spec: SurfaceDeformationSpec,
+    output: String,
+    #[serde(default)]
+    options: MeshRenderOptionsInput,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DeformationPlanInput {
+    spec: DeformationWorkSpec,
+    #[serde(default)]
+    plan_view: DeformationPlanView,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DeformationRenderInput {
+    source: String,
+    spec: DeformationWorkSpec,
+    output: String,
+    #[serde(default)]
+    options: MeshRenderOptionsInput,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+    #[serde(default)]
+    plan_view: DeformationPlanView,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DeformationMigrateInput {
+    #[schemars(description = "One persisted worldbend.mesh-warp document to migrate")]
+    mesh_warp: Option<MeshWarpSpec>,
+    #[schemars(description = "One persisted worldbend.surface-deformation document to migrate")]
+    surface_deformation: Option<SurfaceDeformationSpec>,
+}
+
+impl TryFrom<DeformationMigrateInput> for DeformationWorkSourceSpec {
+    type Error = TransformError;
+
+    fn try_from(value: DeformationMigrateInput) -> Result<Self, Self::Error> {
+        match (value.mesh_warp, value.surface_deformation) {
+            (Some(spec), None) => Ok(Self::MeshWarp(Box::new(spec))),
+            (None, Some(spec)) => Ok(Self::SurfaceDeformation(Box::new(spec))),
+            _ => Err(TransformError::new(
+                ErrorCode::Schema,
+                "deformation_migrate requires exactly one meshWarp or surfaceDeformation source",
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RemapPlanInput {
+    spec: RemapSpec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RemapRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for RemapRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<RemapRenderOptionsInput> for RemapRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: RemapRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RemapRenderInput {
+    source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    map: Option<String>,
+    spec: RemapSpec,
+    output: String,
+    #[serde(default)]
+    options: RemapRenderOptionsInput,
+    #[serde(default)]
+    overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelinePlanInput {
+    spec: TimelineSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelineSourceInput {
+    #[schemars(description = "Exact sourceId referenced by one or more planned frames")]
+    id: String,
+    #[schemars(description = "Relative PNG, JPEG, or WebP path under the granted workspace root")]
+    source: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelineRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_timeline_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_TIMELINE_PIXELS))]
+    max_cumulative_pixels: u64,
+}
+
+const fn default_mcp_timeline_pixels() -> u64 {
+    MCP_MAX_TIMELINE_PIXELS
+}
+
+impl Default for TimelineRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_cumulative_pixels: MCP_MAX_TIMELINE_PIXELS,
+        }
+    }
+}
+
+impl TryFrom<TimelineRenderOptionsInput> for TimelineRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: TimelineRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_cumulative_pixels == 0 || value.max_cumulative_pixels > MCP_MAX_TIMELINE_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "timeline cumulative pixel limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_cumulative_pixels: value.max_cumulative_pixels,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct TimelineRenderInput {
+    sources: Vec<TimelineSourceInput>,
+    spec: TimelineSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    options: TimelineRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Render, encode, hash, and same-parent stage without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MotionPlanInput {
+    spec: MotionSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MotionRenderInput {
+    sources: Vec<TimelineSourceInput>,
+    spec: MotionSpec,
+    #[schemars(description = "New relative output directory under the granted workspace root")]
+    output_directory: String,
+    #[serde(default)]
+    options: TimelineRenderOptionsInput,
+    #[serde(default)]
+    #[schemars(description = "Render, encode, hash, and same-parent stage without publishing")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RenderLimitsInput {
+    #[serde(default = "default_mcp_max_axis")]
+    #[schemars(range(min = 1, max = MCP_MAX_AXIS))]
+    max_width: u32,
+    #[serde(default = "default_mcp_max_axis")]
+    #[schemars(range(min = 1, max = MCP_MAX_AXIS))]
+    max_height: u32,
+    #[serde(default = "default_mcp_max_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_PIXELS))]
+    max_pixels: u64,
+    #[serde(default = "default_mcp_max_source_bytes")]
+    #[schemars(range(min = 1, max = MCP_MAX_SOURCE_BYTES))]
+    max_source_bytes: u64,
+}
+
+const fn default_mcp_max_axis() -> u32 {
+    MCP_MAX_AXIS
+}
+
+const fn default_mcp_max_pixels() -> u64 {
+    MCP_MAX_PIXELS
+}
+
+const fn default_mcp_max_source_bytes() -> u64 {
+    MCP_MAX_SOURCE_BYTES
+}
+
+const fn default_mcp_mockup_extract_pixels() -> u64 {
+    MCP_MAX_MOCKUP_EXTRACT_PIXELS
+}
+
+impl Default for RenderLimitsInput {
+    fn default() -> Self {
+        Self {
+            max_width: MCP_MAX_AXIS,
+            max_height: MCP_MAX_AXIS,
+            max_pixels: MCP_MAX_PIXELS,
+            max_source_bytes: MCP_MAX_SOURCE_BYTES,
+        }
+    }
+}
+
+impl TryFrom<RenderLimitsInput> for RenderLimits {
+    type Error = TransformError;
+
+    fn try_from(value: RenderLimitsInput) -> Result<Self, Self::Error> {
+        if value.max_width == 0
+            || value.max_height == 0
+            || value.max_pixels == 0
+            || value.max_source_bytes == 0
+        {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "render limits must be positive integers",
+            ));
+        }
+        if value.max_width > MCP_MAX_AXIS
+            || value.max_height > MCP_MAX_AXIS
+            || value.max_pixels > MCP_MAX_PIXELS
+            || value.max_source_bytes > MCP_MAX_SOURCE_BYTES
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "requested render limits exceed the MCP server resource ceiling",
+            )
+            .with_details(json!({
+                "maximum": {
+                    "maxWidth": MCP_MAX_AXIS,
+                    "maxHeight": MCP_MAX_AXIS,
+                    "maxPixels": MCP_MAX_PIXELS,
+                    "maxSourceBytes": MCP_MAX_SOURCE_BYTES,
+                }
+            })));
+        }
+        Ok(Self {
+            max_width: value.max_width,
+            max_height: value.max_height,
+            max_pixels: value.max_pixels,
+            max_source_bytes: value.max_source_bytes,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MediaLimitsInput {
+    #[serde(default = "default_mcp_max_axis")]
+    #[schemars(range(min = 1, max = MCP_MAX_AXIS))]
+    max_width: u32,
+    #[serde(default = "default_mcp_max_axis")]
+    #[schemars(range(min = 1, max = MCP_MAX_AXIS))]
+    max_height: u32,
+    #[serde(default = "default_mcp_media_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_MEDIA_PIXELS))]
+    max_pixels: u64,
+    #[serde(default = "default_mcp_max_source_bytes")]
+    #[schemars(range(min = 1, max = MCP_MAX_SOURCE_BYTES))]
+    max_source_bytes: u64,
+}
+
+const fn default_mcp_media_pixels() -> u64 {
+    MCP_MAX_MEDIA_PIXELS
+}
+
+impl Default for MediaLimitsInput {
+    fn default() -> Self {
+        Self {
+            max_width: MCP_MAX_AXIS,
+            max_height: MCP_MAX_AXIS,
+            max_pixels: MCP_MAX_MEDIA_PIXELS,
+            max_source_bytes: MCP_MAX_SOURCE_BYTES,
+        }
+    }
+}
+
+impl TryFrom<MediaLimitsInput> for RenderLimits {
+    type Error = TransformError;
+
+    fn try_from(value: MediaLimitsInput) -> Result<Self, Self::Error> {
+        if value.max_width == 0
+            || value.max_height == 0
+            || value.max_pixels == 0
+            || value.max_source_bytes == 0
+        {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "media limits must be positive integers",
+            ));
+        }
+        if value.max_width > MCP_MAX_AXIS
+            || value.max_height > MCP_MAX_AXIS
+            || value.max_pixels > MCP_MAX_MEDIA_PIXELS
+            || value.max_source_bytes > MCP_MAX_SOURCE_BYTES
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "requested media limits exceed the MCP server resource ceiling",
+            )
+            .with_details(json!({
+                "maximum": {
+                    "maxWidth": MCP_MAX_AXIS,
+                    "maxHeight": MCP_MAX_AXIS,
+                    "maxPixels": MCP_MAX_MEDIA_PIXELS,
+                    "maxSourceBytes": MCP_MAX_SOURCE_BYTES,
+                }
+            })));
+        }
+        Ok(Self {
+            max_width: value.max_width,
+            max_height: value.max_height,
+            max_pixels: value.max_pixels,
+            max_source_bytes: value.max_source_bytes,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MediaRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    canvas: CanvasMode,
+    #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
+    target_size: Option<Size>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_view: Option<worldbend_core::SourceSamplingFrame>,
+    #[serde(default)]
+    limits: MediaLimitsInput,
+    output: MediaOutput,
+}
+
+impl TryFrom<MediaRenderOptionsInput> for MediaRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: MediaRenderOptionsInput) -> Result<Self, Self::Error> {
+        if let Some(view) = value.source_view {
+            view.validate()?;
+        }
+        Ok(Self {
+            render: RenderOptions {
+                source_view: value.source_view,
+                quality: value.quality,
+                canvas: value.canvas,
+                target_size: value.target_size,
+                limits: value.limits.try_into()?,
+            },
+            output: value.output,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    canvas: CanvasMode,
+    #[serde(default)]
+    #[schemars(description = "Required when spec.destination.space is normalized")]
+    target_size: Option<Size>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_view: Option<worldbend_core::SourceSamplingFrame>,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for RenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            canvas: CanvasMode::Tight,
+            target_size: None,
+            source_view: None,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<RenderOptionsInput> for RenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: RenderOptionsInput) -> Result<Self, Self::Error> {
+        if let Some(view) = value.source_view {
+            view.validate()?;
+        }
+        Ok(Self {
+            source_view: value.source_view,
+            quality: value.quality,
+            canvas: value.canvas,
+            target_size: value.target_size,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RectifyRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+}
+
+impl Default for RectifyRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+        }
+    }
+}
+
+impl TryFrom<RectifyRenderOptionsInput> for RectifyRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: RectifyRenderOptionsInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ProgramRenderOptionsInput {
+    #[serde(default)]
+    quality: SamplingQuality,
+    #[serde(default)]
+    limits: RenderLimitsInput,
+    #[serde(default = "default_mcp_raster_program_pixels")]
+    #[schemars(range(min = 1, max = MCP_MAX_RASTER_PROGRAM_PIXELS))]
+    max_cumulative_pixels: u64,
+}
+
+const fn default_mcp_raster_program_pixels() -> u64 {
+    MCP_MAX_RASTER_PROGRAM_PIXELS
+}
+
+impl Default for ProgramRenderOptionsInput {
+    fn default() -> Self {
+        Self {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimitsInput::default(),
+            max_cumulative_pixels: MCP_MAX_RASTER_PROGRAM_PIXELS,
+        }
+    }
+}
+
+impl TryFrom<ProgramRenderOptionsInput> for RasterProgramRenderOptions {
+    type Error = TransformError;
+
+    fn try_from(value: ProgramRenderOptionsInput) -> Result<Self, Self::Error> {
+        if value.max_cumulative_pixels == 0
+            || value.max_cumulative_pixels > MCP_MAX_RASTER_PROGRAM_PIXELS
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "raster-program cumulative pixel limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            quality: value.quality,
+            limits: value.limits.try_into()?,
+            max_cumulative_pixels: value.max_cumulative_pixels,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct RenderRequest {
+    source: String,
+    spec: TransformSpec,
+    output: String,
+    options: RenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MediaInspectRequest {
+    source: String,
+    limits: RenderLimits,
+}
+
+#[derive(Debug)]
+struct PlaneCandidatesRequest {
+    source: String,
+    request: PlaneCandidateRequest,
+}
+
+#[derive(Debug)]
+struct PsdSmartObjectsRequest {
+    source: String,
+    request: PsdSmartObjectRequest,
+}
+
+#[derive(Debug)]
+struct MediaRenderRequest {
+    source: String,
+    spec: TransformSpec,
+    output: String,
+    options: MediaRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct VectorRenderRequest {
+    source: String,
+    spec: TransformSpec,
+    output: String,
+    options: VectorRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct TiledMediaRenderRequest {
+    source: String,
+    spec: TransformSpec,
+    output_directory: String,
+    options: TiledMediaRenderOptions,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct RectifyRenderRequest {
+    source: String,
+    spec: RectifySpec,
+    output: String,
+    options: RectifyRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct ProgramRenderRequest {
+    source: String,
+    maps: Vec<ProgramMapInput>,
+    spec: RasterProgramSpec,
+    output: String,
+    options: RasterProgramRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct VariationRenderRequest {
+    assets: Vec<VariationAssetInput>,
+    spec: VariationJobSpec,
+    output_directory: String,
+    options: VariationJobRenderOptions,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MockupRenderRequest {
+    sources: Vec<MockupSourceInput>,
+    spec: MockupSpec,
+    output: String,
+    options: MockupRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MockupExtractRenderRequest {
+    source: String,
+    spec: MockupExtractSpec,
+    output_directory: String,
+    options: MockupExtractRenderOptions,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MeshRenderRequest {
+    source: String,
+    spec: MeshWarpSpec,
+    output: String,
+    options: MeshWarpRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct SurfaceRenderRequest {
+    source: String,
+    spec: SurfaceDeformationSpec,
+    output: String,
+    options: MeshWarpRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct DeformationRenderRequest {
+    source: String,
+    spec: DeformationWorkSpec,
+    output: String,
+    options: MeshWarpRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+    plan_view: DeformationPlanView,
+}
+
+#[derive(Debug)]
+struct RemapRenderRequest {
+    source: String,
+    map: Option<String>,
+    spec: RemapSpec,
+    output: String,
+    options: RemapRenderOptions,
+    overwrite: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct TimelineRenderRequest {
+    sources: Vec<TimelineSourceInput>,
+    spec: TimelineSpec,
+    output_directory: String,
+    options: TimelineRenderOptions,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct MotionRenderRequest {
+    sources: Vec<TimelineSourceInput>,
+    spec: MotionSpec,
+    output_directory: String,
+    options: TimelineRenderOptions,
+    dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum CanvasWorkerProgram {
+    Spec {
+        spec: CanvasSetSpec,
+        quality: SamplingQuality,
+    },
+    Plan {
+        plan: CanvasSetPlan,
+        sampling: CanvasReplaySampling,
+        outside_fill: CanvasBackground,
+    },
+}
+
+#[derive(Debug)]
+struct CanvasRenderRequest {
+    source: String,
+    output_directory: String,
+    program: CanvasWorkerProgram,
+    dry_run: bool,
+}
+
+#[derive(Debug)]
+struct PreparedOutputResult<T, C> {
+    result: T,
+    commit: Option<C>,
+}
+
+type PreparedDirectoryResult<T> = PreparedOutputResult<T, StagedDirectoryCommit>;
+type PreparedFileResult<T> = PreparedOutputResult<T, StagedFileCommit>;
+
+trait AtomicOutputCommit: Send {
+    fn commit(self) -> TransformResult<()>;
+}
+impl AtomicOutputCommit for StagedDirectoryCommit {
+    fn commit(self) -> TransformResult<()> {
+        StagedDirectoryCommit::commit(self)
+    }
+}
+impl AtomicOutputCommit for StagedFileCommit {
+    fn commit(self) -> TransformResult<()> {
+        StagedFileCommit::commit(self)
+    }
+}
+
+#[derive(Debug)]
+struct PreparedRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: RenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMediaInspectRequest {
+    source: std::fs::File,
+    request: MediaInspectRequest,
+}
+
+#[derive(Debug)]
+struct PreparedPlaneCandidatesRequest {
+    source: std::fs::File,
+    request: PlaneCandidatesRequest,
+}
+
+#[derive(Debug)]
+struct PreparedPsdSmartObjectsRequest {
+    source: std::fs::File,
+    request: PsdSmartObjectsRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMediaRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: MediaRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedVectorRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: VectorRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedTiledMediaRenderRequest {
+    source: std::fs::File,
+    output: DirectoryOutputTarget,
+    request: TiledMediaRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedRectifyRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: RectifyRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedProgramRenderRequest {
+    source: std::fs::File,
+    maps: Vec<(String, std::fs::File)>,
+    output: OutputTarget,
+    request: ProgramRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedVariationRenderRequest {
+    assets: Vec<(String, std::fs::File)>,
+    output: DirectoryOutputTarget,
+    request: VariationRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMockupRenderRequest {
+    sources: Vec<(String, std::fs::File)>,
+    output: OutputTarget,
+    request: MockupRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMockupExtractRenderRequest {
+    source: std::fs::File,
+    output: DirectoryOutputTarget,
+    request: MockupExtractRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMeshRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: MeshRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedSurfaceRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: SurfaceRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedDeformationRenderRequest {
+    source: std::fs::File,
+    output: OutputTarget,
+    request: DeformationRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedRemapRenderRequest {
+    source: std::fs::File,
+    map: Option<std::fs::File>,
+    output: OutputTarget,
+    request: RemapRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedTimelineRenderRequest {
+    sources: Vec<(String, std::fs::File)>,
+    output: DirectoryOutputTarget,
+    request: TimelineRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedMotionRenderRequest {
+    sources: Vec<(String, std::fs::File)>,
+    output: DirectoryOutputTarget,
+    request: MotionRenderRequest,
+}
+
+#[derive(Debug)]
+struct PreparedCanvasRenderRequest {
+    source: std::fs::File,
+    output: DirectoryOutputTarget,
+    request: CanvasRenderRequest,
+}
+
+impl TryFrom<RenderInput> for RenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: RenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MediaInspectInput> for MediaInspectRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MediaInspectInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            limits: value.limits.try_into()?,
+        })
+    }
+}
+
+impl TryFrom<PlaneCandidatesInput> for PlaneCandidatesRequest {
+    type Error = TransformError;
+
+    fn try_from(value: PlaneCandidatesInput) -> Result<Self, Self::Error> {
+        value.request.validate()?;
+        Ok(Self {
+            source: value.source,
+            request: value.request,
+        })
+    }
+}
+
+impl From<PsdSmartObjectsInput> for PsdSmartObjectsRequest {
+    fn from(value: PsdSmartObjectsInput) -> Self {
+        Self {
+            source: value.source,
+            request: value.request,
+        }
+    }
+}
+
+impl TryFrom<MediaRenderInput> for MediaRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MediaRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<VectorRenderInput> for VectorRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: VectorRenderInput) -> Result<Self, Self::Error> {
+        if value.options.max_source_bytes == 0
+            || value.options.max_source_bytes > MAX_VECTOR_SOURCE_BYTES
+        {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "vector source byte limit exceeds the Agent ceiling",
+            ));
+        }
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<TiledMediaRenderInput> for TiledMediaRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: TiledMediaRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<RectifyRenderInput> for RectifyRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: RectifyRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<ProgramRenderInput> for ProgramRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: ProgramRenderInput) -> Result<Self, Self::Error> {
+        let inspection = inspect_raster_program(&value.spec)?;
+        let required = inspection
+            .map_slots
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        let provided = value
+            .maps
+            .iter()
+            .map(|map| map.slot_id.as_str())
+            .collect::<HashSet<_>>();
+        if required != provided || provided.len() != value.maps.len() {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "program maps must bind every declared mapSlot exactly once",
+            ));
+        }
+        Ok(Self {
+            source: value.source,
+            maps: value.maps,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<VariationRenderInput> for VariationRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: VariationRenderInput) -> Result<Self, Self::Error> {
+        let plan = plan_variation_job(&value.spec)?;
+        if plan.output_count > MCP_MAX_VARIATION_OUTPUTS {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "Variation Job output count exceeds the Agent response ceiling",
+            )
+            .with_details(json!({
+                "outputCount": plan.output_count,
+                "maximum": MCP_MAX_VARIATION_OUTPUTS,
+            })));
+        }
+        if (value.assets.is_empty()
+            && value.spec.failure_policy != VariationFailurePolicy::Continue)
+            || value.assets.len() > worldbend_core::MAX_VARIATION_JOB_ITEMS
+        {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "Variation Job assets allow at most 64 entries; an empty set requires continue",
+            ));
+        }
+        let mut ids = HashSet::with_capacity(value.assets.len());
+        for asset in &value.assets {
+            if !ids.insert(asset.id.as_str()) {
+                return Err(TransformError::new(
+                    ErrorCode::OutputCollision,
+                    "Variation Job asset ids must be unique",
+                )
+                .with_details(json!({ "assetId": asset.id })));
+            }
+        }
+        Ok(Self {
+            assets: value.assets,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MockupRenderInput> for MockupRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MockupRenderInput) -> Result<Self, Self::Error> {
+        if value.sources.is_empty() || value.sources.len() > worldbend_core::MAX_MOCKUP_PLANES {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                format!(
+                    "mockup sources must contain 1 through {} entries",
+                    worldbend_core::MAX_MOCKUP_PLANES
+                ),
+            ));
+        }
+        let mut ids = std::collections::HashSet::with_capacity(value.sources.len());
+        for source in &value.sources {
+            if !ids.insert(source.id.as_str()) {
+                return Err(TransformError::new(
+                    ErrorCode::OutputCollision,
+                    "mockup source ids must be unique",
+                )
+                .with_details(json!({ "sourceId": source.id })));
+            }
+        }
+        Ok(Self {
+            sources: value.sources,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MockupExtractRenderInput> for MockupExtractRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MockupExtractRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MeshRenderInput> for MeshRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MeshRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<SurfaceRenderInput> for SurfaceRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: SurfaceRenderInput) -> Result<Self, Self::Error> {
+        plan_surface_deformation(&value.spec)?;
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<DeformationRenderInput> for DeformationRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: DeformationRenderInput) -> Result<Self, Self::Error> {
+        plan_deformation_work(&value.spec)?;
+        Ok(Self {
+            source: value.source,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+            plan_view: value.plan_view,
+        })
+    }
+}
+
+impl TryFrom<RemapRenderInput> for RemapRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: RemapRenderInput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            source: value.source,
+            map: value.map,
+            spec: value.spec,
+            output: value.output,
+            options: value.options.try_into()?,
+            overwrite: value.overwrite,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<TimelineRenderInput> for TimelineRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: TimelineRenderInput) -> Result<Self, Self::Error> {
+        if value.sources.is_empty() || value.sources.len() > worldbend_core::MAX_TIMELINE_FRAMES {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "timeline sources must contain between 1 and 240 entries",
+            ));
+        }
+        let mut ids = std::collections::HashSet::with_capacity(value.sources.len());
+        for source in &value.sources {
+            if !ids.insert(source.id.as_str()) {
+                return Err(TransformError::new(
+                    ErrorCode::OutputCollision,
+                    "timeline source ids must be unique",
+                )
+                .with_details(json!({ "sourceId": source.id })));
+            }
+        }
+        Ok(Self {
+            sources: value.sources,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<MotionRenderInput> for MotionRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: MotionRenderInput) -> Result<Self, Self::Error> {
+        let plan = plan_motion(&value.spec)?;
+        if value.sources.len() != 1 || value.sources[0].id != plan.source_id {
+            return Err(TransformError::new(
+                ErrorCode::Schema,
+                "motion sources must contain exactly the planned sourceId",
+            )
+            .with_details(json!({
+                "required": [plan.source_id],
+                "provided": value.sources.iter().map(|source| &source.id).collect::<Vec<_>>(),
+            })));
+        }
+        Ok(Self {
+            sources: value.sources,
+            spec: value.spec,
+            output_directory: value.output_directory,
+            options: value.options.try_into()?,
+            dry_run: value.dry_run,
+        })
+    }
+}
+
+impl TryFrom<CanvasRenderInput> for CanvasRenderRequest {
+    type Error = TransformError;
+
+    fn try_from(value: CanvasRenderInput) -> Result<Self, Self::Error> {
+        match (
+            value.spec,
+            value.plan,
+            value.quality,
+            value.sampling,
+            value.outside_fill,
+        ) {
+            (
+                OptionalInput::Value(spec),
+                OptionalInput::Missing,
+                quality,
+                OptionalInput::Missing,
+                OptionalInput::Missing,
+            ) => Ok(Self {
+                source: value.source,
+                output_directory: value.output_directory,
+                program: CanvasWorkerProgram::Spec {
+                    spec,
+                    quality: match quality {
+                        OptionalInput::Missing => SamplingQuality::default(),
+                        OptionalInput::Value(quality) => quality,
+                    },
+                },
+                dry_run: value.dry_run,
+            }),
+            (
+                OptionalInput::Missing,
+                OptionalInput::Value(plan),
+                OptionalInput::Missing,
+                OptionalInput::Value(sampling),
+                OptionalInput::Value(outside_fill),
+            ) => Ok(Self {
+                source: value.source,
+                output_directory: value.output_directory,
+                program: CanvasWorkerProgram::Plan {
+                    plan,
+                    sampling,
+                    outside_fill,
+                },
+                dry_run: value.dry_run,
+            }),
+            _ => Err(TransformError::new(
+                ErrorCode::Schema,
+                "canvas_render requires exactly one spec or plan; spec accepts only quality, while plan requires sampling and outsideFill",
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WorldbendServer {
+    root: Arc<Option<WorkspaceRoot>>,
+    render_admissions: Arc<Semaphore>,
+    render_slots: Arc<Semaphore>,
+    surface: ToolSurface,
+    publications: Arc<figma_publication::PublicationCache>,
+    video_encoder: Option<video_delivery::EncoderPaths>,
+    tool_router: ToolRouter<Self>,
+}
+
+#[tool_router(router = tool_router)]
+impl WorldbendServer {
+    #[cfg(test)]
+    fn new(root: Option<WorkspaceRoot>) -> Self {
+        Self::new_with_surface(root, ToolSurface::Direct)
+    }
+
+    fn new_with_surface(root: Option<WorkspaceRoot>, surface: ToolSurface) -> Self {
+        let mut tool_router = Self::tool_router();
+        set_input_schema::<ComposeInput>(&mut tool_router, "worldbend.compose");
+        set_input_schema::<SolveInput>(&mut tool_router, "worldbend.solve");
+        set_input_schema::<InspectInput>(&mut tool_router, "worldbend.inspect");
+        set_input_schema::<RenderInput>(&mut tool_router, "worldbend.render");
+        set_input_schema::<RectifyInput>(&mut tool_router, "worldbend.rectify");
+        set_input_schema::<RectifyRenderInput>(&mut tool_router, "worldbend.rectify_render");
+        set_canvas_render_input_schema(&mut tool_router);
+        set_input_schema::<CssInput>(&mut tool_router, "worldbend.css");
+        set_output_schema::<ToolEnvelope<AffineComposition>>(&mut tool_router, "worldbend.compose");
+        set_output_schema::<ToolEnvelope<SolveOutput>>(&mut tool_router, "worldbend.solve");
+        set_output_schema::<ToolEnvelope<InspectOutput>>(&mut tool_router, "worldbend.inspect");
+        set_output_schema::<ToolEnvelope<FileRenderResult>>(&mut tool_router, "worldbend.render");
+        set_output_schema::<ToolEnvelope<RectifyPlan>>(&mut tool_router, "worldbend.rectify");
+        set_output_schema::<ToolEnvelope<RectifyFileRenderResult>>(
+            &mut tool_router,
+            "worldbend.rectify_render",
+        );
+        set_output_schema::<ToolEnvelope<CanvasSetFileRenderResult>>(
+            &mut tool_router,
+            "worldbend.canvas_render",
+        );
+        set_output_schema::<ToolEnvelope<worldbend_core::CssTransform>>(
+            &mut tool_router,
+            "worldbend.css",
+        );
+        set_input_schema::<SearchInput>(&mut tool_router, "worldbend.search");
+        set_input_schema::<DescribeInput>(&mut tool_router, "worldbend.describe");
+        set_input_schema::<RunInput>(&mut tool_router, "worldbend.run");
+        set_output_schema::<ToolEnvelope<SearchResult>>(&mut tool_router, "worldbend.search");
+        set_output_schema::<ToolEnvelope<OperationDescriptor>>(
+            &mut tool_router,
+            "worldbend.describe",
+        );
+        set_output_schema::<ToolEnvelope<Value>>(&mut tool_router, "worldbend.run");
+
+        let hidden = match surface {
+            ToolSurface::Direct => CATALOG_TOOL_NAMES.as_slice(),
+            ToolSurface::Catalog => DIRECT_TOOL_NAMES.as_slice(),
+        };
+        for name in hidden {
+            tool_router.remove_route(name);
+        }
+        Self {
+            root: Arc::new(root),
+            render_admissions: Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS)),
+            render_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS)),
+            surface,
+            publications: Arc::new(figma_publication::PublicationCache::default()),
+            video_encoder: None,
+            tool_router,
+        }
+    }
+
+    /// Search the compact deterministic operation catalog.
+    #[tool(
+        name = "worldbend.search",
+        description = "Find Worldbend operations to discover and compare spatial expressions, save deterministic effect recipes, or create live webpage perspective, shared-plane cards with collinear edges, explicit tilt, image placement, rectification or deformation. Skip when the operation ID is known.",
+        annotations(
+            title = "Search Worldbend operations",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn search(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SearchResult> {
+        let result = parse_tool_input::<SearchInput>(Value::Object(arguments))
+            .and_then(search_operation_catalog);
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Return the exact current input and output schemas for one operation.
+    #[tool(
+        name = "worldbend.describe",
+        description = "Return the exact closed input and output schemas for one Worldbend operation. Use only when the schema is not already known.",
+        annotations(
+            title = "Describe Worldbend operation",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn describe(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<OperationDescriptor> {
+        let result = parse_tool_input::<DescribeInput>(Value::Object(arguments))
+            .map(|input| describe_operation(input.operation));
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Execute one known operation through the same closed parser and handler
+    /// used by its direct compatibility tool.
+    #[tool(
+        name = "worldbend.run",
+        description = "Execute Worldbend: effect_catalog discovers expressions including shared-camera parallax and version-3 spatial appearance, effect_recipe expands reusable data, and effect_plan evaluates explicit state, source coverage, optical focus and optional caller-supplied motion timing. Geometry: plane_strip for aligned live cards, pose for tilt, css for DOM mapping. Figma operations prepare bounded use_figma requests for inspect/apply/stage; continuation operations project inspected published raster controls and current source relationships into standard Spatial Documents and delivery contracts. Exact closed arguments; describe only when needed. Assisted assessments never auto-apply.",
+        annotations(
+            title = "Run Worldbend operation",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn run(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<Value> {
+        let input = match parse_tool_input::<RunInput>(Value::Object(arguments)) {
+            Ok(input) => input,
+            Err(error) => return ToolEnvelope::from_result(Err(error)),
+        };
+        let arguments = Parameters(input.arguments);
+        match input.operation {
+            OperationId::FigmaAppearanceInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaInspectInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::appearance_inspect),
+            )
+            .into_value(),
+            OperationId::FigmaAppearanceApply => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaAppearanceApplyInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::appearance_apply),
+            )
+            .into_value(),
+            OperationId::FigmaTextureInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaInspectInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::texture_inspect),
+            )
+            .into_value(),
+            OperationId::FigmaTextureApply => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaTextureApplyInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::texture_apply),
+            )
+            .into_value(),
+            OperationId::FigmaFoil => ToolEnvelope::from_result(
+                parse_tool_input::<figma_foil::FoilInput>(Value::Object(arguments.0))
+                    .and_then(figma_foil::prepare),
+            )
+            .into_value(),
+            OperationId::FigmaMeshGradient => ToolEnvelope::from_result(
+                parse_tool_input::<figma_mesh_gradient::MeshGradientInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_mesh_gradient::prepare),
+            )
+            .into_value(),
+            OperationId::FigmaNativeCreate => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaNativeCreateInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::create_native),
+            )
+            .into_value(),
+            OperationId::FigmaInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaInspectInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::inspect),
+            )
+            .into_value(),
+            OperationId::FigmaApply => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaApplyInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::apply),
+            )
+            .into_value(),
+            OperationId::FigmaEffectInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaInspectInput>(Value::Object(arguments.0))
+                    .and_then(figma_handoff::effect_inspect),
+            )
+            .into_value(),
+            OperationId::FigmaEffectSources => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaEffectSourcesInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::effect_sources),
+            )
+            .into_value(),
+            OperationId::FigmaLinkedResults => ToolEnvelope::from_result(
+                parse_tool_input::<figma_linked::LinkedInput>(Value::Object(arguments.0))
+                    .and_then(|input| input.with_workspace(self.root.as_ref().as_ref()))
+                    .and_then(figma_linked::prepare)
+                    .and_then(|request| self.publications.prepare(request)),
+            )
+            .into_value(),
+            OperationId::FigmaEffectContinuation => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaEffectContinuationInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::effect_continuation),
+            )
+            .into_value(),
+            OperationId::FigmaEffectStage => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaEffectStageInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::effect_stage),
+            )
+            .into_value(),
+            OperationId::FigmaEffectPublish => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaEffectPublishInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(|input| input.with_workspace(self.root.as_ref().as_ref()))
+                .and_then(figma_handoff::effect_publish)
+                .and_then(|request| self.publications.prepare(request)),
+            )
+            .into_value(),
+            OperationId::FigmaEffectCreate => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaEffectCreateInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::effect_create),
+            )
+            .into_value(),
+            OperationId::FigmaWorkCreate => ToolEnvelope::from_result(
+                parse_tool_input::<figma_linked::WorkCreateInput>(Value::Object(arguments.0))
+                    .and_then(figma_linked::create_work),
+            )
+            .into_value(),
+            OperationId::FigmaWorkRevise => ToolEnvelope::from_result(
+                parse_tool_input::<figma_work::WorkInput>(Value::Object(arguments.0))
+                    .and_then(|input| input.with_workspace(self.root.as_ref().as_ref()))
+                    .and_then(figma_work::prepare)
+                    .and_then(|request| self.publications.prepare(request)),
+            )
+            .into_value(),
+            OperationId::FigmaWorkContinuation => ToolEnvelope::from_result(
+                parse_tool_input::<figma_work_continuation::Input>(Value::Object(arguments.0))
+                    .and_then(figma_work_continuation::prepare)
+                    .and_then(|output| output.prepare_publication(&self.publications)),
+            )
+            .into_value(),
+            OperationId::FigmaVectorWork => ToolEnvelope::from_result(
+                parse_tool_input::<figma_vector::VectorInput>(Value::Object(arguments.0))
+                    .and_then(figma_vector::prepare)
+                    .and_then(|request| self.publications.prepare(request)),
+            )
+            .into_value(),
+            OperationId::FigmaMockupInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaMockupInspectInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::mockup_inspect),
+            )
+            .into_value(),
+            OperationId::FigmaTemplatesInspect => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaTemplatesInspectInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::templates_inspect),
+            )
+            .into_value(),
+            OperationId::FigmaSceneCreate => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaSceneCreateInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::scene_create),
+            )
+            .into_value(),
+            OperationId::FigmaPublicationStep => ToolEnvelope::from_result(
+                parse_tool_input::<figma_publication::PublicationStepInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(|input| self.publications.step(input)),
+            )
+            .into_value(),
+            OperationId::FigmaMockupPublish => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaMockupPublishInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(|input| input.with_workspace(self.root.as_ref().as_ref()))
+                .and_then(figma_handoff::mockup_publish)
+                .and_then(|request| self.publications.prepare(request)),
+            )
+            .into_value(),
+            OperationId::FigmaCompositionContinuation => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaCompositionContinuationInput>(
+                    Value::Object(arguments.0),
+                )
+                .and_then(figma_handoff::composition_continuation),
+            )
+            .into_value(),
+            OperationId::FigmaMockupStage => ToolEnvelope::from_result(
+                parse_tool_input::<figma_handoff::FigmaMockupStageInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(figma_handoff::mockup_stage),
+            )
+            .into_value(),
+            OperationId::PlaneStrip => ToolEnvelope::from_result(
+                parse_tool_input::<PlaneStripInput>(Value::Object(arguments.0))
+                    .and_then(|input| project_plane_strip(&input)),
+            )
+            .into_value(),
+            OperationId::EffectCatalog => ToolEnvelope::from_result(
+                parse_tool_input::<EffectCatalogInput>(Value::Object(arguments.0))
+                    .and_then(|input| effect_catalog(&input)),
+            )
+            .into_value(),
+            OperationId::EffectRecipe => ToolEnvelope::from_result(
+                parse_tool_input::<EffectRecipeInput>(Value::Object(arguments.0))
+                    .and_then(|input| effect_recipe(&input)),
+            )
+            .into_value(),
+            OperationId::EffectPlan => ToolEnvelope::from_result(
+                parse_tool_input::<EffectPlanInput>(Value::Object(arguments.0))
+                    .and_then(|input| effect_plan(&input)),
+            )
+            .into_value(),
+            OperationId::AppearanceInspect => ToolEnvelope::from_result(
+                parse_tool_input::<AppearanceInspectionInput>(Value::Object(arguments.0))
+                    .and_then(|input| inspect_appearance(&input)),
+            )
+            .into_value(),
+            OperationId::AppearanceRevision => ToolEnvelope::from_result(
+                parse_tool_input::<AppearanceRevisionInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_appearance_revision(&input)),
+            )
+            .into_value(),
+            OperationId::AppearanceDelivery => ToolEnvelope::from_result(
+                parse_tool_input::<AppearanceDeliveryInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_appearance_delivery(&input)),
+            )
+            .into_value(),
+            OperationId::AppearanceProfiles => ToolEnvelope::from_result(
+                parse_tool_input::<AppearanceProfileQuery>(Value::Object(arguments.0))
+                    .and_then(|input| discover_appearance_profiles(&input)),
+            )
+            .into_value(),
+            OperationId::AppearanceUpdate => ToolEnvelope::from_result(
+                parse_tool_input::<AppearanceUpdateInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_appearance_update(&input)),
+            )
+            .into_value(),
+            OperationId::AppearanceExposure => ToolEnvelope::from_result(
+                parse_tool_input::<AppearanceExposureInput>(Value::Object(arguments.0))
+                    .and_then(|input| resolve_appearance_exposure(&input)),
+            )
+            .into_value(),
+            OperationId::MaterialPreference => ToolEnvelope::from_result(
+                parse_tool_input::<worldbend_core::MaterialPreferenceInput>(Value::Object(
+                    arguments.0,
+                ))
+                .and_then(|input| worldbend_core::resolve_material_preference(&input)),
+            )
+            .into_value(),
+            OperationId::AppearancePreference => ToolEnvelope::from_result(
+                parse_tool_input::<AppearancePreferenceInput>(Value::Object(arguments.0))
+                    .and_then(|input| resolve_appearance_preference(&input)),
+            )
+            .into_value(),
+            OperationId::FoilUpdate => ToolEnvelope::from_result(
+                parse_tool_input::<FoilUpdateInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_foil_update(&input)),
+            )
+            .into_value(),
+            OperationId::MeshGradientUpdate => ToolEnvelope::from_result(
+                parse_tool_input::<MeshGradientUpdateInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_mesh_gradient_update(&input)),
+            )
+            .into_value(),
+            OperationId::MeshGradientInspect => ToolEnvelope::from_result(
+                parse_tool_input::<MeshGradientInspectionInput>(Value::Object(arguments.0))
+                    .and_then(|input| inspect_mesh_gradient(&input)),
+            )
+            .into_value(),
+            OperationId::MeshGradientRevision => ToolEnvelope::from_result(
+                parse_tool_input::<MeshGradientRevisionInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_mesh_gradient_revision(&input)),
+            )
+            .into_value(),
+            OperationId::MeshGradientDelivery => ToolEnvelope::from_result(
+                parse_tool_input::<MeshGradientDeliveryInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_mesh_gradient_delivery(&input)),
+            )
+            .into_value(),
+            OperationId::TextureInspect => ToolEnvelope::from_result(
+                parse_tool_input::<TextureInspectionInput>(Value::Object(arguments.0))
+                    .and_then(|input| inspect_texture(&input)),
+            )
+            .into_value(),
+            OperationId::FoilInspect => ToolEnvelope::from_result(
+                parse_tool_input::<FoilInspectionInput>(Value::Object(arguments.0))
+                    .and_then(|input| inspect_foil(&input)),
+            )
+            .into_value(),
+            OperationId::TextureRevision => ToolEnvelope::from_result(
+                parse_tool_input::<TextureRevisionInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_texture_revision(&input)),
+            )
+            .into_value(),
+            OperationId::FoilRevision => ToolEnvelope::from_result(
+                parse_tool_input::<FoilRevisionInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_foil_revision(&input)),
+            )
+            .into_value(),
+            OperationId::TextureDelivery => ToolEnvelope::from_result(
+                parse_tool_input::<TextureDeliveryInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_texture_delivery(&input)),
+            )
+            .into_value(),
+            OperationId::FoilDelivery => ToolEnvelope::from_result(
+                parse_tool_input::<FoilDeliveryInput>(Value::Object(arguments.0))
+                    .and_then(|input| plan_foil_delivery(&input)),
+            )
+            .into_value(),
+            OperationId::WindowPlan => ToolEnvelope::from_result(
+                parse_tool_input::<SurfaceWindowSpec>(Value::Object(arguments.0))
+                    .and_then(|input| plan_surface_window(&input)),
+            )
+            .into_value(),
+            OperationId::Pose => ToolEnvelope::from_result(
+                parse_tool_input::<PlanePoseInput>(Value::Object(arguments.0))
+                    .and_then(|input| project_plane_pose(&input)),
+            )
+            .into_value(),
+            OperationId::CardPose => ToolEnvelope::from_result(
+                parse_tool_input::<CardPoseInput>(Value::Object(arguments.0))
+                    .and_then(|input| project_card_pose(&input)),
+            )
+            .into_value(),
+            OperationId::CardPointer => ToolEnvelope::from_result(
+                parse_tool_input::<CardPointerInput>(Value::Object(arguments.0))
+                    .and_then(|input| sample_card_pointer(&input)),
+            )
+            .into_value(),
+            OperationId::CardIdle => ToolEnvelope::from_result(
+                parse_tool_input::<CardIdleInput>(Value::Object(arguments.0))
+                    .and_then(|input| sample_card_idle(&input)),
+            )
+            .into_value(),
+            OperationId::CardTurn => ToolEnvelope::from_result(
+                parse_tool_input::<CardTurnInput>(Value::Object(arguments.0))
+                    .and_then(|input| sample_card_turn(&input)),
+            )
+            .into_value(),
+            OperationId::Compose => self.compose(arguments).into_value(),
+            OperationId::Solve => self.solve(arguments).into_value(),
+            OperationId::Inspect => self.inspect(arguments).into_value(),
+            OperationId::Render => self.render(arguments, cancellation).await.into_value(),
+            OperationId::MediaInspect => self
+                .media_inspect(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::PlaneCandidates => self
+                .plane_candidates(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::PsdSmartObjects => self
+                .psd_smart_objects(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MediaRender => self
+                .media_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::VectorRender => self
+                .vector_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::TiledMediaRender => self
+                .tiled_media_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::Rectify => self.rectify(arguments).into_value(),
+            OperationId::RectifyRender => self
+                .rectify_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::ProgramInspect => self.program_inspect(arguments).into_value(),
+            OperationId::ProgramRender => self
+                .program_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::TemplateInspect => self.template_inspect(arguments).into_value(),
+            OperationId::DocumentInspect => self.document_inspect(arguments).into_value(),
+            OperationId::DocumentAssemble => self.document_assemble(arguments).into_value(),
+            OperationId::DocumentUpdatePlan => self.document_update_plan(arguments).into_value(),
+            OperationId::DocumentDeliveryPlan => {
+                self.document_delivery_plan(arguments).into_value()
+            }
+            OperationId::InteractiveMediaBundlePlan => {
+                self.interactive_media_bundle_plan(arguments).into_value()
+            }
+            OperationId::VariationPlan => self.variation_plan(arguments).into_value(),
+            OperationId::VariationRender => self
+                .variation_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::CanvasRender => self
+                .canvas_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MockupPlan => self.mockup_plan(arguments).into_value(),
+            OperationId::MockupRender => self
+                .mockup_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MockupExtractPlan => self.mockup_extract_plan(arguments).into_value(),
+            OperationId::MockupExtractRender => self
+                .mockup_extract_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MeshPlan => self.mesh_plan(arguments).into_value(),
+            OperationId::MeshRender => self.mesh_render(arguments, cancellation).await.into_value(),
+            OperationId::SurfacePlan => self.surface_plan(arguments).into_value(),
+            OperationId::SurfaceRender => self
+                .surface_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::DeformationPlan => self.deformation_plan(arguments).into_value(),
+            OperationId::DeformationRender => self
+                .deformation_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::DeformationMigrate => self.deformation_migrate(arguments).into_value(),
+            OperationId::RemapPlan => self.remap_plan(arguments).into_value(),
+            OperationId::RemapRender => self
+                .remap_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::TimelinePlan => self.timeline_plan(arguments).into_value(),
+            OperationId::TimelineRender => self
+                .timeline_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::MotionPlan => self.motion_plan(arguments).into_value(),
+            OperationId::MockupMotionAuthoring => ToolEnvelope::from_result(
+                parse_tool_input::<motion_authoring::Input>(Value::Object(arguments.0))
+                    .and_then(motion_authoring::run),
+            )
+            .into_value(),
+            OperationId::MotionRender => self
+                .motion_render(arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::VideoPlan => video_delivery::plan(arguments).into_value(),
+            OperationId::VideoRender => video_delivery::render(self, arguments, cancellation)
+                .await
+                .into_value(),
+            OperationId::Css => self.css(arguments).into_value(),
+        }
+    }
+
+    fn mockup_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MockupPlan> {
+        let result = parse_tool_input::<MockupPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_mockup(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn mockup_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MockupFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MockupRenderInput>(Value::Object(arguments))
+            .and_then(MockupRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "mockup_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_mockup_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Mockup render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_mockup_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn mockup_extract_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MockupExtractPlan> {
+        let result = parse_tool_input::<MockupExtractPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_mockup_extract(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn mockup_extract_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MockupExtractFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MockupExtractRenderInput>(Value::Object(arguments))
+            .and_then(MockupExtractRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "mockup_extract_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_mockup_extract_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Mockup extraction",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_mockup_extract_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn mesh_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MeshWarpPlan> {
+        let result = parse_tool_input::<MeshPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_mesh_warp(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn mesh_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MeshWarpFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MeshRenderInput>(Value::Object(arguments))
+            .and_then(MeshRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "mesh_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_mesh_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Mesh render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_mesh_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn surface_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SurfaceDeformationPlan> {
+        let result = parse_tool_input::<SurfacePlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_surface_deformation(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn deformation_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<DeformationPlanOutput> {
+        let result = parse_tool_input::<DeformationPlanInput>(Value::Object(arguments))
+            .and_then(|input| {
+                let plan = project_deformation_plan(plan_deformation_work(&input.spec)?, input.plan_view);
+                preflight_render_result(&plan).map_err(|error| {
+                    if error.code == ErrorCode::OutputLimit {
+                        TransformError::new(ErrorCode::OutputLimit, "deformation plan exceeds the MCP response bound; use planView:state to retain the complete recipe without generated editing meshes")
+                    } else { error }
+                })?;
+                Ok(plan)
+            });
+        ToolEnvelope::from_result(result)
+    }
+
+    fn deformation_migrate(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<DeformationWorkMigration> {
+        let result = parse_tool_input::<DeformationMigrateInput>(Value::Object(arguments))
+            .and_then(DeformationWorkSourceSpec::try_from)
+            .and_then(|source| migrate_deformation_work(&source));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn deformation_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<DeformationRenderOutput> {
+        let started = Instant::now();
+        let input = parse_tool_input::<DeformationRenderInput>(Value::Object(arguments))
+            .and_then(DeformationRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "deformation_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_deformation_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Deformation Work render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_deformation_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn surface_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<SurfaceDeformationFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<SurfaceRenderInput>(Value::Object(arguments))
+            .and_then(SurfaceRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "surface_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_surface_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Surface Deformation render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_surface_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn remap_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<RemapPlan> {
+        let result = parse_tool_input::<RemapPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_remap(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn remap_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<RemapFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<RemapRenderInput>(Value::Object(arguments))
+            .and_then(RemapRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "remap_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_remap_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Remap render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_remap_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn timeline_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<TimelinePlan> {
+        let result = parse_tool_input::<TimelinePlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_timeline(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn timeline_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<TimelineFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<TimelineRenderInput>(Value::Object(arguments))
+            .and_then(TimelineRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "timeline_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_timeline_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Timeline",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_timeline_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn motion_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<MotionPlan> {
+        let result = parse_tool_input::<MotionPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_motion(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn motion_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MotionFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MotionRenderInput>(Value::Object(arguments))
+            .and_then(MotionRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "motion_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_motion_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Motion",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_motion_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Compose semantic transform adjustments over a saved plane without rasterizing.
+    #[tool(
+        name = "worldbend.compose",
+        description = "Compose scale, clockwise rotation, skew, translation, a bounds-relative pivot, source flips, or one bounded Warp preset over a saved TransformSpec without rasterizing. Omit pivot for the default center (0.5,0.5). Returns updated geometry and diagnostics.",
+        annotations(
+            title = "Compose transform",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn compose(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<AffineComposition> {
+        let result = parse_tool_input::<ComposeInput>(Value::Object(arguments))
+            .and_then(|input| compose_affine(&input.spec, input.target_size, input.transform));
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Solve and validate a projective transform from an explicit destination quadrilateral.
+    #[tool(
+        name = "worldbend.solve",
+        description = "Solve and validate an explicit perspective or corner-pin plane. Use instead of manually calculating a homography or CSS matrix3d.",
+        annotations(
+            title = "Solve projective plane",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn solve(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SolveOutput> {
+        let result = parse_tool_input::<SolveInput>(Value::Object(arguments)).and_then(|input| {
+            let spec = TransformSpec {
+                schema: worldbend_core::SPEC_SCHEMA.to_owned(),
+                version: worldbend_core::SPEC_VERSION.to_owned(),
+                destination: input.destination,
+                content: input.content,
+            };
+            solve_spec(&spec, input.target_size)
+        });
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Inspect a saved TransformSpec and report current geometry and numerical diagnostics.
+    #[tool(
+        name = "worldbend.inspect",
+        description = "Inspect and validate a saved TransformSpec, including bounds, reprojection, invertibility, and horizon safety.",
+        annotations(
+            title = "Inspect projective plane",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn inspect(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<InspectOutput> {
+        let result = parse_tool_input::<InspectInput>(Value::Object(arguments))
+            .and_then(|input| inspect_spec(&input.spec, input.target_size));
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Render a local raster through a saved plane using a bounded isolated worker.
+    #[tool(
+        name = "worldbend.render",
+        description = "Render or replace a PNG, JPEG, or WebP source through a TransformSpec. Paths stay inside the granted workspace. dryRun performs the full solve, rasterization, and PNG encode but does not publish.",
+        annotations(
+            title = "Render projective raster",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<FileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<RenderInput>(Value::Object(arguments))
+            .and_then(RenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Transform render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_render_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn media_inspect(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MediaSourceInfo> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MediaInspectInput>(Value::Object(arguments))
+            .and_then(MediaInspectRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "media_inspect requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_media_inspect_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            "media inspection",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_media_inspect_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn media_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<MediaFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<MediaRenderInput>(Value::Object(arguments))
+            .and_then(MediaRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "media_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_media_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "media render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_media_render_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn plane_candidates(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<PlaneCandidateResponse> {
+        let started = Instant::now();
+        let input = parse_tool_input::<PlaneCandidatesInput>(Value::Object(arguments))
+            .and_then(PlaneCandidatesRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "plane_candidates requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_plane_candidates_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "perception capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            "plane candidate assessment",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_plane_candidates_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn psd_smart_objects(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<PsdSmartObjectResponse> {
+        let started = Instant::now();
+        let input = parse_tool_input::<PsdSmartObjectsInput>(Value::Object(arguments))
+            .map(PsdSmartObjectsRequest::from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "psd_smart_objects requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_psd_smart_objects_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "interoperability capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        execute_bounded_render(
+                            "PSD Smart Object interoperability",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            run_psd_smart_objects_worker(prepared),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn vector_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<VectorFileResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<VectorRenderInput>(Value::Object(arguments))
+            .and_then(VectorRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "vector_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_vector_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "vector render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_vector_render_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn tiled_media_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<TiledMediaRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<TiledMediaRenderInput>(Value::Object(arguments))
+            .and_then(TiledMediaRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "tiled_media_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_tiled_media_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "tiled media output",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_tiled_media_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Solve an explicit source-plane quadrilateral into a declared output rectangle.
+    #[tool(
+        name = "worldbend.rectify",
+        description = "Validate and solve one explicit source quadrilateral into an explicit integer output rectangle. This deterministic operation does not detect a plane, infer aspect ratio, inspect pixels, or estimate a camera.",
+        annotations(
+            title = "Plan plane rectification",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn rectify(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<RectifyPlan> {
+        let result = parse_tool_input::<RectifyInput>(Value::Object(arguments))
+            .and_then(|input| rectify_plane(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Render an explicitly selected source plane through a bounded isolated worker.
+    #[tool(
+        name = "worldbend.rectify_render",
+        description = "Flatten one caller-specified source quadrilateral into its declared PNG output rectangle. Paths stay inside the granted workspace; no plane detection, aspect inference, or camera estimation is performed. dryRun renders and encodes without publishing.",
+        annotations(
+            title = "Render plane rectification",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn rectify_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<RectifyFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<RectifyRenderInput>(Value::Object(arguments))
+            .and_then(RectifyRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "rectify_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_rectify_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Rectification render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_rectify_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn program_inspect(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<RasterProgramInspection> {
+        let result = parse_tool_input::<ProgramInspectInput>(Value::Object(arguments))
+            .and_then(|input| inspect_raster_program(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn program_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<RasterProgramFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<ProgramRenderInput>(Value::Object(arguments))
+            .and_then(ProgramRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "program_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_program_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Raster Program render",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_program_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    fn template_inspect(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SpatialTemplateInspection> {
+        let result = parse_tool_input::<TemplateInspectInput>(Value::Object(arguments))
+            .and_then(|input| inspect_spatial_template(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn document_inspect(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SpatialDocumentInspection> {
+        let result = parse_tool_input::<DocumentInspectInput>(Value::Object(arguments))
+            .and_then(|input| inspect_spatial_document(&input.spec));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn document_assemble(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SpatialDocumentAssemblyPlan> {
+        let result = parse_tool_input::<SpatialDocumentAssemblyInput>(Value::Object(arguments))
+            .and_then(|input| plan_spatial_document_assembly(&input));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn document_update_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SpatialDocumentUpdatePlan> {
+        let result = parse_tool_input::<SpatialDocumentUpdateInput>(Value::Object(arguments))
+            .and_then(|input| plan_spatial_document_update(&input));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn document_delivery_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SpatialDocumentDeliveryPlan> {
+        let result = parse_tool_input::<SpatialDocumentDeliveryInput>(Value::Object(arguments))
+            .and_then(|input| plan_spatial_document_delivery(&input));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn interactive_media_bundle_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<SpatialInteractiveMediaBundle> {
+        let result =
+            parse_tool_input::<SpatialInteractiveMediaBundleInput>(Value::Object(arguments))
+                .and_then(|input| prepare_spatial_interactive_media_bundle(&input));
+        ToolEnvelope::from_result(result)
+    }
+
+    fn variation_plan(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<VariationJobPlan> {
+        let result = parse_tool_input::<VariationPlanInput>(Value::Object(arguments))
+            .and_then(|input| plan_variation_job(&input.spec))
+            .and_then(|plan| {
+                if plan.output_count > MCP_MAX_VARIATION_OUTPUTS {
+                    return Err(TransformError::new(
+                        ErrorCode::OutputLimit,
+                        "Variation Job output count exceeds the Agent response ceiling",
+                    )
+                    .with_details(json!({
+                        "outputCount": plan.output_count,
+                        "maximum": MCP_MAX_VARIATION_OUTPUTS,
+                    })));
+                }
+                Ok(plan)
+            });
+        ToolEnvelope::from_result(result)
+    }
+
+    async fn variation_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<VariationJobFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<VariationRenderInput>(Value::Object(arguments))
+            .and_then(VariationRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "variation_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_variation_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Variation Job",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_variation_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Render one ordered Canvas Set atomically through a bounded isolated worker.
+    #[tool(
+        name = "worldbend.canvas_render",
+        description = "Render one source into an ordered Canvas Set from either an explicit spec or a resolved plan. Every variant reads the original source. The new output directory is committed atomically; dryRun fully renders and hashes without publishing. Plan replay requires explicit sampling and outside fill.",
+        annotations(
+            title = "Render Canvas Set",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn canvas_render(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+        cancellation: CancellationToken,
+    ) -> ToolEnvelope<CanvasSetFileRenderResult> {
+        let started = Instant::now();
+        let input = parse_tool_input::<CanvasRenderInput>(Value::Object(arguments))
+            .and_then(CanvasRenderRequest::try_from);
+        let result = match (self.root.as_ref(), input) {
+            (_, Err(error)) => Err(error),
+            (None, Ok(_)) => Err(TransformError::new(
+                ErrorCode::PathOutsideRoot,
+                "canvas_render requires an explicit workspace grant via --root or WORLDBEND_WORKSPACE_ROOT",
+            )),
+            (Some(root), Ok(input)) => match prepare_canvas_render_request(root, input) {
+                Err(error) => Err(error),
+                Ok(prepared) => match self.render_admissions.clone().try_acquire_owned() {
+                    Err(_) => Err(TransformError::new(
+                        ErrorCode::Capacity,
+                        "render capacity is full; retry after current work completes",
+                    )
+                    .with_details(json!({
+                        "retryable": true,
+                        "maximumInFlight": MAX_IN_FLIGHT_RENDERS,
+                        "maximumConcurrent": MAX_CONCURRENT_RENDERS
+                    }))),
+                    Ok(admission) => {
+                        let remaining = WORKER_TIMEOUT.saturating_sub(started.elapsed());
+                        let work_cancellation = cancellation.child_token();
+                        execute_bounded_output(
+                            "Canvas Set",
+                            admission,
+                            self.render_slots.clone(),
+                            remaining,
+                            cancellation,
+                            work_cancellation.clone(),
+                            run_canvas_worker(prepared, work_cancellation),
+                        )
+                        .await
+                    }
+                },
+            },
+        };
+        ToolEnvelope::from_result(result)
+    }
+
+    /// Emit CSS matrix3d values for a live image, video, iframe, canvas, or DOM element.
+    #[tool(
+        name = "worldbend.css",
+        description = "Emit CSS matrix3d for a TransformSpec plane. Supply destinationSize for normalized specs. Non-zero Warp requires raster or WebGL output.",
+        annotations(
+            title = "Emit projective CSS",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn css(
+        &self,
+        Parameters(arguments): Parameters<Map<String, Value>>,
+    ) -> ToolEnvelope<worldbend_core::CssTransform> {
+        let result = parse_tool_input::<CssInput>(Value::Object(arguments)).and_then(|input| {
+            emit_css_transform(&input.spec, input.element_size, input.destination_size)
+        });
+        ToolEnvelope::from_result(result)
+    }
+}
+
+#[tool_handler(router = self.tool_router)]
+impl ServerHandler for WorldbendServer {
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResponse, rmcp::ErrorData> {
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        guard_tool_call(self.tool_router.call(tcc)).await
+    }
+
+    fn get_info(&self) -> ServerInfo {
+        let instructions = match self.surface {
+            ToolSurface::Direct => {
+                "Use one direct Worldbend tool for semantic transform composition, explicit destination geometry, explicit source-plane rectification, ordered Canvas Set rendering, bounded common Warp presets, inspection, render, or CSS. Canvas operations and variants are caller-chosen; Worldbend does not choose crops or infer content. Rectification requires caller-supplied source corners and output dimensions. Plane detection, aspect inference, and custom mesh warp are not provided. Corner order is always TL, TR, BR, BL."
+            }
+            ToolSurface::Catalog => {
+                "Worldbend creates live webpage perspective for cards, videos, iframes and DOM, and reusable image mappings. Use plane_strip for adjacent cards sharing collinear top/bottom edges; pose for explicit tilt angles and perspective distance; css for a saved four-corner mapping. Agent-authored design parameters are valid inputs. Call worldbend.run for known operations; search for unfamiliar operations and describe for unknown schemas. Geometry and Canvas execution are deterministic; creative choice stays with the caller. Corner order is TL, TR, BR, BL."
+            }
+        };
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new("worldbend", env!("CARGO_PKG_VERSION")))
+            .with_instructions(instructions)
+    }
+}
+
+/// Run one admitted render while honoring queue fairness, the whole-call
+/// deadline, and client cancellation. The admission permit is dropped with the
+/// future on every exit path; the worker permit and its process (via
+/// `kill_on_drop`) and staging directory follow the same drop.
+async fn execute_bounded_render<T, F>(
+    operation: &'static str,
+    admission: OwnedSemaphorePermit,
+    slots: Arc<Semaphore>,
+    deadline_remaining: Duration,
+    cancellation: CancellationToken,
+    work: F,
+) -> TransformResult<T>
+where
+    T: Send,
+    F: Future<Output = TransformResult<T>> + Send,
+{
+    tokio::select! {
+        _ = cancellation.cancelled() => Err(TransformError::new(
+            ErrorCode::Cancelled,
+            format!("{operation} was cancelled by the client before completion"),
+        )),
+        outcome = timeout(deadline_remaining, async move {
+            let _admission = admission;
+            let _permit = slots.acquire_owned().await.map_err(|_| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    "render concurrency gate is unavailable",
+                )
+            })?;
+            work.await
+        }) => match outcome {
+            Ok(inner) => inner,
+            Err(_) => Err(render_timeout_error(
+                &format!("queued for or executing {operation}"),
+                deadline_remaining,
+            )),
+        },
+    }
+}
+
+/// Keep one atomic-output admission and execution slot through the commit
+/// point. All cancellable/timeout-bound work, including same-parent staging,
+/// completes first. The final token/deadline check is followed by exactly one
+/// synchronous descriptor-relative commit and no await.
+async fn execute_bounded_output<T, C, F>(
+    operation: &'static str,
+    admission: OwnedSemaphorePermit,
+    slots: Arc<Semaphore>,
+    deadline_remaining: Duration,
+    cancellation: CancellationToken,
+    work_cancellation: CancellationToken,
+    work: F,
+) -> TransformResult<T>
+where
+    T: Send,
+    C: AtomicOutputCommit,
+    F: Future<Output = TransformResult<PreparedOutputResult<T, C>>> + Send,
+{
+    let started = Instant::now();
+    let _admission = admission;
+    let slot_remaining = deadline_remaining.saturating_sub(started.elapsed());
+    let _slot = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "atomic output render was cancelled by the client before completion",
+        )),
+        outcome = timeout(slot_remaining, slots.acquire_owned()) => match outcome {
+            Ok(Ok(permit)) => permit,
+            Ok(Err(_)) => return Err(TransformError::new(
+                ErrorCode::Internal,
+                "render concurrency gate is unavailable",
+            )),
+            Err(_) => return Err(render_timeout_error(
+                "queued for an atomic output execution slot",
+                deadline_remaining,
+            )),
+        }
+    };
+
+    let work_remaining = deadline_remaining.saturating_sub(started.elapsed());
+    tokio::pin!(work);
+    let mut prepared = tokio::select! {
+        _ = cancellation.cancelled() => {
+            // The work future may currently own a running spawn_blocking copy.
+            // Signal its chunked copier, then await the future so cleanup is
+            // complete instead of detaching a hidden same-parent directory.
+            work_cancellation.cancel();
+            let _ = work.await;
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "atomic output render was cancelled by the client before completion",
+            ));
+        },
+        _ = tokio::time::sleep(work_remaining) => {
+            work_cancellation.cancel();
+            let _ = work.await;
+            return Err(render_timeout_error(
+                &format!("executing {operation}"),
+                deadline_remaining,
+            ));
+        },
+        result = &mut work => result?,
+    };
+
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "atomic output render was cancelled by the client before commit",
+        ));
+    }
+    if started.elapsed() >= deadline_remaining {
+        return Err(render_timeout_error(
+            &format!("preflighting the {operation} commit"),
+            deadline_remaining,
+        ));
+    }
+    if let Some(commit) = prepared.commit.take() {
+        commit.commit()?;
+    }
+    Ok(prepared.result)
+}
+
+fn render_timeout_error(stage: &str, deadline: Duration) -> TransformError {
+    TransformError::new(
+        ErrorCode::Timeout,
+        format!(
+            "render exceeded its {} ms whole-call deadline while {stage}; reduce target dimensions, sampling quality, or Canvas variant count before retrying",
+            deadline.as_millis()
+        ),
+    )
+    .with_details(json!({
+        "deadlineMs": u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),
+        "stage": stage,
+        "retryableAfterReducingWork": true
+    }))
+}
+
+/// Classify the observable worker exit rather than turning every missing
+/// envelope into E_MEMORY. A protocol failure or ordinary crash is internal;
+/// only the signals/messages tied to an enforced resource ceiling use the
+/// timeout or memory contracts.
+fn classify_worker_death(status: &ExitStatus, stderr: &str) -> (ErrorCode, &'static str) {
+    classify_worker_failure(status.success(), worker_exit_signal(status), stderr)
+}
+
+fn classify_worker_failure(
+    success: bool,
+    signal: Option<i32>,
+    stderr: &str,
+) -> (ErrorCode, &'static str) {
+    #[cfg(not(unix))]
+    let _ = signal;
+    if stderr.contains("panicked at") {
+        return (
+            ErrorCode::Internal,
+            "render worker panicked before returning a structured result",
+        );
+    }
+    #[cfg(unix)]
+    if signal == Some(libc::SIGXCPU) {
+        return (
+            ErrorCode::Timeout,
+            "render worker exhausted its CPU-time ceiling",
+        );
+    }
+    let memory_message = stderr.contains("memory allocation")
+        || stderr.to_ascii_lowercase().contains("out of memory");
+    // SIGKILL alone also describes external interruption. The controller
+    // returns E_MEMORY when its measured footprint actually breaches the cap.
+    if memory_message {
+        return (
+            ErrorCode::Memory,
+            "render worker terminated under its resource ceiling",
+        );
+    }
+    if success {
+        return (
+            ErrorCode::Internal,
+            "render worker exited successfully without returning a structured result",
+        );
+    }
+    (
+        ErrorCode::Internal,
+        "render worker exited without returning a structured result",
+    )
+}
+
+#[cfg(unix)]
+fn worker_exit_signal(status: &ExitStatus) -> Option<i32> {
+    use std::os::unix::process::ExitStatusExt;
+    status.signal()
+}
+
+#[cfg(not(unix))]
+fn worker_exit_signal(_status: &ExitStatus) -> Option<i32> {
+    None
+}
+
+/// A panic inside a tool handler must surface as a bounded structured
+/// `E_INTERNAL` result instead of silently dropping the request.
+async fn guard_tool_call<F>(future: F) -> Result<CallToolResponse, rmcp::ErrorData>
+where
+    F: Future<Output = Result<CallToolResponse, rmcp::ErrorData>>,
+{
+    match futures::FutureExt::catch_unwind(std::panic::AssertUnwindSafe(future)).await {
+        Ok(result) => result,
+        Err(_) => {
+            let envelope: ToolEnvelope<FileRenderResult> = ToolEnvelope::Failure {
+                ok: false,
+                error: TransformError::new(
+                    ErrorCode::Internal,
+                    "tool handler panicked while processing the request",
+                ),
+            };
+            envelope.into_call_tool_result()
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WorkerMockupSource {
+    id: String,
+    source: PathBuf,
+    source_sha256: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WorkerVariationAsset {
+    id: String,
+    source: PathBuf,
+    source_sha256: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WorkerRemapMap {
+    path: PathBuf,
+    sha256: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "camelCase")]
+enum WorkerRequest {
+    Transform {
+        source: PathBuf,
+        source_sha256: String,
+        spec: TransformSpec,
+        output: PathBuf,
+        options: RenderOptions,
+    },
+    MediaInspect {
+        source: PathBuf,
+        limits: RenderLimits,
+    },
+    PlaneCandidates {
+        source: PathBuf,
+        request: PlaneCandidateRequest,
+    },
+    PsdSmartObjects {
+        source: PathBuf,
+        request: PsdSmartObjectRequest,
+    },
+    Media {
+        source: PathBuf,
+        spec: TransformSpec,
+        output: PathBuf,
+        options: MediaRenderOptions,
+    },
+    Vector {
+        source: PathBuf,
+        spec: TransformSpec,
+        output: PathBuf,
+        options: VectorRenderOptions,
+    },
+    TiledMedia {
+        source: PathBuf,
+        spec: TransformSpec,
+        output_directory: PathBuf,
+        options: TiledMediaRenderOptions,
+    },
+    Rectify {
+        source: PathBuf,
+        source_sha256: String,
+        spec: RectifySpec,
+        output: PathBuf,
+        options: RectifyRenderOptions,
+    },
+    RasterProgram {
+        source: PathBuf,
+        source_sha256: String,
+        maps: Vec<WorkerVariationAsset>,
+        spec: RasterProgramSpec,
+        output: PathBuf,
+        options: RasterProgramRenderOptions,
+    },
+    VariationJob {
+        assets: Vec<WorkerVariationAsset>,
+        spec: VariationJobSpec,
+        output_directory: PathBuf,
+        options: VariationJobRenderOptions,
+    },
+    CanvasSet {
+        source: PathBuf,
+        program: CanvasWorkerProgram,
+        output_directory: PathBuf,
+        options: CanvasSetRenderOptions,
+    },
+    Mockup {
+        sources: Vec<WorkerMockupSource>,
+        spec: MockupSpec,
+        output: PathBuf,
+        options: MockupRenderOptions,
+    },
+    MockupExtract {
+        source: PathBuf,
+        source_sha256: String,
+        spec: MockupExtractSpec,
+        output_directory: PathBuf,
+        options: MockupExtractRenderOptions,
+    },
+    Mesh {
+        source: PathBuf,
+        source_sha256: String,
+        spec: MeshWarpSpec,
+        output: PathBuf,
+        options: MeshWarpRenderOptions,
+    },
+    Surface {
+        source: PathBuf,
+        source_sha256: String,
+        spec: SurfaceDeformationSpec,
+        output: PathBuf,
+        options: MeshWarpRenderOptions,
+    },
+    Deformation {
+        source: PathBuf,
+        source_sha256: String,
+        spec: DeformationWorkSpec,
+        output: PathBuf,
+        options: MeshWarpRenderOptions,
+        #[serde(default)]
+        plan_view: DeformationPlanView,
+    },
+    Remap {
+        source: PathBuf,
+        source_sha256: String,
+        map: Option<WorkerRemapMap>,
+        spec: RemapSpec,
+        output: PathBuf,
+        options: RemapRenderOptions,
+    },
+    Timeline {
+        sources: Vec<WorkerMockupSource>,
+        spec: TimelineSpec,
+        output_directory: PathBuf,
+        options: TimelineRenderOptions,
+    },
+    Motion {
+        sources: Vec<WorkerMockupSource>,
+        spec: MotionSpec,
+        output_directory: PathBuf,
+        options: TimelineRenderOptions,
+    },
+    Video {
+        source: WorkerMockupSource,
+        spec: worldbend_core::VideoSpec,
+        output: PathBuf,
+        options: worldbend_render::VideoRenderOptions,
+        encoder: video_delivery::EncoderPaths,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum WorkerEnvelope<T> {
+    Success { ok: bool, result: Box<T> },
+    Failure { ok: bool, error: TransformError },
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+    if args.worker_render || args.worker_video {
+        run_worker_process(args.worker_video);
+        return Ok(());
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run_server(args))
+}
+
+async fn run_server(args: Args) -> anyhow::Result<()> {
+    let video_encoder = video_delivery::EncoderPaths::configured(args.ffmpeg, args.ffprobe)?;
+    let root = args
+        .root
+        .or_else(|| std::env::var_os("WORLDBEND_WORKSPACE_ROOT").map(PathBuf::from))
+        .as_deref()
+        .map(WorkspaceRoot::open_with_canonical_path)
+        .transpose()?;
+    let configured_staging_root =
+        std::env::var_os("WORLDBEND_PRIVATE_STAGING_ROOT").map(PathBuf::from);
+    let private_staging_root = resolve_private_staging_root(
+        configured_staging_root.as_deref(),
+        root.as_ref().map(|(_, path)| path.as_path()),
+    )?;
+    PRIVATE_STAGING_ROOT
+        .set(private_staging_root)
+        .map_err(|_| anyhow::anyhow!("private staging root was already initialized"))?;
+    let root = root.map(|(workspace, _)| workspace);
+    let mut server = WorldbendServer::new_with_surface(root, args.surface);
+    server.video_encoder = video_encoder;
+    let service = server.serve(stdio()).await?;
+    service.waiting().await?;
+    Ok(())
+}
+
+fn resolve_private_staging_root(
+    configured: Option<&Path>,
+    workspace_root: Option<&Path>,
+) -> anyhow::Result<PathBuf> {
+    let candidate = configured
+        .map(Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
+    if !candidate.is_absolute() {
+        anyhow::bail!("WORLDBEND_PRIVATE_STAGING_ROOT must be an absolute path");
+    }
+    let canonical = fs::canonicalize(&candidate).map_err(|error| {
+        anyhow::anyhow!("WORLDBEND_PRIVATE_STAGING_ROOT is not accessible: {error}")
+    })?;
+    if !fs::metadata(&canonical)?.is_dir() {
+        anyhow::bail!("WORLDBEND_PRIVATE_STAGING_ROOT must resolve to a directory");
+    }
+    if workspace_root.is_some_and(|root| canonical.starts_with(root)) {
+        anyhow::bail!("WORLDBEND_PRIVATE_STAGING_ROOT must be outside the granted workspace root");
+    }
+    tempfile::Builder::new()
+        .prefix(".worldbend-private-root-check-")
+        .tempdir_in(&canonical)
+        .map_err(|error| {
+            anyhow::anyhow!("WORLDBEND_PRIVATE_STAGING_ROOT is not writable: {error}")
+        })?;
+    Ok(canonical)
+}
+
+fn create_private_staging(
+    prefix: &str,
+    error_message: &'static str,
+) -> TransformResult<tempfile::TempDir> {
+    let root = PRIVATE_STAGING_ROOT.get().ok_or_else(|| {
+        TransformError::new(
+            ErrorCode::Internal,
+            "private staging root was not initialized",
+        )
+    })?;
+    tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir_in(root)
+        .map_err(|error| {
+            TransformError::new(ErrorCode::Render, error_message)
+                .with_details(json!({ "reason": error.to_string() }))
+        })
+}
+
+fn run_worker_process(video: bool) {
+    let mut bytes = Vec::new();
+    let result = apply_worker_self_limits(
+        WORKER_MEMORY_BYTES,
+        if video {
+            VIDEO_WORKER_TIMEOUT
+        } else {
+            WORKER_TIMEOUT
+        },
+        worker_render_threads(),
+    )
+    .and_then(|_| {
+        std::io::stdin()
+            .take((MAX_WORKER_REQUEST_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|error| TransformError::new(ErrorCode::Internal, error.to_string()))
+    })
+    .and_then(|_| {
+        if bytes.len() > MAX_WORKER_REQUEST_BYTES {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "worker request exceeds byte limit",
+            ));
+        }
+        serde_json::from_slice::<WorkerRequest>(&bytes).map_err(|error| {
+            TransformError::new(
+                ErrorCode::Schema,
+                format!("invalid worker request: {error}"),
+            )
+        })
+    });
+    match result {
+        Ok(WorkerRequest::Transform {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_file_with_source_sha256(
+            &source,
+            &source_sha256,
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+        )),
+        Ok(WorkerRequest::MediaInspect { source, limits }) => {
+            write_worker_result(inspect_media_file(&source, limits))
+        }
+        Ok(WorkerRequest::PlaneCandidates { source, request }) => {
+            write_worker_result(analyze_plane_candidates_file(&source, &request))
+        }
+        Ok(WorkerRequest::PsdSmartObjects { source, request }) => {
+            let result = fs::File::open(&source)
+                .map_err(|error| {
+                    TransformError::new(ErrorCode::Render, "failed to open staged PSD/PSB source")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })
+                .and_then(|file| read_bounded_worker_source(file, MAX_PSD_SOURCE_BYTES))
+                .and_then(|bytes| execute_psd_smart_object_request(&bytes, &request));
+            write_worker_result(result);
+        }
+        Ok(WorkerRequest::Media {
+            source,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_media_file(
+            &source, &spec, &output, options, true, false,
+        )),
+        Ok(WorkerRequest::Vector {
+            source,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_vector_file(
+            &source, &spec, &output, options, true, false,
+        )),
+        Ok(WorkerRequest::TiledMedia {
+            source,
+            spec,
+            output_directory,
+            options,
+        }) => write_worker_result(render_tiled_media_directory(
+            &source,
+            &spec,
+            &output_directory,
+            options,
+            false,
+        )),
+        Ok(WorkerRequest::Rectify {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(rectify_file_with_source_sha256(
+            &source,
+            &source_sha256,
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+        )),
+        Ok(WorkerRequest::RasterProgram {
+            source,
+            source_sha256,
+            maps,
+            spec,
+            output,
+            options,
+        }) => {
+            let maps = maps
+                .into_iter()
+                .map(|map| {
+                    (
+                        map.id,
+                        RemapFileMap {
+                            path: map.source,
+                            sha256: Some(map.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_raster_program_file_with_maps(
+                &source,
+                Some(&source_sha256),
+                &maps,
+                &spec,
+                &output,
+                options,
+                true,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::VariationJob {
+            assets,
+            spec,
+            output_directory,
+            options,
+        }) => {
+            let assets = assets
+                .into_iter()
+                .map(|asset| {
+                    (
+                        asset.id,
+                        VariationFileAsset {
+                            path: asset.source,
+                            source_sha256: Some(asset.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_variation_job_files_with_cancel(
+                &assets,
+                &spec,
+                &output_directory,
+                options,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::CanvasSet {
+            source,
+            program,
+            output_directory,
+            options,
+        }) => write_worker_result(run_canvas_set_worker_process(
+            &source,
+            program,
+            &output_directory,
+            options,
+        )),
+        Ok(WorkerRequest::Mockup {
+            sources,
+            spec,
+            output,
+            options,
+        }) => {
+            let sources = sources
+                .into_iter()
+                .map(|source| {
+                    (
+                        source.id,
+                        MockupFileSource {
+                            path: source.source,
+                            source_sha256: Some(source.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_mockup_files_with_cancel(
+                &sources,
+                &spec,
+                &output,
+                options,
+                true,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::MockupExtract {
+            source,
+            source_sha256,
+            spec,
+            output_directory,
+            options,
+        }) => write_worker_result(render_mockup_extract_files_with_cancel(
+            &source,
+            Some(&source_sha256),
+            &spec,
+            &output_directory,
+            options,
+            false,
+            &|| false,
+        )),
+        Ok(WorkerRequest::Mesh {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_mesh_warp_file_with_cancel(
+            &source,
+            Some(&source_sha256),
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+            &|| false,
+        )),
+        Ok(WorkerRequest::Surface {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+        }) => write_worker_result(render_surface_deformation_file_with_cancel(
+            &source,
+            Some(&source_sha256),
+            &spec,
+            &output,
+            options,
+            true,
+            false,
+            &|| false,
+        )),
+        Ok(WorkerRequest::Deformation {
+            source,
+            source_sha256,
+            spec,
+            output,
+            options,
+            plan_view,
+        }) => write_worker_result(
+            render_deformation_work_file_with_cancel(
+                &source,
+                Some(&source_sha256),
+                &spec,
+                &output,
+                options,
+                true,
+                false,
+                &|| false,
+            )
+            .map(|result| DeformationRenderOutput::from_core(result, plan_view)),
+        ),
+        Ok(WorkerRequest::Remap {
+            source,
+            source_sha256,
+            map,
+            spec,
+            output,
+            options,
+        }) => {
+            let map = map.map(|map| RemapFileMap {
+                path: map.path,
+                sha256: Some(map.sha256),
+            });
+            write_worker_result(render_remap_file_with_cancel(
+                &source,
+                Some(&source_sha256),
+                map.as_ref(),
+                &spec,
+                &output,
+                options,
+                true,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::Timeline {
+            sources,
+            spec,
+            output_directory,
+            options,
+        }) => {
+            let sources = sources
+                .into_iter()
+                .map(|source| {
+                    (
+                        source.id,
+                        TimelineFileSource {
+                            path: source.source,
+                            source_sha256: Some(source.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_timeline_files_with_cancel(
+                &sources,
+                &spec,
+                &output_directory,
+                options,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::Motion {
+            sources,
+            spec,
+            output_directory,
+            options,
+        }) => {
+            let sources = sources
+                .into_iter()
+                .map(|source| {
+                    (
+                        source.id,
+                        TimelineFileSource {
+                            path: source.source,
+                            source_sha256: Some(source.source_sha256),
+                        },
+                    )
+                })
+                .collect();
+            write_worker_result(render_motion_files_with_cancel(
+                &sources,
+                &spec,
+                &output_directory,
+                options,
+                false,
+                &|| false,
+            ));
+        }
+        Ok(WorkerRequest::Video {
+            source,
+            spec,
+            output,
+            options,
+            encoder,
+        }) => {
+            if !video {
+                write_worker_result::<worldbend_render::VideoRenderResult>(Err(
+                    TransformError::new(
+                        ErrorCode::Internal,
+                        "video requires its bounded worker profile",
+                    ),
+                ));
+            } else {
+                write_worker_result(video_delivery::run_worker(
+                    source, spec, output, options, encoder,
+                ));
+            }
+        }
+        Err(error) => write_worker_result::<FileRenderResult>(Err(error)),
+    }
+}
+
+fn read_bounded_worker_source(file: fs::File, maximum: usize) -> TransformResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    file.take((maximum + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            TransformError::new(ErrorCode::Render, "failed to read staged PSD/PSB source")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+    if bytes.len() > maximum {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "PSD/PSB source exceeds the Agent byte ceiling",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn run_canvas_set_worker_process(
+    source: &std::path::Path,
+    program: CanvasWorkerProgram,
+    output_directory: &std::path::Path,
+    options: CanvasSetRenderOptions,
+) -> TransformResult<CanvasSetFileRenderResult> {
+    match program {
+        CanvasWorkerProgram::Spec { spec, quality } => {
+            let options = CanvasSetRenderOptions { quality, ..options };
+            render_canvas_set_file(
+                source,
+                CanvasSetProgram::Spec(&spec),
+                output_directory,
+                options,
+                false,
+            )
+        }
+        CanvasWorkerProgram::Plan {
+            plan,
+            sampling,
+            outside_fill,
+        } => render_canvas_set_file(
+            source,
+            CanvasSetProgram::Plan {
+                plan: &plan,
+                replay: CanvasReplayOptions {
+                    sampling,
+                    outside_fill: canvas_background_rgba(outside_fill),
+                },
+            },
+            output_directory,
+            options,
+            false,
+        ),
+    }
+}
+
+fn canvas_background_rgba(background: CanvasBackground) -> [u8; 4] {
+    match background {
+        CanvasBackground::Transparent {} => [0, 0, 0, 0],
+        CanvasBackground::Color { rgba, .. } => rgba,
+    }
+}
+
+fn write_worker_result<T: Serialize>(result: TransformResult<T>) {
+    let envelope = match result {
+        Ok(result) => WorkerEnvelope::Success {
+            ok: true,
+            result: Box::new(result),
+        },
+        Err(error) => WorkerEnvelope::Failure { ok: false, error },
+    };
+    if let Ok(serialized) = serde_json::to_vec(&envelope) {
+        let _ = std::io::stdout().write_all(&serialized);
+    }
+}
+
+fn prepare_render_request(
+    root: &WorkspaceRoot,
+    request: RenderRequest,
+) -> TransformResult<PreparedRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_media_inspect_request(
+    root: &WorkspaceRoot,
+    request: MediaInspectRequest,
+) -> TransformResult<PreparedMediaInspectRequest> {
+    let source = root.open_source(&request.source)?;
+    Ok(PreparedMediaInspectRequest { source, request })
+}
+
+fn prepare_plane_candidates_request(
+    root: &WorkspaceRoot,
+    request: PlaneCandidatesRequest,
+) -> TransformResult<PreparedPlaneCandidatesRequest> {
+    let source = root.open_source(&request.source)?;
+    Ok(PreparedPlaneCandidatesRequest { source, request })
+}
+
+fn prepare_psd_smart_objects_request(
+    root: &WorkspaceRoot,
+    request: PsdSmartObjectsRequest,
+) -> TransformResult<PreparedPsdSmartObjectsRequest> {
+    let source = root.open_source(&request.source)?;
+    Ok(PreparedPsdSmartObjectsRequest { source, request })
+}
+
+fn prepare_media_render_request(
+    root: &WorkspaceRoot,
+    request: MediaRenderRequest,
+) -> TransformResult<PreparedMediaRenderRequest> {
+    validate_media_output_extension(&request.output, &request.options.output)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_file_output(&request.output, request.overwrite)?;
+    Ok(PreparedMediaRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_vector_render_request(
+    root: &WorkspaceRoot,
+    request: VectorRenderRequest,
+) -> TransformResult<PreparedVectorRenderRequest> {
+    validate_vector_output_extension(&request.output, request.options.carrier)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_file_output(&request.output, request.overwrite)?;
+    Ok(PreparedVectorRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn validate_media_output_extension(output: &str, format: &MediaOutput) -> TransformResult<()> {
+    let extension = Path::new(output)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase);
+    let valid = extension
+        .as_deref()
+        .is_some_and(|extension| media_output_accepts_extension(format, extension));
+    if !valid {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "media output extension must match the requested format",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_vector_output_extension(output: &str, carrier: VectorCarrier) -> TransformResult<()> {
+    let extension = Path::new(output)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase);
+    let valid = matches!(
+        (carrier, extension.as_deref()),
+        (VectorCarrier::Svg, Some("svg")) | (VectorCarrier::Html, Some("html" | "htm"))
+    );
+    if !valid {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "vector output extension must match the requested carrier",
+        ));
+    }
+    Ok(())
+}
+
+fn prepare_tiled_media_render_request(
+    root: &WorkspaceRoot,
+    request: TiledMediaRenderRequest,
+) -> TransformResult<PreparedTiledMediaRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedTiledMediaRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_rectify_render_request(
+    root: &WorkspaceRoot,
+    request: RectifyRenderRequest,
+) -> TransformResult<PreparedRectifyRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedRectifyRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_program_render_request(
+    root: &WorkspaceRoot,
+    request: ProgramRenderRequest,
+) -> TransformResult<PreparedProgramRenderRequest> {
+    inspect_raster_program(&request.spec)?;
+    let source = root.open_source(&request.source)?;
+    let maps = request
+        .maps
+        .iter()
+        .map(|map| Ok((map.slot_id.clone(), root.open_source(&map.source)?)))
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedProgramRenderRequest {
+        source,
+        maps,
+        output,
+        request,
+    })
+}
+
+fn prepare_variation_render_request(
+    root: &WorkspaceRoot,
+    request: VariationRenderRequest,
+) -> TransformResult<PreparedVariationRenderRequest> {
+    let plan = plan_variation_job(&request.spec)?;
+    if plan.output_count > MCP_MAX_VARIATION_OUTPUTS {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "Variation Job output count exceeds the Agent response ceiling",
+        ));
+    }
+    let required = plan.asset_ids.iter().collect::<HashSet<_>>();
+    let provided = request
+        .assets
+        .iter()
+        .map(|asset| &asset.id)
+        .collect::<HashSet<_>>();
+    if provided.iter().any(|id| !required.contains(id)) {
+        let mut required = required.into_iter().cloned().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "Variation Job assets must not include unknown assetId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    // Under `continue` a missing asset is a per-item decode failure recorded
+    // by the renderer; only unknown extra assets abort the whole job.
+    if request.spec.failure_policy != VariationFailurePolicy::Continue && required != provided {
+        let mut required = required.into_iter().cloned().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "Variation Job assets must exactly match the planned assetId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    let assets = request
+        .assets
+        .iter()
+        .map(|asset| {
+            root.open_source(&asset.source)
+                .map(|file| (asset.id.clone(), file))
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedVariationRenderRequest {
+        assets,
+        output,
+        request,
+    })
+}
+
+fn prepare_mockup_render_request(
+    root: &WorkspaceRoot,
+    request: MockupRenderRequest,
+) -> TransformResult<PreparedMockupRenderRequest> {
+    let plan = plan_mockup(&request.spec)?;
+    let required = plan
+        .planes
+        .iter()
+        .map(|plane| plane.source_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let provided = request
+        .sources
+        .iter()
+        .map(|source| source.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    if required != provided {
+        let mut required = required.into_iter().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "mockup sources must exactly match the distinct sourceId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    let sources = request
+        .sources
+        .iter()
+        .map(|source| {
+            root.open_source(&source.source)
+                .map(|file| (source.id.clone(), file))
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedMockupRenderRequest {
+        sources,
+        output,
+        request,
+    })
+}
+
+fn prepare_mockup_extract_render_request(
+    root: &WorkspaceRoot,
+    request: MockupExtractRenderRequest,
+) -> TransformResult<PreparedMockupExtractRenderRequest> {
+    let plan = plan_mockup_extract(&request.spec)?;
+    if plan.cumulative_output_pixels > request.options.max_cumulative_pixels {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "mockup extraction exceeds the configured cumulative output pixel limit",
+        )
+        .with_details(json!({
+            "pixels": plan.cumulative_output_pixels,
+            "maximum": request.options.max_cumulative_pixels,
+        })));
+    }
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedMockupExtractRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_mesh_render_request(
+    root: &WorkspaceRoot,
+    request: MeshRenderRequest,
+) -> TransformResult<PreparedMeshRenderRequest> {
+    plan_mesh_warp(&request.spec)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedMeshRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_surface_render_request(
+    root: &WorkspaceRoot,
+    request: SurfaceRenderRequest,
+) -> TransformResult<PreparedSurfaceRenderRequest> {
+    plan_surface_deformation(&request.spec)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedSurfaceRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_deformation_render_request(
+    root: &WorkspaceRoot,
+    request: DeformationRenderRequest,
+) -> TransformResult<PreparedDeformationRenderRequest> {
+    plan_deformation_work(&request.spec)?;
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedDeformationRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+fn prepare_remap_render_request(
+    root: &WorkspaceRoot,
+    request: RemapRenderRequest,
+) -> TransformResult<PreparedRemapRenderRequest> {
+    let plan = plan_remap(&request.spec)?;
+    if plan.requires_map != request.map.is_some() {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            if plan.requires_map {
+                "displacement remap requires exactly one map raster"
+            } else {
+                "lens remap must not include a map raster"
+            },
+        ));
+    }
+    let source = root.open_source(&request.source)?;
+    let map = request
+        .map
+        .as_deref()
+        .map(|path| root.open_source(path))
+        .transpose()?;
+    let output = root.prepare_output(&request.output, request.overwrite)?;
+    Ok(PreparedRemapRenderRequest {
+        source,
+        map,
+        output,
+        request,
+    })
+}
+
+fn prepare_timeline_render_request(
+    root: &WorkspaceRoot,
+    request: TimelineRenderRequest,
+) -> TransformResult<PreparedTimelineRenderRequest> {
+    let plan = plan_timeline(&request.spec)?;
+    if plan.cumulative_output_pixels > request.options.max_cumulative_pixels {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "timeline exceeds the configured cumulative output pixel limit",
+        ));
+    }
+    let required = plan
+        .source_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
+    let provided = request
+        .sources
+        .iter()
+        .map(|source| &source.id)
+        .collect::<std::collections::HashSet<_>>();
+    if required != provided {
+        let mut required = required.into_iter().cloned().collect::<Vec<_>>();
+        let mut provided = provided.into_iter().cloned().collect::<Vec<_>>();
+        required.sort_unstable();
+        provided.sort_unstable();
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "timeline sources must exactly match the planned sourceId values",
+        )
+        .with_details(json!({ "required": required, "provided": provided })));
+    }
+    let sources = request
+        .sources
+        .iter()
+        .map(|source| {
+            root.open_source(&source.source)
+                .map(|file| (source.id.clone(), file))
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedTimelineRenderRequest {
+        sources,
+        output,
+        request,
+    })
+}
+
+fn prepare_motion_render_request(
+    root: &WorkspaceRoot,
+    request: MotionRenderRequest,
+) -> TransformResult<PreparedMotionRenderRequest> {
+    let plan = plan_motion(&request.spec)?;
+    if plan.timeline.cumulative_output_pixels > request.options.max_cumulative_pixels {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "motion exceeds the configured cumulative output pixel limit",
+        ));
+    }
+    if request.sources.len() != 1 || request.sources[0].id != plan.source_id {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "motion sources must exactly match the planned sourceId",
+        ));
+    }
+    let sources = request
+        .sources
+        .iter()
+        .map(|source| {
+            root.open_source(&source.source)
+                .map(|file| (source.id.clone(), file))
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedMotionRenderRequest {
+        sources,
+        output,
+        request,
+    })
+}
+
+fn prepare_canvas_render_request(
+    root: &WorkspaceRoot,
+    request: CanvasRenderRequest,
+) -> TransformResult<PreparedCanvasRenderRequest> {
+    let source = root.open_source(&request.source)?;
+    let output = root.prepare_output_directory(&request.output_directory)?;
+    Ok(PreparedCanvasRenderRequest {
+        source,
+        output,
+        request,
+    })
+}
+
+async fn run_render_worker(
+    prepared: PreparedRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<FileRenderResult>, TransformError> {
+    let PreparedRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    // The worker sees only a private copy and a private output path. Agent-
+    // controlled path components are opened once through the workspace
+    // capability and are never re-resolved inside the child process.
+    let staging = create_private_staging(
+        ".worldbend-stage-",
+        "private render staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = input.options.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            max_source_bytes,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Transform {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: FileRenderResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Transform worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_media_inspect_worker(
+    prepared: PreparedMediaInspectRequest,
+) -> Result<MediaSourceInfo, TransformError> {
+    let PreparedMediaInspectRequest { source, request } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-media-inspect-",
+        "private media staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = request.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, max_source_bytes)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private source staging task failed: {error}"),
+        )
+    })??;
+    let worker = WorkerRequest::MediaInspect {
+        source: staged_source,
+        limits: request.limits,
+    };
+    let result: MediaSourceInfo = execute_worker_request(&worker).await?;
+    if !result.source_sha256.eq_ignore_ascii_case(&source_sha256) {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "media inspection digest does not match the staged source",
+        ));
+    }
+    preflight_render_result(&result)?;
+    Ok(result)
+}
+
+async fn run_plane_candidates_worker(
+    prepared: PreparedPlaneCandidatesRequest,
+) -> Result<PlaneCandidateResponse, TransformError> {
+    let PreparedPlaneCandidatesRequest { source, request } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-perception-stage-",
+        "private perception staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = request.request.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private perception source staging task failed: {error}"),
+        )
+    })??;
+    let worker = WorkerRequest::PlaneCandidates {
+        source: staged_source,
+        request: request.request,
+    };
+    let result: PlaneCandidateResponse = execute_worker_request(&worker).await?;
+    if !result
+        .source
+        .source_sha256
+        .eq_ignore_ascii_case(&source_sha256)
+    {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "perception source digest does not match the staged source",
+        ));
+    }
+    preflight_render_result(&result)?;
+    Ok(result)
+}
+
+async fn run_psd_smart_objects_worker(
+    prepared: PreparedPsdSmartObjectsRequest,
+) -> Result<PsdSmartObjectResponse, TransformError> {
+    let PreparedPsdSmartObjectsRequest { source, request } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-psd-stage-",
+        "private PSD interoperability staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.psd");
+    let staged_source_for_copy = staged_source.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, MAX_PSD_SOURCE_BYTES as u64)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private PSD source staging task failed: {error}"),
+        )
+    })??;
+    let worker = WorkerRequest::PsdSmartObjects {
+        source: staged_source,
+        request: request.request,
+    };
+    let result: PsdSmartObjectResponse = execute_worker_request(&worker).await?;
+    let reported_sha256 = match &result {
+        PsdSmartObjectResponse::Inspection { inspection } => &inspection.source.sha256,
+        PsdSmartObjectResponse::TemplatePlan { plan } => &plan.source.sha256,
+        PsdSmartObjectResponse::CurveWorkPlan { plan } => &plan.source.sha256,
+    };
+    if !reported_sha256.eq_ignore_ascii_case(&source_sha256) {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "PSD interoperability source digest does not match the staged source",
+        ));
+    }
+    preflight_render_result(&result)?;
+    Ok(result)
+}
+
+async fn run_media_render_worker(
+    prepared: PreparedMediaRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<MediaFileRenderResult>, TransformError> {
+    let PreparedMediaRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-media-stage-",
+        "private media staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = input.options.render.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            max_source_bytes,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join(format!(
+        "result.{}",
+        media_output_extension(&input.options.output)
+    ));
+    let worker = WorkerRequest::Media {
+        source: staged_source,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: MediaFileRenderResult =
+        execute_cancellable_worker_request(&worker, &cancellation).await?;
+    if !result
+        .source
+        .source_sha256
+        .eq_ignore_ascii_case(&source_sha256)
+    {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "media render source digest does not match the staged source",
+        ));
+    }
+    verify_worker_output(
+        staged_output.clone(),
+        "media render worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_vector_render_worker(
+    prepared: PreparedVectorRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<VectorFileResult>, TransformError> {
+    let PreparedVectorRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-vector-stage-",
+        "private vector staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.svg");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            maximum,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private vector source staging task failed: {error}"),
+        )
+    })??;
+    let extension = match input.options.carrier {
+        VectorCarrier::Svg => "svg",
+        VectorCarrier::Html => "html",
+    };
+    let staged_output = staging.path().join(format!("result.{extension}"));
+    let request = WorkerRequest::Vector {
+        source: staged_source,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: VectorFileResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    if !result.source_sha256.eq_ignore_ascii_case(&source_sha256) {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "vector worker source digest does not match the staged source",
+        ));
+    }
+    verify_worker_output(
+        staged_output.clone(),
+        "vector worker",
+        result.bytes,
+        result.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    let bytes = result.bytes;
+    let digest = result.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_tiled_media_worker(
+    prepared: PreparedTiledMediaRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<TiledMediaRenderResult>, TransformError> {
+    let PreparedTiledMediaRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let tile_extension = media_output_extension(&input.options.output);
+    let staging = create_private_staging(
+        ".worldbend-tiled-stage-",
+        "private tiled staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.source_limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private tiled source staging task failed: {error}"),
+        )
+    })??;
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "tiled media render was cancelled while staging its source",
+        ));
+    }
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::TiledMedia {
+        source: staged_source,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: TiledMediaRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "tiled media render was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let source_sha256_for_normalize = source_sha256.clone();
+    let normalize_cancellation = cancellation.clone();
+    result = tokio::task::spawn_blocking(move || {
+        normalize_tiled_media_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &source_sha256_for_normalize,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("tiled media verification task failed: {error}"),
+        )
+    })??;
+    preflight_render_result(&result)?;
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_flat_files_from_with_cancel(
+            &staged_output_for_copy,
+            MCP_MAX_TILED_TILES as usize + 1,
+            &[tile_extension, "json"],
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("tiled media output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_tiled_media_worker_result(
+    result: &mut TiledMediaRenderResult,
+    staged_output: &Path,
+    output_directory: &str,
+    dry_run: bool,
+    source_sha256: &str,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    let manifest = &mut result.manifest;
+    let expected_count = manifest.rows.checked_mul(manifest.columns).ok_or_else(|| {
+        TransformError::new(ErrorCode::Internal, "tiled worker tile count overflowed")
+    })?;
+    if manifest.schema != TILED_MEDIA_SCHEMA
+        || manifest.version != TILED_MEDIA_VERSION
+        || !manifest
+            .source
+            .source_sha256
+            .eq_ignore_ascii_case(source_sha256)
+        || expected_count == 0
+        || expected_count > MCP_MAX_TILED_TILES.min(MAX_TILED_TILES)
+        || manifest.tiles.len() != expected_count as usize
+        || manifest.tile_width == 0
+        || manifest.tile_height == 0
+        || manifest.placement.width == 0
+        || manifest.placement.height == 0
+        || manifest.columns != manifest.placement.width.div_ceil(manifest.tile_width)
+        || manifest.rows != manifest.placement.height.div_ceil(manifest.tile_height)
+        || manifest.output_pixels > MCP_MAX_TILED_PIXELS.min(MAX_TILED_OUTPUT_PIXELS)
+        || manifest.encoded_bytes > MCP_MAX_TILED_ENCODED_BYTES.min(MAX_TILED_ENCODED_BYTES)
+    {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "tiled worker result exceeds its correlated Agent limits",
+        ));
+    }
+    let extension = match manifest.media.format {
+        MediaFormat::Png => "png",
+        MediaFormat::Tiff => "tiff",
+        MediaFormat::Jpeg => "jpg",
+        MediaFormat::Webp => "webp",
+    };
+    let mut expected_files = Vec::with_capacity(manifest.tiles.len() + 1);
+    let mut encoded_bytes = 0_u64;
+    for (index, tile) in manifest.tiles.iter_mut().enumerate() {
+        let row = u32::try_from(index).unwrap_or(u32::MAX) / manifest.columns;
+        let column = u32::try_from(index).unwrap_or(u32::MAX) % manifest.columns;
+        let expected_x = column.saturating_mul(manifest.tile_width);
+        let expected_y = row.saturating_mul(manifest.tile_height);
+        let expected_width = manifest
+            .tile_width
+            .min(manifest.placement.width - expected_x);
+        let expected_height = manifest
+            .tile_height
+            .min(manifest.placement.height - expected_y);
+        let filename = format!("tile-r{row:04}-c{column:04}.{extension}");
+        if tile.row != row
+            || tile.column != column
+            || tile.x != expected_x
+            || tile.y != expected_y
+            || tile.width != expected_width
+            || tile.height != expected_height
+            || tile.filename != filename
+            || !valid_sha256(&tile.sha256)
+        {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "tiled worker tile does not match its manifest geometry",
+            ));
+        }
+        let path = staged_output.join(&filename);
+        let (bytes, sha256) = hash_regular_file(&path, "tiled worker", is_cancelled)?;
+        if bytes != tile.bytes || !sha256.eq_ignore_ascii_case(&tile.sha256) {
+            return Err(TransformError::new(
+                ErrorCode::Internal,
+                "tiled worker tile bytes do not match its manifest",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "tiled encoded byte count overflowed",
+            )
+        })?;
+        expected_files.push(filename);
+    }
+    if encoded_bytes != manifest.encoded_bytes {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "tiled worker encoded byte count does not match its manifest",
+        ));
+    }
+    let manifest_path = staged_output.join("worldbend.tiled-media.json");
+    let (_, manifest_sha256) =
+        hash_regular_file(&manifest_path, "tiled worker manifest", is_cancelled)?;
+    if !valid_sha256(&result.manifest_sha256)
+        || !manifest_sha256.eq_ignore_ascii_case(&result.manifest_sha256)
+    {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "tiled worker manifest digest does not match the manifest file",
+        ));
+    }
+    expected_files.push("worldbend.tiled-media.json".to_owned());
+    let mut actual_files = read_entry_names(staged_output)?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            "tiled worker directory contains unexpected entries",
+        ));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        TiledMediaStatus::Ready
+    } else {
+        TiledMediaStatus::Written
+    };
+    Ok(())
+}
+
+async fn run_rectify_worker(
+    prepared: PreparedRectifyRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<RectifyFileRenderResult>, TransformError> {
+    let PreparedRectifyRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-stage-",
+        "private render staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = input.options.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            max_source_bytes,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Rectify {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: RectifyFileRenderResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Rectification worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_program_worker(
+    prepared: PreparedProgramRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<RasterProgramFileRenderResult>, TransformError> {
+    let PreparedProgramRenderRequest {
+        source,
+        maps,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-program-stage-",
+        "private program staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let max_source_bytes = input.options.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            max_source_bytes,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private program source staging task failed: {error}"),
+        )
+    })??;
+    let mut staged_maps = Vec::with_capacity(maps.len());
+    for (index, (id, map)) in maps.into_iter().enumerate() {
+        if cancellation.is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "Raster Program was cancelled while staging control rasters",
+            ));
+        }
+        let staged_map = staging.path().join(format!("map-{index}.raster"));
+        let staged_map_for_copy = staged_map.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let staging_cancellation = cancellation.clone();
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+                map,
+                &staged_map_for_copy,
+                maximum,
+                &|| staging_cancellation.is_cancelled(),
+            )
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private program map staging task failed: {error}"),
+            )
+        })??;
+        staged_maps.push(WorkerVariationAsset {
+            id,
+            source: staged_map,
+            source_sha256,
+        });
+    }
+    let mut expected_maps = staged_maps
+        .iter()
+        .map(|map| worldbend_render::RasterProgramMapEvidence {
+            slot_id: map.id.clone(),
+            sha256: map.source_sha256.clone(),
+        })
+        .collect::<Vec<_>>();
+    expected_maps.sort_by(|a, b| a.slot_id.cmp(&b.slot_id));
+    let staged_output = staging.path().join("result.png");
+    let expected_spec = input.spec.clone();
+    let expected_options = input.options;
+    let request = WorkerRequest::RasterProgram {
+        source: staged_source,
+        source_sha256,
+        maps: staged_maps,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: RasterProgramFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(ErrorCode::Cancelled, "Raster Program was cancelled while its worker was running")),
+        result = execute_worker_request(&request) => result?,
+    };
+    validate_program_worker_result(&result, &expected_spec, expected_options, &expected_maps)?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Raster Program worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+fn validate_program_worker_result(
+    result: &RasterProgramFileRenderResult,
+    spec: &RasterProgramSpec,
+    options: RasterProgramRenderOptions,
+    maps: &[worldbend_render::RasterProgramMapEvidence],
+) -> TransformResult<()> {
+    if result.maps != maps
+        || result.inspection != inspect_raster_program(spec)?
+        || result.stages.len() != spec.stages.len()
+    {
+        return Err(TransformError::new(
+            ErrorCode::Render,
+            "Raster Program worker returned different stage or map evidence",
+        ));
+    }
+    let mut pixels = 0_u64;
+    let mut previous = None;
+    for (stage, expected) in result.stages.iter().zip(&spec.stages) {
+        if stage.id != expected.id()
+            || stage.kind != expected.kind()
+            || previous.is_some_and(|size| size != stage.input)
+        {
+            return Err(TransformError::new(
+                ErrorCode::Render,
+                "Raster Program worker returned discontinuous stages",
+            ));
+        }
+        for size in [stage.input, stage.output] {
+            if size.width == 0
+                || size.height == 0
+                || size.width > options.limits.max_width
+                || size.height > options.limits.max_height
+                || u64::from(size.width) * u64::from(size.height) > options.limits.max_pixels
+            {
+                return Err(TransformError::new(
+                    ErrorCode::Render,
+                    "Raster Program worker stage dimensions exceed limits",
+                ));
+            }
+        }
+        pixels = pixels
+            .checked_add(u64::from(stage.output.width) * u64::from(stage.output.height))
+            .ok_or_else(|| {
+                TransformError::new(
+                    ErrorCode::Render,
+                    "Raster Program worker pixel total overflowed",
+                )
+            })?;
+        previous = Some(stage.output);
+    }
+    if pixels != result.cumulative_pixels
+        || pixels > options.max_cumulative_pixels
+        || previous
+            != Some(worldbend_core::PixelSize::new(
+                result.evidence.output_width,
+                result.evidence.output_height,
+            ))
+    {
+        return Err(TransformError::new(
+            ErrorCode::Render,
+            "Raster Program worker returned inconsistent final dimensions or pixel total",
+        ));
+    }
+    Ok(())
+}
+
+async fn run_variation_worker(
+    prepared: PreparedVariationRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<VariationJobFileRenderResult>, TransformError> {
+    let PreparedVariationRenderRequest {
+        assets,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-variation-stage-",
+        "private Variation Job staging is not writable",
+    )?;
+    let mut staged_assets = Vec::with_capacity(assets.len());
+    for (index, (id, asset)) in assets.into_iter().enumerate() {
+        if cancellation.is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "Variation Job was cancelled while staging its assets",
+            ));
+        }
+        let staged_source = staging.path().join(format!("asset-{index}.raster"));
+        let staged_source_for_copy = staged_source.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            copy_source_to_private_staging(asset, &staged_source_for_copy, maximum)
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private Variation Job asset staging task failed: {error}"),
+            )
+        })??;
+        staged_assets.push(WorkerVariationAsset {
+            id,
+            source: staged_source,
+            source_sha256,
+        });
+    }
+    let staged_output = staging.path().join("result-set");
+    let expected_plan = plan_variation_job(&input.spec)?;
+    let expected_options = input.options;
+    let request = WorkerRequest::VariationJob {
+        assets: staged_assets,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let result: VariationJobFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Variation Job was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Variation Job result validation task failed: {error}"),
+        )
+    })??;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let maximum_directories = result.plan.items.len();
+    let allow_empty = result.plan.failure_policy == VariationFailurePolicy::Continue;
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_one_level_tree_from_with_cancel(
+            &staged_output_for_copy,
+            maximum_directories,
+            MCP_MAX_VARIATION_OUTPUTS,
+            allow_empty,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Variation Job output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_variation_worker_result(
+    result: &mut VariationJobFileRenderResult,
+    expected_plan: &VariationJobPlan,
+    expected_options: VariationJobRenderOptions,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    if result.plan != *expected_plan
+        || result.plan.items.len() != result.items.len()
+        || result.plan.output_count > MCP_MAX_VARIATION_OUTPUTS
+        || result.cumulative_source_pixels > expected_options.max_source_pixels
+        || result.cumulative_processed_pixels > expected_options.max_processed_pixels
+    {
+        return Err(invalid_variation_worker_result(
+            "Variation Job worker result exceeds its correlated plan or Agent limits",
+        ));
+    }
+    let known_assets = result
+        .plan
+        .asset_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
+    let mut distinct_sources = std::collections::HashSet::new();
+    let mut evidenced_source_pixels = 0_u64;
+    if result.sources.iter().any(|source| {
+        let pixels = u64::from(source.width).checked_mul(u64::from(source.height));
+        evidenced_source_pixels = pixels
+            .and_then(|pixels| evidenced_source_pixels.checked_add(pixels))
+            .unwrap_or(u64::MAX);
+        !known_assets.contains(&source.asset_id)
+            || !distinct_sources.insert(&source.asset_id)
+            || source.width == 0
+            || source.height == 0
+            || source.width > expected_options.limits.max_width
+            || source.height > expected_options.limits.max_height
+            || pixels.is_none_or(|pixels| pixels > expected_options.limits.max_pixels)
+            || !valid_sha256(&source.source_sha256)
+    }) || evidenced_source_pixels != result.cumulative_source_pixels
+    {
+        return Err(invalid_variation_worker_result(
+            "Variation Job worker source result does not match its plan",
+        ));
+    }
+    let evidenced_assets = distinct_sources;
+
+    let mut expected_directories = Vec::new();
+    let mut encoded_bytes = 0_u64;
+    for (index, (planned, item)) in result.plan.items.iter().zip(&mut result.items).enumerate() {
+        if item.index() as usize != index
+            || planned.id != item.id()
+            || planned.bindings != item.bindings()
+        {
+            return Err(invalid_variation_worker_result(
+                "Variation Job worker item does not match its ordered plan",
+            ));
+        }
+        let Some((root_width, root_height)) = item.rendered_size() else {
+            if result.plan.failure_policy != VariationFailurePolicy::Continue
+                || matches!(item, worldbend_render::VariationJobItemOutcome::Failed { error, .. }
+                    if !worldbend_render::is_variation_item_failure(error.code))
+            {
+                return Err(invalid_variation_worker_result(
+                    "Variation Job worker returned a job-level failure as an item",
+                ));
+            }
+            continue;
+        };
+        let item_id = item.id().to_owned();
+        let missing_evidence = item
+            .bindings()
+            .iter()
+            .any(|binding| !evidenced_assets.contains(&binding.asset_id));
+        let Some(outputs) = item.outputs_mut() else {
+            continue;
+        };
+        if missing_evidence
+            || root_width == 0
+            || root_height == 0
+            || outputs.len() != result.plan.template.outputs.len()
+        {
+            return Err(invalid_variation_worker_result(
+                "Variation Job worker item does not match its ordered plan",
+            ));
+        }
+        expected_directories.push(item_id.clone());
+        let item_directory = staged_output.join(&item_id);
+        let metadata = fs::symlink_metadata(&item_directory).map_err(|error| {
+            invalid_variation_worker_result("Variation Job worker item directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(invalid_variation_worker_result(
+                "Variation Job worker item output is not a real directory",
+            ));
+        }
+        let mut expected_files = Vec::with_capacity(outputs.len());
+        for (planned_output, output) in result.plan.template.outputs.iter().zip(outputs.iter_mut())
+        {
+            if planned_output.id != output.id
+                || output.width == 0
+                || output.height == 0
+                || !valid_sha256(&output.sha256)
+            {
+                return Err(invalid_variation_worker_result(
+                    "Variation Job worker output does not match its template",
+                ));
+            }
+            let path = item_directory.join(&planned_output.filename);
+            let (bytes, sha256) = hash_regular_file(&path, "Variation Job worker", is_cancelled)?;
+            if bytes != output.bytes || !sha256.eq_ignore_ascii_case(&output.sha256) {
+                return Err(invalid_variation_worker_result(
+                    "Variation Job worker output bytes do not match its result",
+                ));
+            }
+            encoded_bytes = encoded_bytes.checked_add(bytes).ok_or_else(|| {
+                TransformError::new(
+                    ErrorCode::OutputLimit,
+                    "Variation Job encoded output byte count overflowed",
+                )
+            })?;
+            expected_files.push(planned_output.filename.clone());
+            output.output =
+                variation_output_label(output_directory, &item_id, &planned_output.filename);
+        }
+        let mut actual_files = read_entry_names(&item_directory)?;
+        expected_files.sort_unstable();
+        actual_files.sort_unstable();
+        if actual_files != expected_files {
+            return Err(invalid_variation_worker_result(
+                "Variation Job worker item directory contains unexpected entries",
+            ));
+        }
+    }
+    let mut actual_directories = read_entry_names(staged_output)?;
+    expected_directories.sort_unstable();
+    actual_directories.sort_unstable();
+    if actual_directories != expected_directories {
+        return Err(invalid_variation_worker_result(
+            "Variation Job worker directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_VARIATION_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "Variation Job encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_VARIATION_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        VariationJobRenderStatus::Ready
+    } else {
+        VariationJobRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn hash_regular_file(
+    path: &std::path::Path,
+    context: &'static str,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<(u64, String)> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output file is missing"),
+        )
+        .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output is not a regular file"),
+        ));
+    }
+    let mut file = fs::File::open(path).map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output is not readable"),
+        )
+        .with_details(json!({ "reason": error.to_string() }))
+    })?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        if is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                format!("{context} output validation was cancelled"),
+            ));
+        }
+        let count = file.read(&mut buffer).map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("{context} output could not be hashed"),
+            )
+            .with_details(json!({ "reason": error.to_string() }))
+        })?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok((metadata.len(), hex::encode(digest.finalize())))
+}
+
+fn verify_reported_output_file(
+    path: &std::path::Path,
+    context: &'static str,
+    reported_bytes: u64,
+    reported_sha256: &str,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    let (actual_bytes, actual_sha256) = hash_regular_file(path, context, is_cancelled)?;
+    if actual_bytes != reported_bytes || !actual_sha256.eq_ignore_ascii_case(reported_sha256) {
+        return Err(TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output does not match its reported digest and byte count"),
+        ));
+    }
+    Ok(())
+}
+
+async fn verify_worker_output(
+    path: PathBuf,
+    context: &'static str,
+    reported_bytes: u64,
+    reported_sha256: String,
+    cancellation: CancellationToken,
+) -> TransformResult<()> {
+    if reported_bytes > MCP_MAX_FILE_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "file output exceeds the Agent encoded byte ceiling",
+        ));
+    }
+    tokio::task::spawn_blocking(move || {
+        verify_reported_output_file(&path, context, reported_bytes, &reported_sha256, &|| {
+            cancellation.is_cancelled()
+        })
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("{context} output verification task failed: {error}"),
+        )
+    })?
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stage_file_result<T>(
+    result: T,
+    output: OutputTarget,
+    staged: PathBuf,
+    bytes: u64,
+    digest: String,
+    dry_run: bool,
+    cancellation: CancellationToken,
+) -> TransformResult<PreparedFileResult<T>> {
+    let commit = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(&staged, bytes, &digest, MCP_MAX_FILE_ENCODED_BYTES, &|| {
+            cancellation.is_cancelled()
+        })
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("file output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if dry_run {
+        drop(commit);
+        None
+    } else {
+        Some(commit)
+    };
+    Ok(PreparedFileResult { result, commit })
+}
+
+async fn execute_cancellable_worker_request<T>(
+    request: &WorkerRequest,
+    cancellation: &CancellationToken,
+) -> TransformResult<T>
+where
+    T: DeserializeOwned,
+{
+    tokio::select! {
+        _ = cancellation.cancelled() => Err(TransformError::new(ErrorCode::Cancelled,
+            "render was cancelled while its worker was running")),
+        result = execute_worker_request(request) => result,
+    }
+}
+
+fn read_entry_names(directory: &std::path::Path) -> TransformResult<Vec<String>> {
+    fs::read_dir(directory)
+        .map_err(|error| {
+            invalid_variation_worker_result("Variation Job output directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_variation_worker_result(
+                        "Variation Job output directory could not be inspected",
+                    )
+                    .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect()
+}
+
+fn invalid_variation_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+async fn run_mockup_worker(
+    prepared: PreparedMockupRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<MockupFileRenderResult>, TransformError> {
+    let PreparedMockupRenderRequest {
+        sources,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-mockup-stage-",
+        "private mockup staging is not writable",
+    )?;
+    let mut staged_sources = Vec::with_capacity(sources.len());
+    for (index, (id, source)) in sources.into_iter().enumerate() {
+        let staged_source = staging.path().join(format!("source-{index}.raster"));
+        let staged_source_for_copy = staged_source.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let staging_cancellation = cancellation.clone();
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+                source,
+                &staged_source_for_copy,
+                maximum,
+                &|| staging_cancellation.is_cancelled(),
+            )
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private mockup source staging task failed: {error}"),
+            )
+        })??;
+        staged_sources.push(WorkerMockupSource {
+            id,
+            source: staged_source,
+            source_sha256,
+        });
+    }
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Mockup {
+        sources: staged_sources,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: MockupFileRenderResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Mockup worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_mesh_worker(
+    prepared: PreparedMeshRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<MeshWarpFileRenderResult>, TransformError> {
+    let PreparedMeshRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-mesh-stage-",
+        "private mesh staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            maximum,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private mesh source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Mesh {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: MeshWarpFileRenderResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Mesh worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_surface_worker(
+    prepared: PreparedSurfaceRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<SurfaceDeformationFileRenderResult>, TransformError> {
+    let PreparedSurfaceRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-surface-stage-",
+        "private surface deformation staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            maximum,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private surface source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Surface {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: SurfaceDeformationFileRenderResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Surface Deformation worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_deformation_worker(
+    prepared: PreparedDeformationRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<DeformationRenderOutput>, TransformError> {
+    let PreparedDeformationRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-deformation-stage-",
+        "private deformation work staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.limits.max_source_bytes;
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            maximum,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private deformation work source staging task failed: {error}"),
+        )
+    })??;
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Deformation {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+        plan_view: input.plan_view,
+    };
+    let mut result: DeformationRenderOutput =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Deformation Work worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_remap_worker(
+    prepared: PreparedRemapRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedFileResult<RemapFileRenderResult>, TransformError> {
+    let PreparedRemapRenderRequest {
+        source,
+        map,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-remap-stage-",
+        "private remap staging is not writable",
+    )?;
+    let maximum = input.options.limits.max_source_bytes;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let staging_cancellation = cancellation.clone();
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+            source,
+            &staged_source_for_copy,
+            maximum,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private remap source staging task failed: {error}"),
+        )
+    })??;
+    let map = match map {
+        Some(map) => {
+            let staged_map = staging.path().join("map.raster");
+            let staged_map_for_copy = staged_map.clone();
+            let staging_cancellation = cancellation.clone();
+            let map_sha256 = tokio::task::spawn_blocking(move || {
+                worldbend_agent_fs::copy_source_to_private_staging_with_cancel(
+                    map,
+                    &staged_map_for_copy,
+                    maximum,
+                    &|| staging_cancellation.is_cancelled(),
+                )
+            })
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("private remap map staging task failed: {error}"),
+                )
+            })??;
+            Some(WorkerRemapMap {
+                path: staged_map,
+                sha256: map_sha256,
+            })
+        }
+        None => None,
+    };
+    let staged_output = staging.path().join("result.png");
+    let request = WorkerRequest::Remap {
+        source: staged_source,
+        source_sha256,
+        map,
+        spec: input.spec,
+        output: staged_output.clone(),
+        options: input.options,
+    };
+    let mut result: RemapFileRenderResult =
+        execute_cancellable_worker_request(&request, &cancellation).await?;
+    verify_worker_output(
+        staged_output.clone(),
+        "Remap worker",
+        result.bytes,
+        result.evidence.output_sha256.clone(),
+        cancellation.clone(),
+    )
+    .await?;
+    result.output = input.output;
+    result.dry_run = input.dry_run;
+    result.status = if input.dry_run {
+        FileRenderStatus::Ready
+    } else {
+        FileRenderStatus::Written
+    };
+    preflight_render_result(&result)?;
+    let bytes = result.bytes;
+    let digest = result.evidence.output_sha256.clone();
+    stage_file_result(
+        result,
+        output,
+        staged_output,
+        bytes,
+        digest,
+        input.dry_run,
+        cancellation,
+    )
+    .await
+}
+
+async fn run_mockup_extract_worker(
+    prepared: PreparedMockupExtractRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<MockupExtractFileRenderResult>, TransformError> {
+    let PreparedMockupExtractRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-mockup-extract-stage-",
+        "private mockup extraction staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    let maximum = input.options.limits.max_source_bytes;
+    let source_sha256 = tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private mockup extraction source staging task failed: {error}"),
+        )
+    })??;
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "mockup extraction was cancelled while staging its source",
+        ));
+    }
+
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::MockupExtract {
+        source: staged_source,
+        source_sha256,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let result: MockupExtractFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "mockup extraction was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_mockup_extract_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("mockup extraction result validation task failed: {error}"),
+        )
+    })??;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_MOCKUP_PLANES,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("mockup extraction output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_mockup_extract_worker_result(
+    result: &mut MockupExtractFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    if result.plan.outputs.len() != result.items.len() {
+        return Err(invalid_mockup_extract_worker_result(
+            "mockup extraction worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for (planned, item) in result.plan.outputs.iter().zip(&mut result.items) {
+        if planned.id != item.id
+            || planned.filename != format!("{}.png", item.id)
+            || planned.plan.spec.output.width != item.width
+            || planned.plan.spec.output.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_mockup_extract_worker_result(
+                "mockup extraction worker result does not match its ordered plan",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "mockup extraction encoded output byte count overflowed",
+            )
+        })?;
+        if encoded_bytes > MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "mockup extraction encoded output set exceeds the Agent byte ceiling",
+            )
+            .with_details(json!({
+                "actual": encoded_bytes,
+                "maximum": MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES,
+            })));
+        }
+        let path = staged_output.join(&planned.filename);
+        let (bytes, sha256) = hash_regular_file(&path, "mockup extraction worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
+            return Err(invalid_mockup_extract_worker_result(
+                "mockup extraction worker output bytes do not match its result",
+            ));
+        }
+        expected_files.push(planned.filename.clone());
+        item.output = canvas_output_label(output_directory, &item.id);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_mockup_extract_worker_result(
+                "mockup extraction worker output directory is missing",
+            )
+            .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_mockup_extract_worker_result(
+                        "mockup extraction worker output could not be inspected",
+                    )
+                    .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_mockup_extract_worker_result(
+            "mockup extraction worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "mockup extraction encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_MOCKUP_EXTRACT_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        MockupExtractRenderStatus::Ready
+    } else {
+        MockupExtractRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_mockup_extract_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+async fn run_timeline_worker(
+    prepared: PreparedTimelineRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<TimelineFileRenderResult>, TransformError> {
+    let PreparedTimelineRenderRequest {
+        sources,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-timeline-stage-",
+        "private timeline staging is not writable",
+    )?;
+    let mut staged_sources = Vec::with_capacity(sources.len());
+    for (index, (id, source)) in sources.into_iter().enumerate() {
+        if cancellation.is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "timeline render was cancelled while staging its sources",
+            ));
+        }
+        let staged_source = staging.path().join(format!("source-{index}.raster"));
+        let staged_source_for_copy = staged_source.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private timeline source staging task failed: {error}"),
+            )
+        })??;
+        staged_sources.push(WorkerMockupSource {
+            id,
+            source: staged_source,
+            source_sha256,
+        });
+    }
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::Timeline {
+        sources: staged_sources,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let result: TimelineFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "timeline render was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_timeline_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("timeline result validation task failed: {error}"),
+        )
+    })??;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_TIMELINE_FRAMES,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("timeline output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_timeline_worker_result(
+    result: &mut TimelineFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    if result.plan.frames.len() != result.items.len() {
+        return Err(invalid_timeline_worker_result(
+            "timeline worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for (planned, item) in result.plan.frames.iter().zip(&mut result.items) {
+        if planned.index != item.index
+            || planned.id != item.id
+            || planned.source_id != item.source_id
+            || result.plan.output.width != item.width
+            || result.plan.output.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_timeline_worker_result(
+                "timeline worker result does not match its ordered plan",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "timeline encoded output byte count overflowed",
+            )
+        })?;
+        let filename = format!("{}.png", item.id);
+        let path = staged_output.join(&filename);
+        let (bytes, sha256) = hash_regular_file(&path, "timeline worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
+            return Err(invalid_timeline_worker_result(
+                "timeline worker output bytes do not match its result",
+            ));
+        }
+        expected_files.push(filename);
+        item.output = canvas_output_label(output_directory, &item.id);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_timeline_worker_result("timeline worker output directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_timeline_worker_result("timeline worker output could not be inspected")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_timeline_worker_result(
+            "timeline worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_TIMELINE_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "timeline encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_TIMELINE_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        TimelineRenderStatus::Ready
+    } else {
+        TimelineRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_timeline_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+async fn run_motion_worker(
+    prepared: PreparedMotionRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<MotionFileRenderResult>, TransformError> {
+    let PreparedMotionRenderRequest {
+        sources,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-motion-stage-",
+        "private motion staging is not writable",
+    )?;
+    let mut staged_sources = Vec::with_capacity(sources.len());
+    for (index, (id, source)) in sources.into_iter().enumerate() {
+        if cancellation.is_cancelled() {
+            return Err(TransformError::new(
+                ErrorCode::Cancelled,
+                "motion render was cancelled while staging its sources",
+            ));
+        }
+        let staged_source = staging.path().join(format!("source-{index}.raster"));
+        let staged_source_for_copy = staged_source.clone();
+        let maximum = input.options.limits.max_source_bytes;
+        let source_sha256 = tokio::task::spawn_blocking(move || {
+            copy_source_to_private_staging(source, &staged_source_for_copy, maximum)
+        })
+        .await
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("private motion source staging task failed: {error}"),
+            )
+        })??;
+        staged_sources.push(WorkerMockupSource {
+            id,
+            source: staged_source,
+            source_sha256,
+        });
+    }
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::Motion {
+        sources: staged_sources,
+        spec: input.spec,
+        output_directory: staged_output.clone(),
+        options: input.options,
+    };
+    let result: MotionFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "motion render was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_motion_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("motion result validation task failed: {error}"),
+        )
+    })??;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_TIMELINE_FRAMES,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("motion output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_motion_worker_result(
+    result: &mut MotionFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    if result.plan.frames.len() != result.items.len()
+        || result.plan.timeline.frames.len() != result.items.len()
+    {
+        return Err(invalid_motion_worker_result(
+            "motion worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for ((timing, planned), item) in result
+        .plan
+        .frames
+        .iter()
+        .zip(&result.plan.timeline.frames)
+        .zip(&mut result.items)
+    {
+        if timing.index != item.index
+            || timing.id != item.id
+            || timing.presentation_time != item.presentation_time
+            || planned.index != item.index
+            || planned.id != item.id
+            || planned.source_id != item.source_id
+            || result.plan.output.width != item.width
+            || result.plan.output.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_motion_worker_result(
+                "motion worker result does not match its ordered plan",
+            ));
+        }
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "motion encoded output byte count overflowed",
+            )
+        })?;
+        let filename = format!("{}.png", item.id);
+        let path = staged_output.join(&filename);
+        let (bytes, sha256) = hash_regular_file(&path, "motion worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
+            return Err(invalid_motion_worker_result(
+                "motion worker output bytes do not match its result",
+            ));
+        }
+        expected_files.push(filename);
+        item.output = canvas_output_label(output_directory, &item.id);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_motion_worker_result("motion worker output directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_motion_worker_result("motion worker output could not be inspected")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_motion_worker_result(
+            "motion worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_TIMELINE_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "motion encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_TIMELINE_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        TimelineRenderStatus::Ready
+    } else {
+        TimelineRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_motion_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+async fn run_canvas_worker(
+    prepared: PreparedCanvasRenderRequest,
+    cancellation: CancellationToken,
+) -> Result<PreparedDirectoryResult<CanvasSetFileRenderResult>, TransformError> {
+    let PreparedCanvasRenderRequest {
+        source,
+        output,
+        request: input,
+    } = prepared;
+    let staging = create_private_staging(
+        ".worldbend-canvas-stage-",
+        "private Canvas staging is not writable",
+    )?;
+    let staged_source = staging.path().join("source.raster");
+    let staged_source_for_copy = staged_source.clone();
+    tokio::task::spawn_blocking(move || {
+        copy_source_to_private_staging(source, &staged_source_for_copy, MCP_MAX_SOURCE_BYTES)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("private Canvas source staging task failed: {error}"),
+        )
+    })??;
+    if cancellation.is_cancelled() {
+        return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas Set render was cancelled while staging its source",
+        ));
+    }
+
+    let staged_output = staging.path().join("result-set");
+    let request = WorkerRequest::CanvasSet {
+        source: staged_source,
+        program: input.program,
+        output_directory: staged_output.clone(),
+        options: CanvasSetRenderOptions {
+            quality: SamplingQuality::Standard,
+            limits: RenderLimits {
+                max_width: MCP_MAX_AXIS,
+                max_height: MCP_MAX_AXIS,
+                max_pixels: MCP_MAX_PIXELS,
+                max_source_bytes: MCP_MAX_SOURCE_BYTES,
+            },
+            max_cumulative_pixels: MCP_MAX_CANVAS_SET_PIXELS,
+        },
+    };
+    let result: CanvasSetFileRenderResult = tokio::select! {
+        _ = cancellation.cancelled() => return Err(TransformError::new(
+            ErrorCode::Cancelled,
+            "Canvas Set render was cancelled while its worker was running",
+        )),
+        result = execute_worker_request(&request) => result?,
+    };
+    let staged_output_for_normalize = staged_output.clone();
+    let output_directory = input.output_directory.clone();
+    let dry_run = input.dry_run;
+    let normalize_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut result = result;
+        normalize_canvas_worker_result(
+            &mut result,
+            &staged_output_for_normalize,
+            &output_directory,
+            dry_run,
+            &|| normalize_cancellation.is_cancelled(),
+        )?;
+        Ok::<_, TransformError>(result)
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Canvas result validation task failed: {error}"),
+        )
+    })??;
+    preflight_render_result(&result)?;
+
+    let staged_output_for_copy = staged_output.clone();
+    let staging_cancellation = cancellation.clone();
+    let staged = tokio::task::spawn_blocking(move || {
+        output.stage_from_with_cancel(
+            &staged_output_for_copy,
+            worldbend_core::MAX_CANVAS_VARIANTS,
+            &|| staging_cancellation.is_cancelled(),
+        )
+    })
+    .await
+    .map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("Canvas output staging task failed: {error}"),
+        )
+    })??;
+    let commit = if input.dry_run {
+        // Dry-run exercises the same same-parent copy and sync path, then
+        // removes the hidden directory instead of exposing a final name.
+        drop(staged);
+        None
+    } else {
+        Some(staged)
+    };
+    Ok(PreparedDirectoryResult { result, commit })
+}
+
+fn normalize_canvas_worker_result(
+    result: &mut CanvasSetFileRenderResult,
+    staged_output: &std::path::Path,
+    output_directory: &str,
+    dry_run: bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> TransformResult<()> {
+    if result.plan.variants.len() != result.items.len() {
+        return Err(invalid_canvas_worker_result(
+            "Canvas worker result count does not match its plan",
+        ));
+    }
+    let mut expected_files = Vec::with_capacity(result.items.len());
+    let mut encoded_bytes = 0_u64;
+    for (variant, item) in result.plan.variants.iter().zip(&mut result.items) {
+        if variant.id != item.id
+            || variant.plan.output_size.width != item.width
+            || variant.plan.output_size.height != item.height
+            || item.sha256.len() != 64
+            || !item.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid_canvas_worker_result(
+                "Canvas worker result does not match its ordered plan",
+            ));
+        }
+        item.output = canvas_output_label(output_directory, &item.id);
+        encoded_bytes = encoded_bytes.checked_add(item.bytes).ok_or_else(|| {
+            TransformError::new(
+                ErrorCode::OutputLimit,
+                "Canvas encoded output byte count overflowed",
+            )
+        })?;
+        if encoded_bytes > MCP_MAX_CANVAS_ENCODED_BYTES {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "Canvas encoded output set exceeds the Agent byte ceiling",
+            )
+            .with_details(json!({
+                "actual": encoded_bytes,
+                "maximum": MCP_MAX_CANVAS_ENCODED_BYTES,
+            })));
+        }
+        let filename = format!("{}.png", item.id);
+        let path = staged_output.join(&filename);
+        let (bytes, sha256) = hash_regular_file(&path, "Canvas worker", is_cancelled)?;
+        if bytes != item.bytes || !sha256.eq_ignore_ascii_case(&item.sha256) {
+            return Err(invalid_canvas_worker_result(
+                "Canvas worker output bytes do not match its result",
+            ));
+        }
+        expected_files.push(filename);
+    }
+    let mut actual_files = fs::read_dir(staged_output)
+        .map_err(|error| {
+            invalid_canvas_worker_result("Canvas worker output directory is missing")
+                .with_details(json!({ "reason": error.to_string() }))
+        })?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .map_err(|error| {
+                    invalid_canvas_worker_result("Canvas worker output could not be inspected")
+                        .with_details(json!({ "reason": error.to_string() }))
+                })
+        })
+        .collect::<TransformResult<Vec<_>>>()?;
+    expected_files.sort_unstable();
+    actual_files.sort_unstable();
+    if actual_files != expected_files {
+        return Err(invalid_canvas_worker_result(
+            "Canvas worker output directory contains unexpected entries",
+        ));
+    }
+    if encoded_bytes > MCP_MAX_CANVAS_ENCODED_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "Canvas encoded output set exceeds the Agent byte ceiling",
+        )
+        .with_details(json!({
+            "actual": encoded_bytes,
+            "maximum": MCP_MAX_CANVAS_ENCODED_BYTES,
+        })));
+    }
+    result.output_directory = output_directory.to_owned();
+    result.dry_run = dry_run;
+    result.status = if dry_run {
+        CanvasSetRenderStatus::Ready
+    } else {
+        CanvasSetRenderStatus::Written
+    };
+    Ok(())
+}
+
+fn invalid_canvas_worker_result(message: &'static str) -> TransformError {
+    TransformError::new(ErrorCode::Internal, message)
+}
+
+/// MCP paths are root-relative logical labels, not host-native display paths.
+/// Normalize separators so an Agent receives the same portable path contract
+/// on Unix and Windows.
+fn canvas_output_label(output_directory: &str, id: &str) -> String {
+    let mut segments = std::path::Path::new(output_directory)
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            std::path::Component::CurDir => None,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    segments.push(format!("{id}.png"));
+    segments.join("/")
+}
+
+fn variation_output_label(output_directory: &str, item_id: &str, filename: &str) -> String {
+    let mut segments = std::path::Path::new(output_directory)
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            std::path::Component::CurDir => None,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    segments.push(item_id.to_owned());
+    segments.push(filename.to_owned());
+    segments.join("/")
+}
+
+async fn execute_worker_request<T>(request: &WorkerRequest) -> TransformResult<T>
+where
+    T: DeserializeOwned,
+{
+    let request_bytes = serde_json::to_vec(&request).map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("failed to encode worker request: {error}"),
+        )
+    })?;
+    if request_bytes.len() > MAX_WORKER_REQUEST_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "worker request exceeds byte limit",
+        ));
+    }
+
+    let executable = std::env::current_exe().map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("failed to locate render worker: {error}"),
+        )
+    })?;
+    let mut command = Command::new(executable);
+    command
+        .arg(if matches!(request, WorkerRequest::Video { .. }) {
+            "--worker-video"
+        } else {
+            "--worker-render"
+        })
+        .env("RAYON_NUM_THREADS", worker_render_threads().to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let child = command.spawn().map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("failed to start render worker: {error}"),
+        )
+    })?;
+    let mut worker = OwnedWorker::new(child)?;
+    let mut stdin = worker.child.stdin.take().ok_or_else(|| {
+        TransformError::new(ErrorCode::Internal, "render worker stdin was not available")
+    })?;
+    stdin.write_all(&request_bytes).await.map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("failed to send render request: {error}"),
+        )
+    })?;
+    drop(stdin);
+
+    let worker_pid = worker.child.id();
+    let worker_timeout = if matches!(request, WorkerRequest::Video { .. }) {
+        VIDEO_WORKER_TIMEOUT
+    } else {
+        WORKER_TIMEOUT
+    };
+    let (stdout_bytes, stderr_bytes, worker_status) = timeout(worker_timeout, async move {
+        tokio::select! {
+            result = read_worker_output(&mut worker) => result,
+            memory_error = monitor_worker_memory(worker_pid) => Err(memory_error),
+        }
+    })
+    .await
+    .map_err(|_| render_timeout_error("waiting for the isolated worker", worker_timeout))??;
+    if stdout_bytes.len() > MAX_WORKER_RESPONSE_BYTES
+        || stderr_bytes.len() > MAX_WORKER_RESPONSE_BYTES
+    {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "render worker response exceeds byte limit",
+        ));
+    }
+    let envelope: WorkerEnvelope<T> = serde_json::from_slice(&stdout_bytes).map_err(|_| {
+        let stderr = String::from_utf8_lossy(&stderr_bytes);
+        let (code, message) = classify_worker_death(&worker_status, stderr.as_ref());
+        TransformError::new(code, message).with_details(
+            json!({ "stderr": bounded_text(&stderr, 2048),
+                "exitSignal": worker_exit_signal(&worker_status),
+                "exitSuccess": worker_status.success() }),
+        )
+    })?;
+    match envelope {
+        WorkerEnvelope::Success { ok: _, result } => Ok(*result),
+        WorkerEnvelope::Failure { ok: _, error } => Err(error),
+    }
+}
+
+fn preflight_render_result<T>(result: &T) -> TransformResult<()>
+where
+    T: Serialize + JsonSchema + Clone + 'static,
+{
+    // Measure the exact shape the client will receive: framing differences
+    // between the worker envelope and the final CallToolResult would otherwise
+    // let a file publish and then have the response swap to E_OUTPUT_LIMIT.
+    let preflight_envelope: ToolEnvelope<T> = ToolEnvelope::Success {
+        ok: true,
+        result: result.clone(),
+    };
+    let preflight_response = preflight_envelope
+        .build_complete_result()
+        .map_err(|error| {
+            TransformError::new(
+                ErrorCode::Internal,
+                format!("failed to preflight response: {error}"),
+            )
+        })?;
+    let preflight_bytes = serialized_call_result_bytes(&preflight_response).map_err(|error| {
+        TransformError::new(
+            ErrorCode::Internal,
+            format!("failed to size the render response: {error}"),
+        )
+    })?;
+    if preflight_bytes > MAX_TOOL_RESPONSE_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::OutputLimit,
+            "render result exceeds response byte limit",
+        ));
+    }
+    Ok(())
+}
+
+fn worker_render_threads() -> usize {
+    let logical_cpus = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(MAX_CONCURRENT_RENDERS);
+    logical_cpus
+        .div_ceil(MAX_CONCURRENT_RENDERS)
+        .clamp(1, MAX_THREADS_PER_RENDER)
+}
+
+struct OwnedWorker {
+    child: tokio::process::Child,
+    #[cfg(unix)]
+    group: worldbend_process::OwnedProcessGroup,
+}
+
+impl OwnedWorker {
+    fn new(child: tokio::process::Child) -> TransformResult<Self> {
+        #[cfg(unix)]
+        let group =
+            worldbend_process::OwnedProcessGroup::from_child(child.id().ok_or_else(|| {
+                TransformError::new(ErrorCode::Internal, "worker PID is unavailable")
+            })?)
+            .map_err(worker_process_error)?;
+        Ok(Self {
+            child,
+            #[cfg(unix)]
+            group,
+        })
+    }
+
+    fn retire(&mut self) -> TransformResult<()> {
+        #[cfg(unix)]
+        self.group.retire().map_err(worker_process_error)?;
+        #[cfg(not(unix))]
+        self.child.start_kill().map_err(worker_process_error)?;
+        Ok(())
+    }
+
+    async fn wait(&mut self) -> TransformResult<ExitStatus> {
+        #[cfg(unix)]
+        {
+            // Never poll Tokio's reaping wait until group retirement. Keep the
+            // completed leader reserved while retiring encoder descendants.
+            while !worldbend_process::child_exit_ready(self.group.id())
+                .map_err(worker_process_error)?
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            self.retire()?;
+        }
+        self.child.wait().await.map_err(worker_process_error)
+    }
+}
+
+impl Drop for OwnedWorker {
+    fn drop(&mut self) {
+        // Runs before Child's kill-on-drop and eventual reaping.
+        let _ = self.retire();
+    }
+}
+
+fn worker_process_error(error: std::io::Error) -> TransformError {
+    TransformError::new(ErrorCode::Internal, "worker process supervision failed")
+        .with_details(json!({"reason": error.to_string()}))
+}
+
+async fn read_worker_output(
+    worker: &mut OwnedWorker,
+) -> Result<(Vec<u8>, Vec<u8>, ExitStatus), TransformError> {
+    // Bound both pipes before waiting: a runaway worker must not be able to
+    // grow the server's memory through unbounded stdout or stderr.
+    let mut stdout = worker.child.stdout.take().ok_or_else(|| {
+        TransformError::new(
+            ErrorCode::Internal,
+            "render worker stdout was not available",
+        )
+    })?;
+    let mut stderr = worker.child.stderr.take().ok_or_else(|| {
+        TransformError::new(
+            ErrorCode::Internal,
+            "render worker stderr was not available",
+        )
+    })?;
+    let output = tokio::try_join!(
+        read_bounded_worker_stream(&mut stdout, MAX_WORKER_RESPONSE_BYTES),
+        read_bounded_worker_stream(&mut stderr, MAX_WORKER_RESPONSE_BYTES),
+        worker.wait(),
+    );
+    let (stdout_bytes, stderr_bytes, status) = match output {
+        Ok(output) => output,
+        Err(error) => {
+            // Stop the producer before waiting. Merely taking N+1 bytes leaves
+            // the rest of an oversized pipe unread, which can block the worker
+            // and misreport a deterministic output-limit failure as a timeout.
+            worker.retire()?;
+            let _ = worker.child.wait().await;
+            return Err(error);
+        }
+    };
+    Ok((stdout_bytes, stderr_bytes, status))
+}
+
+async fn read_bounded_worker_stream<R>(
+    reader: &mut R,
+    maximum: usize,
+) -> Result<Vec<u8>, TransformError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut bytes = Vec::with_capacity(maximum.min(64 * 1024));
+    // Keep the bounded I/O buffer out of the Future's inline state. Two
+    // streams nested through join/select/timeout multiplied stack copies in
+    // unoptimized catalog renders and overflowed the Tokio worker stack.
+    let mut chunk = vec![0_u8; 8 * 1024];
+    loop {
+        let remaining = maximum.saturating_sub(bytes.len());
+        let read_limit = remaining.saturating_add(1).min(chunk.len());
+        let count = reader
+            .read(&mut chunk[..read_limit])
+            .await
+            .map_err(|error| {
+                TransformError::new(
+                    ErrorCode::Internal,
+                    format!("failed to read render worker output: {error}"),
+                )
+            })?;
+        if count == 0 {
+            return Ok(bytes);
+        }
+        if count > remaining {
+            return Err(TransformError::new(
+                ErrorCode::OutputLimit,
+                "render worker response exceeds byte limit",
+            ));
+        }
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn monitor_worker_memory(pid: Option<u32>) -> TransformError {
+    let Some(pid) = pid else {
+        return TransformError::new(
+            ErrorCode::Memory,
+            "render worker PID was not available for memory monitoring",
+        );
+    };
+    let mut interval = tokio::time::interval(Duration::from_millis(10));
+    loop {
+        interval.tick().await;
+        let observed_bytes = match worldbend_process::group_memory_bytes(pid) {
+            Ok(bytes) => bytes,
+            Err(error) => return worker_process_error(error),
+        };
+        if observed_bytes > WORKER_MEMORY_BYTES {
+            return TransformError::new(
+                ErrorCode::Memory,
+                "render worker exceeded the memory limit",
+            )
+            .with_details(json!({
+                "limitBytes": WORKER_MEMORY_BYTES,
+                "observedBytes": observed_bytes
+            }));
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn monitor_worker_memory(_pid: Option<u32>) -> TransformError {
+    std::future::pending().await
+}
+
+fn search_operation_catalog(input: SearchInput) -> TransformResult<SearchResult> {
+    if !(1..=20).contains(&input.limit) {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "search limit must be an integer from 1 through 20",
+        ));
+    }
+    let terms = input
+        .query
+        .split_whitespace()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let matches = OperationId::ALL
+        .into_iter()
+        .filter(|operation| {
+            let haystack = format!(
+                "{} {} {} {}",
+                operation.id(),
+                operation.title(),
+                operation.summary(),
+                operation.search_terms()
+            )
+            .to_ascii_lowercase();
+            terms.iter().all(|term| haystack.contains(term))
+        })
+        .collect::<Vec<_>>();
+    Ok(SearchResult {
+        operations: matches
+            .iter()
+            .copied()
+            .take(usize::from(input.limit))
+            .map(OperationSummary::from)
+            .collect(),
+        total_matches: u32::try_from(matches.len()).unwrap_or(u32::MAX),
+    })
+}
+
+fn describe_operation(operation: OperationId) -> OperationDescriptor {
+    let (input_schema, output_schema) = match operation {
+        OperationId::FigmaAppearanceInspect => {
+            operation_schemas::<figma_handoff::FigmaInspectInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaAppearanceApply => {
+            operation_schemas::<figma_handoff::FigmaAppearanceApplyInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaTextureInspect => {
+            operation_schemas::<figma_handoff::FigmaInspectInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaTextureApply => {
+            operation_schemas::<figma_handoff::FigmaTextureApplyInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaFoil => {
+            operation_schemas::<figma_foil::FoilInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaMeshGradient => {
+            operation_schemas::<figma_mesh_gradient::MeshGradientInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaNativeCreate => {
+            operation_schemas::<figma_handoff::FigmaNativeCreateInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaInspect => {
+            operation_schemas::<figma_handoff::FigmaInspectInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaApply => {
+            operation_schemas::<figma_handoff::FigmaApplyInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaEffectInspect => {
+            operation_schemas::<figma_handoff::FigmaInspectInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaEffectSources => {
+            operation_schemas::<figma_handoff::FigmaEffectSourcesInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaLinkedResults => {
+            operation_schemas::<figma_linked::LinkedInput, figma_publication::PublicationOutput>()
+        }
+        OperationId::FigmaEffectContinuation => operation_schemas::<
+            figma_handoff::FigmaEffectContinuationInput,
+            figma_handoff::FigmaEffectContinuation,
+        >(),
+        OperationId::FigmaEffectStage => {
+            operation_schemas::<figma_handoff::FigmaEffectStageInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaEffectCreate => {
+            operation_schemas::<figma_handoff::FigmaEffectCreateInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaMockupInspect => {
+            operation_schemas::<figma_handoff::FigmaMockupInspectInput, figma_handoff::FigmaRequest>(
+            )
+        }
+        OperationId::FigmaTemplatesInspect => operation_schemas::<
+            figma_handoff::FigmaTemplatesInspectInput,
+            figma_handoff::FigmaRequest,
+        >(),
+        OperationId::FigmaSceneCreate => {
+            operation_schemas::<figma_handoff::FigmaSceneCreateInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaWorkCreate => {
+            operation_schemas::<figma_linked::WorkCreateInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::FigmaWorkRevise => {
+            operation_schemas::<figma_work::WorkInput, figma_publication::PublicationOutput>()
+        }
+        OperationId::FigmaWorkContinuation => {
+            operation_schemas::<figma_work_continuation::Input, figma_work_continuation::Output>()
+        }
+        OperationId::FigmaVectorWork => {
+            operation_schemas::<figma_vector::VectorInput, figma_publication::PublicationOutput>()
+        }
+        OperationId::FigmaPublicationStep => operation_schemas::<
+            figma_publication::PublicationStepInput,
+            figma_publication::PublicationStepOutput,
+        >(),
+        OperationId::FigmaMockupPublish => operation_schemas::<
+            figma_handoff::FigmaMockupPublishInput,
+            figma_publication::PublicationOutput,
+        >(),
+        OperationId::FigmaEffectPublish => operation_schemas::<
+            figma_handoff::FigmaEffectPublishInput,
+            figma_publication::PublicationOutput,
+        >(),
+        OperationId::FigmaCompositionContinuation => operation_schemas::<
+            figma_handoff::FigmaCompositionContinuationInput,
+            figma_handoff::FigmaCompositionContinuation,
+        >(),
+        OperationId::FigmaMockupStage => {
+            operation_schemas::<figma_handoff::FigmaMockupStageInput, figma_handoff::FigmaRequest>()
+        }
+        OperationId::PlaneStrip => operation_schemas::<PlaneStripInput, PlaneStripOutput>(),
+        OperationId::WindowPlan => operation_schemas::<SurfaceWindowSpec, SurfaceWindowPlan>(),
+        OperationId::EffectCatalog => operation_schemas::<EffectCatalogInput, EffectCatalog>(),
+        OperationId::EffectRecipe => operation_schemas::<EffectRecipeInput, EffectRecipe>(),
+        OperationId::EffectPlan => operation_schemas::<EffectPlanInput, EffectPlan>(),
+        OperationId::AppearanceInspect => {
+            operation_schemas::<AppearanceInspectionInput, AppearanceInspection>()
+        }
+        OperationId::AppearanceRevision => {
+            operation_schemas::<AppearanceRevisionInput, AppearanceRevisionPlan>()
+        }
+        OperationId::AppearanceDelivery => {
+            operation_schemas::<AppearanceDeliveryInput, AppearanceDeliveryPlan>()
+        }
+        OperationId::AppearanceProfiles => {
+            operation_schemas::<AppearanceProfileQuery, AppearanceProfileCatalog>()
+        }
+        OperationId::AppearanceUpdate => {
+            operation_schemas::<AppearanceUpdateInput, AppearanceUpdatePlan>()
+        }
+        OperationId::AppearanceExposure => {
+            operation_schemas::<AppearanceExposureInput, AppearanceExposureReport>()
+        }
+        OperationId::MaterialPreference => {
+            let mut input = serde_json::to_value(schemars::schema_for!(
+                worldbend_core::MaterialPreferenceInput
+            ))
+            .expect("material input schema serializes");
+            let output = Value::Object(generated_output_schema::<
+                ToolEnvelope<worldbend_core::MaterialPreferenceOutput>,
+            >());
+            // Schemars emits a tagged union with object branches but no root
+            // type; MCP requires this explicit root without removing the branches.
+            input
+                .as_object_mut()
+                .expect("generated input schema is an object")
+                .insert("type".into(), json!("object"));
+            (input, output)
+        }
+        OperationId::AppearancePreference => {
+            operation_schemas::<AppearancePreferenceInput, AppearancePreferencePlan>()
+        }
+        OperationId::FoilUpdate => operation_schemas::<FoilUpdateInput, FoilUpdatePlan>(),
+        OperationId::MeshGradientUpdate => {
+            operation_schemas::<MeshGradientUpdateInput, MeshGradientUpdatePlan>()
+        }
+        OperationId::MeshGradientInspect => {
+            operation_schemas::<MeshGradientInspectionInput, MeshGradientInspection>()
+        }
+        OperationId::MeshGradientRevision => {
+            operation_schemas::<MeshGradientRevisionInput, MeshGradientRevisionPlan>()
+        }
+        OperationId::MeshGradientDelivery => {
+            operation_schemas::<MeshGradientDeliveryInput, MeshGradientDeliveryPlan>()
+        }
+        OperationId::TextureInspect => {
+            operation_schemas::<TextureInspectionInput, TextureInspection>()
+        }
+        OperationId::FoilInspect => operation_schemas::<FoilInspectionInput, FoilInspection>(),
+        OperationId::TextureRevision => {
+            operation_schemas::<TextureRevisionInput, TextureRevisionPlan>()
+        }
+        OperationId::FoilRevision => operation_schemas::<FoilRevisionInput, FoilRevisionPlan>(),
+        OperationId::TextureDelivery => {
+            operation_schemas::<TextureDeliveryInput, TextureDeliveryPlan>()
+        }
+        OperationId::FoilDelivery => operation_schemas::<FoilDeliveryInput, FoilDeliveryPlan>(),
+        OperationId::Pose => operation_schemas::<PlanePoseInput, PlanePoseOutput>(),
+        OperationId::CardPose => operation_schemas::<CardPoseInput, CardPoseOutput>(),
+        OperationId::CardPointer => operation_schemas::<CardPointerInput, CardPointerOutput>(),
+        OperationId::CardIdle => operation_schemas::<CardIdleInput, CardPointerOutput>(),
+        OperationId::CardTurn => operation_schemas::<CardTurnInput, CardTurnOutput>(),
+        OperationId::Compose => operation_schemas::<ComposeInput, AffineComposition>(),
+        OperationId::Solve => operation_schemas::<SolveInput, SolveOutput>(),
+        OperationId::Inspect => operation_schemas::<InspectInput, InspectOutput>(),
+        OperationId::Render => operation_schemas::<RenderInput, FileRenderResult>(),
+        OperationId::MediaInspect => operation_schemas::<MediaInspectInput, MediaSourceInfo>(),
+        OperationId::PlaneCandidates => {
+            operation_schemas::<PlaneCandidatesInput, PlaneCandidateResponse>()
+        }
+        OperationId::PsdSmartObjects => {
+            operation_schemas::<PsdSmartObjectsInput, PsdSmartObjectResponse>()
+        }
+        OperationId::MediaRender => operation_schemas::<MediaRenderInput, MediaFileRenderResult>(),
+        OperationId::VectorRender => operation_schemas::<VectorRenderInput, VectorFileResult>(),
+        OperationId::TiledMediaRender => {
+            operation_schemas::<TiledMediaRenderInput, TiledMediaRenderResult>()
+        }
+        OperationId::Rectify => operation_schemas::<RectifyInput, RectifyPlan>(),
+        OperationId::RectifyRender => {
+            operation_schemas::<RectifyRenderInput, RectifyFileRenderResult>()
+        }
+        OperationId::ProgramInspect => {
+            operation_schemas::<ProgramInspectInput, RasterProgramInspection>()
+        }
+        OperationId::ProgramRender => {
+            operation_schemas::<ProgramRenderInput, RasterProgramFileRenderResult>()
+        }
+        OperationId::TemplateInspect => {
+            operation_schemas::<TemplateInspectInput, SpatialTemplateInspection>()
+        }
+        OperationId::DocumentInspect => {
+            operation_schemas::<DocumentInspectInput, SpatialDocumentInspection>()
+        }
+        OperationId::DocumentAssemble => {
+            operation_schemas::<SpatialDocumentAssemblyInput, SpatialDocumentAssemblyPlan>()
+        }
+        OperationId::DocumentUpdatePlan => {
+            operation_schemas::<SpatialDocumentUpdateInput, SpatialDocumentUpdatePlan>()
+        }
+        OperationId::DocumentDeliveryPlan => {
+            operation_schemas::<SpatialDocumentDeliveryInput, SpatialDocumentDeliveryPlan>()
+        }
+        OperationId::InteractiveMediaBundlePlan => {
+            operation_schemas::<SpatialInteractiveMediaBundleInput, SpatialInteractiveMediaBundle>()
+        }
+        OperationId::VariationPlan => operation_schemas::<VariationPlanInput, VariationJobPlan>(),
+        OperationId::VariationRender => {
+            operation_schemas::<VariationRenderInput, VariationJobFileRenderResult>()
+        }
+        OperationId::CanvasRender => (
+            Value::Object(canvas_render_input_schema()),
+            Value::Object(generated_output_schema::<
+                ToolEnvelope<CanvasSetFileRenderResult>,
+            >()),
+        ),
+        OperationId::MockupPlan => operation_schemas::<MockupPlanInput, MockupPlan>(),
+        OperationId::MockupRender => {
+            operation_schemas::<MockupRenderInput, MockupFileRenderResult>()
+        }
+        OperationId::MockupExtractPlan => {
+            operation_schemas::<MockupExtractPlanInput, MockupExtractPlan>()
+        }
+        OperationId::MockupExtractRender => {
+            operation_schemas::<MockupExtractRenderInput, MockupExtractFileRenderResult>()
+        }
+        OperationId::MeshPlan => operation_schemas::<MeshPlanInput, MeshWarpPlan>(),
+        OperationId::MeshRender => operation_schemas::<MeshRenderInput, MeshWarpFileRenderResult>(),
+        OperationId::SurfacePlan => operation_schemas::<SurfacePlanInput, SurfaceDeformationPlan>(),
+        OperationId::SurfaceRender => {
+            operation_schemas::<SurfaceRenderInput, SurfaceDeformationFileRenderResult>()
+        }
+        OperationId::DeformationPlan => {
+            operation_schemas::<DeformationPlanInput, DeformationPlanOutput>()
+        }
+        OperationId::DeformationRender => {
+            operation_schemas::<DeformationRenderInput, DeformationRenderOutput>()
+        }
+        OperationId::DeformationMigrate => {
+            operation_schemas::<DeformationMigrateInput, DeformationWorkMigration>()
+        }
+        OperationId::RemapPlan => operation_schemas::<RemapPlanInput, RemapPlan>(),
+        OperationId::RemapRender => operation_schemas::<RemapRenderInput, RemapFileRenderResult>(),
+        OperationId::TimelinePlan => operation_schemas::<TimelinePlanInput, TimelinePlan>(),
+        OperationId::TimelineRender => {
+            operation_schemas::<TimelineRenderInput, TimelineFileRenderResult>()
+        }
+        OperationId::MotionPlan => operation_schemas::<MotionPlanInput, MotionPlan>(),
+        OperationId::MockupMotionAuthoring => {
+            operation_schemas::<motion_authoring::Input, motion_authoring::Output>()
+        }
+        OperationId::MotionRender => {
+            operation_schemas::<MotionRenderInput, MotionFileRenderResult>()
+        }
+        OperationId::VideoPlan => {
+            operation_schemas::<video_delivery::PlanInput, worldbend_core::VideoPlan>()
+        }
+        OperationId::VideoRender => {
+            operation_schemas::<video_delivery::RenderInput, worldbend_render::VideoRenderResult>()
+        }
+        OperationId::Css => operation_schemas::<CssInput, worldbend_core::CssTransform>(),
+    };
+    OperationDescriptor {
+        operation,
+        title: operation.title(),
+        summary: operation.summary(),
+        mutates_files: operation.mutates_files(),
+        requires_workspace: operation.requires_workspace(),
+        input_schema,
+        output_schema,
+    }
+}
+
+fn operation_schemas<I, O>() -> (Value, Value)
+where
+    I: JsonSchema + 'static,
+    O: Serialize + JsonSchema + 'static,
+{
+    (
+        Value::Object(generated_input_schema::<I>()),
+        Value::Object(generated_output_schema::<ToolEnvelope<O>>()),
+    )
+}
+
+fn parse_tool_input<T: DeserializeOwned>(arguments: Value) -> Result<T, TransformError> {
+    let mut counter = CountingWriter::default();
+    serde_json::to_writer(&mut counter, &arguments).map_err(|error| {
+        TransformError::new(ErrorCode::Schema, "tool arguments are not valid JSON").with_details(
+            json!({ "reason": bounded_text(&error.to_string(), MAX_SCHEMA_ERROR_CHARS) }),
+        )
+    })?;
+    if counter.bytes > MAX_TOOL_ARGUMENT_BYTES {
+        return Err(TransformError::new(
+            ErrorCode::Schema,
+            "tool arguments exceed the request byte limit",
+        )
+        .with_details(json!({
+            "bytes": counter.bytes,
+            "maximum": MAX_TOOL_ARGUMENT_BYTES,
+        })));
+    }
+    serde_json::from_value(arguments).map_err(|error| {
+        TransformError::new(
+            ErrorCode::Schema,
+            "tool arguments do not match the published schema",
+        )
+        .with_details(json!({
+            "reason": bounded_text(&error.to_string(), MAX_SCHEMA_ERROR_CHARS)
+        }))
+    })
+}
+
+#[derive(Default)]
+struct CountingWriter {
+    bytes: usize,
+}
+
+impl std::io::Write for CountingWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.bytes += bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn set_input_schema<T>(tool_router: &mut ToolRouter<WorldbendServer>, name: &str)
+where
+    T: JsonSchema + 'static,
+{
+    let route = tool_router
+        .map
+        .get_mut(name)
+        .unwrap_or_else(|| panic!("missing generated tool route {name}"));
+    route.attr.input_schema = Arc::new(generated_input_schema::<T>());
+}
+
+fn generated_input_schema<T>() -> Map<String, Value>
+where
+    T: JsonSchema + 'static,
+{
+    rmcp::handler::server::tool::schema_for_input::<T>()
+        .unwrap_or_else(|error| panic!("invalid generated input schema: {error}"))
+        .as_ref()
+        .clone()
+}
+
+fn set_canvas_render_input_schema(tool_router: &mut ToolRouter<WorldbendServer>) {
+    const NAME: &str = "worldbend.canvas_render";
+    set_input_schema::<CanvasRenderInput>(tool_router, NAME);
+    let route = tool_router
+        .map
+        .get_mut(NAME)
+        .unwrap_or_else(|| panic!("missing generated tool route {NAME}"));
+    route.attr.input_schema = Arc::new(canvas_render_input_schema());
+}
+
+fn canvas_render_input_schema() -> Map<String, Value> {
+    let mut schema = generated_input_schema::<CanvasRenderInput>();
+    schema.insert(
+        "oneOf".to_owned(),
+        json!([
+            {
+                "required": ["source", "outputDirectory", "spec"],
+                "not": {
+                    "anyOf": [
+                        { "required": ["plan"] },
+                        { "required": ["sampling"] },
+                        { "required": ["outsideFill"] }
+                    ]
+                }
+            },
+            {
+                "required": [
+                    "source",
+                    "outputDirectory",
+                    "plan",
+                    "sampling",
+                    "outsideFill"
+                ],
+                "not": {
+                    "anyOf": [
+                        { "required": ["spec"] },
+                        { "required": ["quality"] }
+                    ]
+                }
+            }
+        ]),
+    );
+    schema
+}
+
+fn set_output_schema<T>(tool_router: &mut ToolRouter<WorldbendServer>, name: &str)
+where
+    T: JsonSchema + 'static,
+{
+    let route = tool_router
+        .map
+        .get_mut(name)
+        .unwrap_or_else(|| panic!("missing generated tool route {name}"));
+    let output_schema = generated_output_schema::<T>();
+    route.attr.output_schema = Some(Arc::new(output_schema));
+}
+
+fn generated_output_schema<T>() -> Map<String, Value>
+where
+    T: JsonSchema + 'static,
+{
+    let mut output_schema = rmcp::handler::server::tool::schema_for_output::<T>()
+        .as_ref()
+        .clone();
+    // ToolEnvelope is always a JSON object. Keep that fact explicit for MCP
+    // clients that validate outputSchema as an object schema before accepting
+    // tools/list, while retaining schemars' success/failure union below it.
+    output_schema.insert("type".to_owned(), json!("object"));
+    output_schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{Rgba, RgbaImage};
+    use std::collections::HashMap;
+    use worldbend_core::{
+        CANVAS_SET_SCHEMA, CANVAS_VERSION, CanvasOperation, CanvasSetSpec, CanvasSpec,
+        CanvasVariant, FrameRate, MOTION_SCHEMA, MOTION_VERSION, MotionEasing, MotionKeyframe,
+        MotionSpec, PixelSize, Point, Quad, RASTER_PROGRAM_SCHEMA, RASTER_PROGRAM_VERSION,
+        RasterProgramStage, SPATIAL_TEMPLATE_SCHEMA, SPATIAL_TEMPLATE_VERSION, Size,
+        SourceOrientation, SpatialTemplateOperation, SpatialTemplateOutput, TIMELINE_SCHEMA,
+        TIMELINE_VERSION, TimelineFrame, TimelineProgram, TimelineSpec, TransformSpec,
+        VARIATION_JOB_SCHEMA, VariationBinding, VariationJobItem, plan_canvas_set,
+    };
+    use worldbend_render::{
+        CanvasSetRenderedItem, TimelineRenderOptions, VariationJobItemOutcome, render_motion_files,
+        render_timeline_files, render_variation_job_files,
+    };
+
+    fn variation_spec(item_ids: &[&str]) -> VariationJobSpec {
+        VariationJobSpec {
+            schema: VARIATION_JOB_SCHEMA.to_owned(),
+            version: SPATIAL_TEMPLATE_VERSION.to_owned(),
+            template: SpatialTemplateSpec {
+                schema: SPATIAL_TEMPLATE_SCHEMA.to_owned(),
+                version: SPATIAL_TEMPLATE_VERSION.to_owned(),
+                operation: SpatialTemplateOperation::RasterProgram {
+                    source_slot: "artwork".to_owned(),
+                    program: RasterProgramSpec {
+                        schema: RASTER_PROGRAM_SCHEMA.to_owned(),
+                        version: RASTER_PROGRAM_VERSION.to_owned(),
+                        stages: vec![RasterProgramStage::Canvas {
+                            id: "fit".to_owned(),
+                            spec: CanvasSpec {
+                                schema: worldbend_core::CANVAS_SCHEMA.to_owned(),
+                                version: CANVAS_VERSION.to_owned(),
+                                operation: CanvasOperation::Stretch {
+                                    output: PixelSize::new(4, 4),
+                                },
+                            },
+                        }],
+                    },
+                },
+                output: SpatialTemplateOutput::Single {
+                    id: "hero".to_owned(),
+                },
+            },
+            failure_policy: worldbend_core::VariationFailurePolicy::AllOrNone,
+            items: item_ids
+                .iter()
+                .map(|id| VariationJobItem {
+                    id: (*id).to_owned(),
+                    bindings: vec![VariationBinding {
+                        slot_id: "artwork".to_owned(),
+                        asset_id: "asset-a".to_owned(),
+                    }],
+                })
+                .collect(),
+        }
+    }
+
+    fn timeline_spec() -> TimelineSpec {
+        TimelineSpec {
+            schema: TIMELINE_SCHEMA.to_owned(),
+            version: TIMELINE_VERSION.to_owned(),
+            output: PixelSize::new(2, 2),
+            program: TimelineProgram::Frames {
+                frames: vec![TimelineFrame {
+                    id: "frame-1".to_owned(),
+                    source_id: "still".to_owned(),
+                    transform: TransformSpec::normalized(Quad::unit()),
+                }],
+            },
+        }
+    }
+
+    fn motion_spec() -> MotionSpec {
+        MotionSpec {
+            schema: MOTION_SCHEMA.to_owned(),
+            version: MOTION_VERSION.to_owned(),
+            output: PixelSize::new(2, 2),
+            timebase: FrameRate {
+                numerator: 24,
+                denominator: 1,
+            },
+            source_id: "still".to_owned(),
+            frame_count: 2,
+            base: TransformSpec::pixel(Size::new(2.0, 2.0), Quad::unit()),
+            keyframes: vec![
+                MotionKeyframe {
+                    frame: 0,
+                    quad: Quad::new(
+                        Point::new(0.0, 0.0),
+                        Point::new(2.0, 0.0),
+                        Point::new(2.0, 2.0),
+                        Point::new(0.0, 2.0),
+                    ),
+                    easing_to_next: Some(MotionEasing::Linear),
+                },
+                MotionKeyframe {
+                    frame: 1,
+                    quad: Quad::new(
+                        Point::new(0.25, 0.0),
+                        Point::new(2.0, 0.0),
+                        Point::new(2.0, 2.0),
+                        Point::new(0.25, 2.0),
+                    ),
+                    easing_to_next: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn private_staging_root_accepts_only_a_writable_absolute_directory_outside_workspace() {
+        let workspace = tempfile::tempdir().unwrap();
+        let workspace_root = fs::canonicalize(workspace.path()).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let private_root = fs::canonicalize(private.path()).unwrap();
+
+        assert_eq!(
+            resolve_private_staging_root(Some(private.path()), Some(&workspace_root)).unwrap(),
+            private_root
+        );
+
+        let relative_error = resolve_private_staging_root(
+            Some(Path::new("relative-staging")),
+            Some(&workspace_root),
+        )
+        .unwrap_err();
+        assert!(relative_error.to_string().contains("absolute path"));
+
+        let nested = workspace.path().join("private-staging");
+        fs::create_dir(&nested).unwrap();
+        let nested_error =
+            resolve_private_staging_root(Some(&nested), Some(&workspace_root)).unwrap_err();
+        assert!(
+            nested_error
+                .to_string()
+                .contains("outside the granted workspace")
+        );
+
+        let file = private.path().join("not-a-directory");
+        fs::write(&file, b"file").unwrap();
+        let file_error =
+            resolve_private_staging_root(Some(&file), Some(&workspace_root)).unwrap_err();
+        assert!(file_error.to_string().contains("directory"));
+
+        let missing = private.path().join("missing-directory");
+        let missing_error =
+            resolve_private_staging_root(Some(&missing), Some(&workspace_root)).unwrap_err();
+        assert!(missing_error.to_string().contains("not accessible"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let unwritable = private.path().join("unwritable-directory");
+            fs::create_dir(&unwritable).unwrap();
+            fs::set_permissions(&unwritable, fs::Permissions::from_mode(0o500)).unwrap();
+            let unwritable_error =
+                resolve_private_staging_root(Some(&unwritable), Some(&workspace_root)).unwrap_err();
+            fs::set_permissions(&unwritable, fs::Permissions::from_mode(0o700)).unwrap();
+            assert!(unwritable_error.to_string().contains("not writable"));
+        }
+    }
+
+    #[test]
+    fn private_staging_root_is_read_once_at_server_startup() {
+        let source = include_str!("main.rs");
+        let environment_read = [
+            "std::env::var_os(",
+            "\"WORLDBEND_PRIVATE_STAGING_ROOT\"",
+            ")",
+        ]
+        .concat();
+        assert_eq!(source.matches(&environment_read).count(), 1);
+    }
+
+    #[test]
+    fn public_tool_registry_has_eight_direct_bounded_tools() {
+        let server = WorldbendServer::new(None);
+        let tools = server.tool_router.list_all();
+        let mut names = tools
+            .iter()
+            .map(|tool| tool.name.as_ref())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            [
+                "worldbend.canvas_render",
+                "worldbend.compose",
+                "worldbend.css",
+                "worldbend.inspect",
+                "worldbend.rectify",
+                "worldbend.rectify_render",
+                "worldbend.render",
+                "worldbend.solve"
+            ]
+        );
+        let complete_tools_list = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": &tools }
+        });
+        let catalog_bytes = serde_json::to_vec(&complete_tools_list).unwrap().len();
+        assert!(
+            catalog_bytes <= MAX_TOOL_CATALOG_BYTES,
+            "complete tools/list is {catalog_bytes} bytes; budget is {MAX_TOOL_CATALOG_BYTES}"
+        );
+        for tool in tools {
+            assert!(tool.input_schema.contains_key("properties"));
+            assert_eq!(
+                tool.output_schema
+                    .as_ref()
+                    .and_then(|schema| schema.get("type")),
+                Some(&json!("object"))
+            );
+            assert_eq!(
+                tool.annotations.as_ref().and_then(|a| a.open_world_hint),
+                Some(false)
+            );
+        }
+    }
+
+    #[test]
+    fn progressive_catalog_is_small_closed_and_exactly_describable() {
+        let server = WorldbendServer::new_with_surface(None, ToolSurface::Catalog);
+        let tools = server.tool_router.list_all();
+        let mut names = tools
+            .iter()
+            .map(|tool| tool.name.as_ref())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            ["worldbend.describe", "worldbend.run", "worldbend.search"]
+        );
+        let complete_tools_list = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": &tools }
+        });
+        let catalog_bytes = serde_json::to_vec(&complete_tools_list).unwrap().len();
+        assert!(
+            catalog_bytes <= MAX_PROGRESSIVE_TOOL_CATALOG_BYTES,
+            "progressive tools/list is {catalog_bytes} bytes; budget is {MAX_PROGRESSIVE_TOOL_CATALOG_BYTES}"
+        );
+        for tool in &tools {
+            assert_eq!(
+                tool.annotations.as_ref().and_then(|a| a.open_world_hint),
+                Some(false)
+            );
+        }
+
+        let search_tool = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.search")
+            .unwrap();
+        let total_matches = &search_tool.output_schema.as_ref().unwrap()["$defs"]["SearchResult"]["properties"]
+            ["totalMatches"];
+        assert_eq!(total_matches["type"], json!("integer"));
+        assert_eq!(total_matches["minimum"], json!(0));
+        assert_eq!(total_matches["maximum"], json!(u32::MAX));
+        assert!(total_matches.get("format").is_none());
+
+        let search = search_operation_catalog(SearchInput {
+            query: "flatten plane".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(search.total_matches, 4);
+        assert_eq!(
+            search
+                .operations
+                .iter()
+                .map(|operation| operation.operation)
+                .collect::<Vec<_>>(),
+            [
+                OperationId::Rectify,
+                OperationId::RectifyRender,
+                OperationId::MockupExtractPlan,
+                OperationId::MockupExtractRender
+            ]
+        );
+
+        let canvas = describe_operation(OperationId::CanvasRender);
+        assert_eq!(canvas.operation, OperationId::CanvasRender);
+        assert_eq!(canvas.input_schema["type"], "object");
+        assert!(canvas.input_schema.get("oneOf").is_some());
+        assert_eq!(canvas.output_schema["type"], "object");
+
+        let program = describe_operation(OperationId::ProgramRender);
+        assert_eq!(program.operation, OperationId::ProgramRender);
+        let program_schema = serde_json::to_string(&program.input_schema).unwrap();
+        assert!(program_schema.contains(r#""const":"worldbend.raster-program""#));
+        assert!(program_schema.contains(r#""maximum":67108864"#));
+        assert!(program_schema.contains(r#""transform""#));
+        assert!(program_schema.contains(r#""rectify""#));
+        assert!(program_schema.contains(r#""canvas""#));
+        assert_eq!(program.output_schema["type"], "object");
+    }
+
+    #[test]
+    fn program_requires_every_control_map_once_before_opening_sources() {
+        let spec = json!({"schema":"worldbend.raster-program","version":"0.1","stages":[{
+            "id":"surface","kind":"remap","mapSlot":"fabric","spec":{
+                "schema":"worldbend.remap","version":"0.1","output":{"width":4,"height":4},
+                "operation":{"kind":"displacementUnit","xChannel":"red","yChannel":"green",
+                    "scaleXPixels":1.0,"scaleYPixels":1.0}}}]});
+        let input =
+            |maps| json!({"source":"screen.png","spec":spec,"output":"out.png","maps":maps});
+        let good = json!({"slotId":"fabric","source":"map.png"});
+        let parsed: ProgramRenderInput =
+            serde_json::from_value(input(json!([good.clone()]))).unwrap();
+        assert_eq!(
+            ProgramRenderRequest::try_from(parsed).unwrap().maps.len(),
+            1
+        );
+        for maps in [
+            json!([]),
+            json!([good.clone(), good]),
+            json!([{"slotId":"other","source":"map.png"}]),
+        ] {
+            let parsed: ProgramRenderInput = serde_json::from_value(input(maps)).unwrap();
+            assert_eq!(
+                ProgramRenderRequest::try_from(parsed).unwrap_err().code,
+                ErrorCode::Schema
+            );
+        }
+        assert!(
+            serde_json::from_value::<ProgramRenderInput>(input(
+                json!([{"slotId":"fabric","source":"map.png","unexpected":true}])
+            ))
+            .is_err()
+        );
+        let search = search_operation_catalog(SearchInput {
+            query: "pipeline displacement".into(),
+            limit: 8,
+        })
+        .unwrap();
+        assert!(
+            search
+                .operations
+                .iter()
+                .any(|entry| entry.operation == OperationId::ProgramRender)
+        );
+    }
+
+    #[test]
+    fn program_worker_receipts_cannot_change_maps_order_dimensions_or_charges() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source.png");
+        let control = root.path().join("map.png");
+        RgbaImage::from_pixel(4, 4, Rgba([40, 80, 120, 255]))
+            .save(&source)
+            .unwrap();
+        RgbaImage::from_pixel(4, 4, Rgba([128, 128, 0, 255]))
+            .save(&control)
+            .unwrap();
+        let spec:RasterProgramSpec=serde_json::from_value(json!({"schema":"worldbend.raster-program","version":"0.1","stages":[{
+            "id":"surface","kind":"remap","mapSlot":"fabric","spec":{
+                "schema":"worldbend.remap","version":"0.1","output":{"width":4,"height":4},
+                "operation":{"kind":"displacementUnit","xChannel":"red","yChannel":"green","scaleXPixels":1,"scaleYPixels":1}}},
+            {"id":"size","kind":"canvas","spec":{"schema":"worldbend.canvas","version":"0.1","operation":{"kind":"stretch","output":{"width":8,"height":4}}}}]})).unwrap();
+        let maps = HashMap::from([(
+            "fabric".into(),
+            RemapFileMap {
+                path: control,
+                sha256: None,
+            },
+        )]);
+        let options = RasterProgramRenderOptions::default();
+        let result = render_raster_program_file_with_maps(
+            &source,
+            None,
+            &maps,
+            &spec,
+            &root.path().join("out.png"),
+            options,
+            false,
+            false,
+            &|| false,
+        )
+        .unwrap();
+        let expected = result.maps.clone();
+        validate_program_worker_result(&result, &spec, options, &expected).unwrap();
+        let mut changed = result.clone();
+        changed.maps[0].sha256 = "0".repeat(64);
+        assert!(validate_program_worker_result(&changed, &spec, options, &expected).is_err());
+        let mut changed = result.clone();
+        changed.stages.swap(0, 1);
+        assert!(validate_program_worker_result(&changed, &spec, options, &expected).is_err());
+        let mut changed = result.clone();
+        changed.stages[1].input.width += 1;
+        assert!(validate_program_worker_result(&changed, &spec, options, &expected).is_err());
+        let mut changed = result.clone();
+        changed.cumulative_pixels -= 1;
+        assert!(validate_program_worker_result(&changed, &spec, options, &expected).is_err());
+        let mut changed = result;
+        changed.evidence.output_width += 1;
+        assert!(validate_program_worker_result(&changed, &spec, options, &expected).is_err());
+    }
+
+    #[test]
+    fn saved_outline_fitting_is_discoverable_and_describes_its_authored_recipe() {
+        for query in ["fit shape contour landmarks", "轮廓 拟合"] {
+            let search = search_operation_catalog(SearchInput {
+                query: query.to_owned(),
+                limit: 8,
+            })
+            .unwrap();
+            assert_eq!(search.total_matches, 2);
+            assert_eq!(
+                search
+                    .operations
+                    .iter()
+                    .map(|operation| operation.operation)
+                    .collect::<Vec<_>>(),
+                [OperationId::DeformationPlan, OperationId::DeformationRender]
+            );
+        }
+        let descriptor = describe_operation(OperationId::DeformationPlan);
+        let controls = &descriptor.input_schema["$defs"]["ShapeFitControls"];
+        assert_eq!(controls["additionalProperties"], false);
+        assert_eq!(controls["required"], json!(["contour"]));
+        assert!(controls["properties"].get("cornerPositions").is_some());
+        assert!(controls["properties"].get("clip").is_some());
+        let clip = &descriptor.input_schema["$defs"]["MockupClip"];
+        assert_eq!(clip["additionalProperties"], false);
+        assert!(clip["properties"].get("contours").is_some());
+        assert!(clip["properties"].get("regions").is_some());
+        assert!(
+            descriptor.input_schema["properties"]
+                .get("planView")
+                .is_some()
+        );
+        assert!(descriptor.summary.contains("planView:state"));
+    }
+
+    #[test]
+    fn published_work_continuation_is_discoverable_with_closed_actions_and_document_outputs() {
+        let search = search_operation_catalog(SearchInput {
+            query: "figma work continuation".into(),
+            limit: 8,
+        })
+        .unwrap();
+        let entry = search
+            .operations
+            .iter()
+            .find(|entry| entry.operation == OperationId::FigmaWorkContinuation)
+            .unwrap();
+        assert!(!entry.mutates_files);
+        assert!(!entry.requires_workspace);
+        let descriptor = describe_operation(OperationId::FigmaWorkContinuation);
+        let input = serde_json::to_string(&descriptor.input_schema).unwrap();
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        for literal in [
+            "inspect",
+            "project",
+            "revise",
+            "expectedFingerprint",
+            "worldbend.figma.work-continuation-snapshot",
+        ] {
+            assert!(input.contains(literal));
+        }
+        for literal in [
+            "worldbend.figma.work-continuation",
+            "worldbend.spatial-document",
+            "worldbend.spatial-document-delivery-plan",
+            "renderQuality",
+            "authoringDependencies",
+            "worldbend.figma.document-revision",
+            "namedDeliveryOutputsRemainInDocument",
+        ] {
+            assert!(output.contains(literal));
+        }
+        assert!(descriptor.summary.contains("published"));
+    }
+
+    #[test]
+    fn every_discoverable_operation_has_a_describable_object_contract() {
+        for operation in OperationId::ALL {
+            let descriptor = describe_operation(operation);
+            assert_eq!(
+                descriptor.input_schema["type"],
+                "object",
+                "{}",
+                operation.id()
+            );
+            assert_eq!(
+                descriptor.output_schema["type"],
+                "object",
+                "{}",
+                operation.id()
+            );
+        }
+        let linked = describe_operation(OperationId::FigmaLinkedResults);
+        let branches = linked.input_schema["oneOf"].as_array().unwrap();
+        assert_eq!(branches.len(), 3);
+        for branch in branches {
+            assert_eq!(branch["type"], "object");
+            assert_eq!(branch["additionalProperties"], false);
+        }
+    }
+
+    #[test]
+    fn variation_operations_are_searchable_and_publish_closed_agent_limits() {
+        let search = search_operation_catalog(SearchInput {
+            query: "variation job".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        // figma_mockup_publish matches through its Chinese keywords (发布/渲染).
+        assert_eq!(search.total_matches, 4);
+        assert_eq!(
+            search
+                .operations
+                .iter()
+                .map(|operation| operation.operation)
+                .collect::<Vec<_>>(),
+            [
+                OperationId::FigmaMockupPublish,
+                OperationId::DocumentDeliveryPlan,
+                OperationId::VariationPlan,
+                OperationId::VariationRender
+            ]
+        );
+
+        let descriptor = describe_operation(OperationId::VariationRender);
+        let schema = serde_json::to_string(&descriptor.input_schema).unwrap();
+        assert!(schema.contains(r#""const":"worldbend.variation-job""#));
+        assert!(schema.contains(r#""const":"worldbend.spatial-template""#));
+        assert!(schema.contains(r#""maximum":33554432"#));
+        assert!(schema.contains(r#""maximum":67108864"#));
+        assert!(schema.contains("outputDirectory"));
+        assert_eq!(descriptor.output_schema["type"], "object");
+    }
+
+    #[test]
+    fn spatial_document_is_searchable_and_publishes_nested_closed_contracts() {
+        let continuation = search_operation_catalog(SearchInput {
+            query: "figma cross carrier".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(continuation.total_matches, 1);
+        assert_eq!(
+            continuation.operations[0].operation,
+            OperationId::FigmaEffectContinuation
+        );
+        assert!(!continuation.operations[0].mutates_files);
+        assert!(!continuation.operations[0].requires_workspace);
+        let descriptor = describe_operation(OperationId::FigmaEffectContinuation);
+        let input = serde_json::to_string(&descriptor.input_schema).unwrap();
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        assert!(input.contains(r#""FigmaEffectSnapshot""#));
+        assert!(input.contains(r#""snapshot""#));
+        assert!(output.contains(r#""const":"worldbend.figma-effect-continuation""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-delivery-plan""#));
+
+        let composition = search_operation_catalog(SearchInput {
+            query: "composition downstream replace asset".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(composition.total_matches, 1);
+        assert_eq!(
+            composition.operations[0].operation,
+            OperationId::FigmaCompositionContinuation
+        );
+        assert!(!composition.operations[0].mutates_files);
+        assert!(!composition.operations[0].requires_workspace);
+        let descriptor = describe_operation(OperationId::FigmaCompositionContinuation);
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        assert!(output.contains(r#""const":"worldbend.figma-composition-continuation""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-delivery-plan""#));
+
+        let search = search_operation_catalog(SearchInput {
+            query: "document shared assets".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        let document = search
+            .operations
+            .iter()
+            .find(|entry| entry.operation == OperationId::DocumentInspect)
+            .unwrap();
+        assert!(!document.mutates_files);
+        assert!(!document.requires_workspace);
+
+        let descriptor = describe_operation(OperationId::DocumentInspect);
+        let schema = serde_json::to_string(&descriptor.input_schema).unwrap();
+        assert!(schema.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(schema.contains(r#""const":"worldbend.spatial-template""#));
+        assert!(schema.contains(r#""const":"worldbend.effect-recipe""#));
+        assert_eq!(descriptor.output_schema["type"], "object");
+
+        let assembly = search_operation_catalog(SearchInput {
+            query: "assemble projected works asset equivalence".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(assembly.total_matches, 1);
+        assert_eq!(
+            assembly.operations[0].operation,
+            OperationId::DocumentAssemble
+        );
+        assert!(!assembly.operations[0].mutates_files);
+        assert!(!assembly.operations[0].requires_workspace);
+
+        let descriptor = describe_operation(OperationId::DocumentAssemble);
+        let input = serde_json::to_string(&descriptor.input_schema).unwrap();
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        assert!(input.contains("expectedFingerprint"));
+        assert!(input.contains("members"));
+        assert!(input.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-assembly-plan""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-delivery-plan""#));
+
+        let update = search_operation_catalog(SearchInput {
+            query: "document stale redelivery".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(update.total_matches, 2);
+        assert_eq!(
+            update.operations[0].operation,
+            OperationId::DocumentUpdatePlan
+        );
+        assert!(!update.operations[0].mutates_files);
+        assert!(!update.operations[0].requires_workspace);
+
+        let descriptor = describe_operation(OperationId::DocumentUpdatePlan);
+        let input = serde_json::to_string(&descriptor.input_schema).unwrap();
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        assert!(input.contains(r#""pattern":"^sha256:[0-9a-f]{64}$""#));
+        assert!(input.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(input.contains("newAssets"));
+        assert!(input.contains("expressions"));
+        assert!(output.contains("expressionRevisions"));
+        assert!(output.contains("addedAssets"));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-update-plan""#));
+
+        let delivery = search_operation_catalog(SearchInput {
+            query: "document compile selected publish".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(delivery.total_matches, 1);
+        assert_eq!(
+            delivery.operations[0].operation,
+            OperationId::DocumentDeliveryPlan
+        );
+        assert!(!delivery.operations[0].mutates_files);
+        assert!(!delivery.operations[0].requires_workspace);
+
+        let descriptor = describe_operation(OperationId::DocumentDeliveryPlan);
+        let input = serde_json::to_string(&descriptor.input_schema).unwrap();
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        assert!(input.contains("expressionIds"));
+        assert!(input.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-delivery-plan""#));
+        assert!(output.contains(r#""const":"worldbend.variation-job""#));
+        assert!(output.contains(r#""const":"worldbend.effect-recipe""#));
+
+        let bundle = search_operation_catalog(SearchInput {
+            query: "interactive media bundle content hash".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        assert_eq!(bundle.total_matches, 1);
+        assert_eq!(
+            bundle.operations[0].operation,
+            OperationId::InteractiveMediaBundlePlan
+        );
+        assert!(!bundle.operations[0].mutates_files);
+        assert!(!bundle.operations[0].requires_workspace);
+
+        let descriptor = describe_operation(OperationId::InteractiveMediaBundlePlan);
+        let input = serde_json::to_string(&descriptor.input_schema).unwrap();
+        let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+        assert!(input.contains(r#""pattern":"^[0-9a-f]{64}$""#));
+        assert!(input.contains(r#""maximum":67108864"#));
+        assert!(input.contains(r#""maximum":8192"#));
+        assert!(output.contains(r#""const":"worldbend.spatial-interactive-media-bundle""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document""#));
+        assert!(output.contains(r#""const":"worldbend.spatial-document-delivery-plan""#));
+    }
+
+    #[test]
+    fn brand_brief_entry_is_discoverable_without_operation_files() {
+        // Consumer Agents discover the brand-brief path from search terms and
+        // closed schemas — not from developer-written operation packets.
+        let search = search_operation_catalog(SearchInput {
+            query: "brand brief presentation social".to_owned(),
+            limit: 12,
+        })
+        .unwrap();
+        let ops: Vec<_> = search
+            .operations
+            .iter()
+            .map(|operation| operation.operation)
+            .collect();
+        assert!(
+            ops.contains(&OperationId::DocumentInspect)
+                && ops.contains(&OperationId::DocumentUpdatePlan)
+                && ops.contains(&OperationId::DocumentDeliveryPlan)
+                && ops.contains(&OperationId::VariationPlan)
+                && ops.contains(&OperationId::VariationRender)
+                && ops.contains(&OperationId::FigmaWorkCreate)
+                && ops.contains(&OperationId::FigmaWorkContinuation),
+            "brand brief search must surface document, variation and Figma work entry points: {ops:?}"
+        );
+
+        let weekly = search_operation_catalog(SearchInput {
+            query: "weekly product-screen".to_owned(),
+            limit: 8,
+        })
+        .unwrap();
+        let weekly_ops: Vec<_> = weekly
+            .operations
+            .iter()
+            .map(|operation| operation.operation)
+            .collect();
+        assert!(
+            weekly_ops.contains(&OperationId::DocumentUpdatePlan)
+                || weekly_ops.contains(&OperationId::FigmaWorkRevise),
+            "weekly screen replacement must be discoverable: {weekly_ops:?}"
+        );
+
+        for operation in [
+            OperationId::DocumentInspect,
+            OperationId::DocumentDeliveryPlan,
+            OperationId::VariationPlan,
+            OperationId::FigmaWorkCreate,
+            OperationId::FigmaWorkContinuation,
+        ] {
+            let descriptor = describe_operation(operation);
+            assert_eq!(descriptor.input_schema["type"], "object");
+            assert_eq!(descriptor.output_schema["type"], "object");
+        }
+
+        let delivery = describe_operation(OperationId::DocumentDeliveryPlan);
+        let delivery_out = serde_json::to_string(&delivery.output_schema).unwrap();
+        assert!(delivery_out.contains(r#""const":"worldbend.spatial-document-delivery-plan""#));
+        let variation = describe_operation(OperationId::VariationPlan);
+        let variation_in = serde_json::to_string(&variation.input_schema).unwrap();
+        assert!(variation_in.contains(r#""const":"worldbend.spatial-template""#));
+        assert!(variation_in.contains("canvasSet") || variation_in.contains("CanvasSet"));
+    }
+
+    #[test]
+    fn production_media_operations_publish_precision_vector_and_tiling_boundaries() {
+        let inspect = describe_operation(OperationId::MediaInspect);
+        let inspect_schema = serde_json::to_string(&inspect.input_schema).unwrap();
+        assert!(inspect.requires_workspace);
+        assert!(!inspect.mutates_files);
+        assert!(inspect_schema.contains(&format!(r#""maximum":{MCP_MAX_MEDIA_PIXELS}"#)));
+
+        let media = describe_operation(OperationId::MediaRender);
+        let media_schema = serde_json::to_string(&media.input_schema).unwrap();
+        for value in [
+            "png",
+            "jpeg",
+            "webpLossless",
+            "tiff",
+            "u16",
+            "f32",
+            "preserve",
+            "discard",
+        ] {
+            assert!(
+                media_schema.contains(value),
+                "media schema is missing {value}"
+            );
+        }
+
+        let vector = describe_operation(OperationId::VectorRender);
+        let vector_schema = serde_json::to_string(&vector.input_schema).unwrap();
+        assert!(vector_schema.contains(r#""enum":["svg","html"]"#));
+        assert!(vector_schema.contains(&MAX_VECTOR_SOURCE_BYTES.to_string()));
+
+        let tiled = describe_operation(OperationId::TiledMediaRender);
+        let tiled_schema = serde_json::to_string(&tiled.input_schema).unwrap();
+        assert!(tiled_schema.contains(&MCP_MAX_TILED_PIXELS.to_string()));
+        assert!(tiled_schema.contains(&MCP_MAX_TILED_ENCODED_BYTES.to_string()));
+        assert!(tiled_schema.contains(r#""maximum":4096"#));
+        assert_eq!(tiled.output_schema["type"], "object");
+
+        assert!(
+            validate_media_output_extension(
+                "out/result.jpeg",
+                &MediaOutput::Jpeg {
+                    quality: 90,
+                    matte: [255, 255, 255],
+                    icc: worldbend_render::IccPolicy::Discard,
+                },
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate_media_output_extension(
+                "out/result.png",
+                &MediaOutput::Jpeg {
+                    quality: 90,
+                    matte: [255, 255, 255],
+                    icc: worldbend_render::IccPolicy::Discard,
+                },
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::Schema
+        );
+        assert!(validate_vector_output_extension("out/result.htm", VectorCarrier::Html).is_ok());
+        assert_eq!(
+            validate_vector_output_extension("out/result.svg", VectorCarrier::Html)
+                .unwrap_err()
+                .code,
+            ErrorCode::Schema
+        );
+
+        let perception = describe_operation(OperationId::PlaneCandidates);
+        assert!(perception.requires_workspace);
+        assert!(!perception.mutates_files);
+        let perception_input = serde_json::to_string(&perception.input_schema).unwrap();
+        let perception_output = serde_json::to_string(&perception.output_schema).unwrap();
+        for value in [
+            "worldbend.perception-plane-request",
+            "contrastQuadV1",
+            "alphaQuadV1",
+            "analysisMaxAxis",
+        ] {
+            assert!(
+                perception_input.contains(value),
+                "perception input schema is missing {value}"
+            );
+        }
+        assert!(perception_input.contains(r#""maximum":3"#));
+        for value in [
+            "worldbend.perception-plane-candidates",
+            "confidence",
+            "uncertainty",
+            "automaticExecution",
+            "sourcePlane",
+        ] {
+            assert!(
+                perception_output.contains(value),
+                "perception output schema is missing {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn variation_agent_projection_rejects_a_response_set_above_128_outputs() {
+        let mut spec = variation_spec(&[
+            "sku-1", "sku-2", "sku-3", "sku-4", "sku-5", "sku-6", "sku-7", "sku-8", "sku-9",
+        ]);
+        spec.template.output = SpatialTemplateOutput::CanvasSet {
+            spec: CanvasSetSpec {
+                schema: CANVAS_SET_SCHEMA.to_owned(),
+                version: CANVAS_VERSION.to_owned(),
+                variants: (0..16)
+                    .map(|index| CanvasVariant {
+                        id: format!("out-{index}"),
+                        operation: CanvasOperation::Stretch {
+                            output: PixelSize::new(1, 1),
+                        },
+                    })
+                    .collect(),
+            },
+        };
+        let error = VariationRenderRequest::try_from(VariationRenderInput {
+            assets: vec![VariationAssetInput {
+                id: "asset-a".to_owned(),
+                source: "asset.png".to_owned(),
+            }],
+            spec,
+            output_directory: "outputs/job".to_owned(),
+            options: VariationRenderOptionsInput::default(),
+            dry_run: false,
+        })
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::OutputLimit);
+        assert_eq!(error.details.unwrap()["outputCount"], json!(144));
+    }
+
+    #[test]
+    fn variation_controller_rehashes_nested_outputs_and_rewrites_portable_labels() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("asset.png");
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+        let staged_output = directory.path().join("worker-result");
+        let assets = HashMap::from([("asset-a".to_owned(), source)]);
+        let mut result = render_variation_job_files(
+            &assets,
+            &variation_spec(&["sku-a", "sku-b"]),
+            &staged_output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        let expected_plan = result.plan.clone();
+        let expected_options = VariationJobRenderOptions::default();
+
+        normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(
+            result.items[0].outputs_mut().unwrap()[0].output,
+            "outputs/job/sku-a/hero.png"
+        );
+
+        fs::write(staged_output.join("sku-a/hero.png"), b"tampered").unwrap();
+        let error = normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn variation_prepare_allows_missing_assets_only_under_continue() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(root.path().join("asset.png"))
+            .unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let mut spec = variation_spec(&["sku-a", "sku-b"]);
+        spec.items[1].bindings[0].asset_id = "asset-b".to_owned();
+        let asset = |id: &str| VariationAssetInput {
+            id: id.to_owned(),
+            source: "asset.png".to_owned(),
+        };
+
+        for (policy, allowed) in [
+            (VariationFailurePolicy::Continue, true),
+            (VariationFailurePolicy::AllOrNone, false),
+        ] {
+            let mut empty = spec.clone();
+            empty.failure_policy = policy;
+            let input: VariationRenderInput = serde_json::from_value(json!({
+                "assets": [], "spec": empty, "outputDirectory": "outputs/empty"
+            }))
+            .unwrap();
+            assert_eq!(VariationRenderRequest::try_from(input).is_ok(), allowed);
+        }
+
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        prepare_variation_render_request(
+            &workspace,
+            VariationRenderRequest {
+                assets: vec![asset("asset-a")],
+                spec: spec.clone(),
+                output_directory: "outputs/job".to_owned(),
+                options: VariationJobRenderOptions::default(),
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::AllOrNone;
+        let missing = prepare_variation_render_request(
+            &workspace,
+            VariationRenderRequest {
+                assets: vec![asset("asset-a")],
+                spec: spec.clone(),
+                output_directory: "outputs/blocked".to_owned(),
+                options: VariationJobRenderOptions::default(),
+                dry_run: false,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(missing.code, ErrorCode::Schema);
+
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        let extra = prepare_variation_render_request(
+            &workspace,
+            VariationRenderRequest {
+                assets: vec![asset("asset-a"), asset("asset-c")],
+                spec,
+                output_directory: "outputs/blocked".to_owned(),
+                options: VariationJobRenderOptions::default(),
+                dry_run: false,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(extra.code, ErrorCode::Schema);
+    }
+
+    #[test]
+    fn variation_normalization_skips_failed_items_and_rejects_duplicate_sources() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("asset.png");
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+        let staged_output = directory.path().join("worker-result");
+        let mut spec = variation_spec(&["sku-a", "sku-b"]);
+        spec.items[1].bindings[0].asset_id = "asset-b".to_owned();
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        let assets = HashMap::from([("asset-a".to_owned(), source)]);
+        let mut result = render_variation_job_files(
+            &assets,
+            &spec,
+            &staged_output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        let expected_plan = result.plan.clone();
+        let expected_options = VariationJobRenderOptions::default();
+        assert!(matches!(
+            result.items[1],
+            VariationJobItemOutcome::Failed { .. }
+        ));
+
+        normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(
+            result.items[0].outputs_mut().unwrap()[0].output,
+            "outputs/job/sku-a/hero.png"
+        );
+        assert!(!staged_output.join("sku-b").exists());
+
+        let mut wrong_index = result.clone();
+        if let VariationJobItemOutcome::Failed { index, .. } = &mut wrong_index.items[1] {
+            *index = 0;
+        }
+        let mut wrong_policy = result.clone();
+        wrong_policy.plan.failure_policy = VariationFailurePolicy::AllOrNone;
+        let mut cancelled = result.clone();
+        if let VariationJobItemOutcome::Failed { error, .. } = &mut cancelled.items[1] {
+            error.code = ErrorCode::Cancelled;
+        }
+        let mut wrong_source_total = result.clone();
+        wrong_source_total.cumulative_source_pixels += 1;
+        for mut invalid in [wrong_index, wrong_policy, cancelled, wrong_source_total] {
+            let error = normalize_variation_worker_result(
+                &mut invalid,
+                &expected_plan,
+                expected_options,
+                &staged_output,
+                "outputs/job",
+                false,
+                &|| false,
+            )
+            .unwrap_err();
+            assert_eq!(error.code, ErrorCode::Internal);
+        }
+
+        let mut over_request_budget = result.clone();
+        let restricted_options = VariationJobRenderOptions {
+            max_processed_pixels: result.cumulative_processed_pixels - 1,
+            ..expected_options
+        };
+        let error = normalize_variation_worker_result(
+            &mut over_request_budget,
+            &expected_plan,
+            restricted_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+
+        result.sources.push(result.sources[0].clone());
+        let duplicate = normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(duplicate.code, ErrorCode::Internal);
+
+        result.sources.clear();
+        let unevidenced = normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(unevidenced.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn variation_normalization_and_staging_accept_an_empty_continue_publication() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let corrupt = root.path().join("corrupt.png");
+        fs::write(&corrupt, b"not a raster").unwrap();
+        let staged_output = root.path().join("worker-result");
+        let mut spec = variation_spec(&["sku-a", "sku-b"]);
+        spec.failure_policy = worldbend_core::VariationFailurePolicy::Continue;
+        let assets = HashMap::from([("asset-a".to_owned(), corrupt)]);
+        let mut result = render_variation_job_files(
+            &assets,
+            &spec,
+            &staged_output,
+            VariationJobRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        let expected_plan = result.plan.clone();
+        let expected_options = VariationJobRenderOptions::default();
+        assert!(
+            result
+                .items
+                .iter()
+                .all(|item| matches!(item, VariationJobItemOutcome::Failed { .. }))
+        );
+        assert!(staged_output.is_dir());
+
+        normalize_variation_worker_result(
+            &mut result,
+            &expected_plan,
+            expected_options,
+            &staged_output,
+            "outputs/job",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(result.status, VariationJobRenderStatus::Written);
+
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        workspace
+            .prepare_output_directory("outputs/job")
+            .unwrap()
+            .stage_one_level_tree_from_with_cancel(
+                &staged_output,
+                result.plan.items.len(),
+                MCP_MAX_VARIATION_OUTPUTS,
+                true,
+                &|| false,
+            )
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert!(root.path().join("outputs/job").is_dir());
+        assert_eq!(
+            fs::read_dir(root.path().join("outputs/job"))
+                .unwrap()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn sequence_controllers_rehash_outputs_instead_of_trusting_reported_digests() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.png");
+        RgbaImage::from_pixel(2, 2, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+        let sources = HashMap::from([("still".to_owned(), source)]);
+
+        let timeline_output = directory.path().join("timeline-worker-result");
+        let mut timeline = render_timeline_files(
+            &sources,
+            &timeline_spec(),
+            &timeline_output,
+            TimelineRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        normalize_timeline_worker_result(
+            &mut timeline,
+            &timeline_output,
+            "outputs/timeline",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        corrupt_file_without_changing_length(&timeline_output.join("frame-1.png"));
+        let timeline_error = normalize_timeline_worker_result(
+            &mut timeline,
+            &timeline_output,
+            "outputs/timeline",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(timeline_error.code, ErrorCode::Internal);
+
+        let motion_output = directory.path().join("motion-worker-result");
+        let mut motion = render_motion_files(
+            &sources,
+            &motion_spec(),
+            &motion_output,
+            TimelineRenderOptions::default(),
+            false,
+        )
+        .unwrap();
+        normalize_motion_worker_result(
+            &mut motion,
+            &motion_output,
+            "outputs/motion",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        corrupt_file_without_changing_length(&motion_output.join("frame-000001.png"));
+        let motion_error = normalize_motion_worker_result(
+            &mut motion,
+            &motion_output,
+            "outputs/motion",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(motion_error.code, ErrorCode::Internal);
+    }
+
+    #[tokio::test]
+    async fn single_output_controller_rejects_same_length_digest_mismatch() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("result.png");
+        fs::write(&output, b"first").unwrap();
+        let reported_sha256 = hex::encode(Sha256::digest(b"first"));
+
+        verify_worker_output(
+            output.clone(),
+            "test worker",
+            5,
+            reported_sha256.clone(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        fs::write(&output, b"other").unwrap();
+        let error = verify_worker_output(
+            output,
+            "test worker",
+            5,
+            reported_sha256,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    #[test]
+    fn canvas_controller_rejects_same_length_digest_mismatch() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("square.png");
+        fs::write(&output, b"first").unwrap();
+        let spec: CanvasSetSpec = serde_json::from_value(json!({
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [{
+                "id": "square",
+                "operation": {
+                    "kind": "stretch",
+                    "output": { "width": 2, "height": 2 }
+                }
+            }]
+        }))
+        .unwrap();
+        let mut result = CanvasSetFileRenderResult {
+            status: CanvasSetRenderStatus::Ready,
+            dry_run: true,
+            output_directory: directory.path().to_string_lossy().into_owned(),
+            plan: plan_canvas_set(&spec, PixelSize::new(2, 2)).unwrap(),
+            items: vec![CanvasSetRenderedItem {
+                id: "square".to_owned(),
+                output: output.to_string_lossy().into_owned(),
+                bytes: 5,
+                sha256: hex::encode(Sha256::digest(b"first")),
+                width: 2,
+                height: 2,
+            }],
+        };
+
+        normalize_canvas_worker_result(
+            &mut result,
+            directory.path(),
+            "sets/social",
+            false,
+            &|| false,
+        )
+        .unwrap();
+        fs::write(output, b"other").unwrap();
+        let error = normalize_canvas_worker_result(
+            &mut result,
+            directory.path(),
+            "sets/social",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Internal);
+    }
+
+    fn corrupt_file_without_changing_length(path: &Path) {
+        let mut bytes = fs::read(path).unwrap();
+        let index = bytes.len() / 2;
+        bytes[index] ^= 0x01;
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn output_verification_hashing_honors_cancellation() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("output.png");
+        fs::write(&path, vec![0_u8; 256 * 1024]).unwrap();
+        let error = hash_regular_file(&path, "test worker", &|| true).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        hash_regular_file(&path, "test worker", &|| false).unwrap();
+    }
+
+    #[test]
+    fn published_schemas_express_canonical_variants_limits_and_result_state() {
+        let server = WorldbendServer::new(None);
+        let tools = server.tool_router.list_all();
+        let solve = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.solve")
+            .unwrap();
+        let solve_schema = serde_json::to_string(&solve.input_schema).unwrap();
+        assert!(solve_schema.contains(r#""const":"pixel""#));
+        assert!(solve_schema.contains(r#""const":"normalized""#));
+
+        let inspect = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.inspect")
+            .unwrap();
+        let inspect_schema = serde_json::to_string(&inspect.input_schema).unwrap();
+        assert!(inspect_schema.contains(r#""const":"worldbend.transform""#));
+        assert!(inspect_schema.contains(r#""const":"0.1""#));
+
+        let rectify = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.rectify")
+            .unwrap();
+        let rectify_schema = serde_json::to_string(&rectify.input_schema).unwrap();
+        assert!(rectify_schema.contains(r#""const":"worldbend.rectify""#));
+        assert!(rectify_schema.contains(r#""const":"pixel""#));
+        assert!(rectify_schema.contains(r#""const":"normalized""#));
+        assert!(rectify_schema.contains(r#""minimum":1"#));
+
+        let compose = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.compose")
+            .unwrap();
+        let compose_defs = &compose.input_schema["$defs"];
+        assert_eq!(
+            compose_defs["Scale2D"]["properties"]["x"]["exclusiveMinimum"],
+            json!(1.0e-6)
+        );
+        assert_eq!(
+            compose_defs["Skew2D"]["properties"]["xDegrees"]["exclusiveMinimum"],
+            json!(-89.0)
+        );
+        assert_eq!(
+            compose_defs["Skew2D"]["properties"]["yDegrees"]["exclusiveMaximum"],
+            json!(89.0)
+        );
+        let pivot = &compose_defs["TransformRecipe"]["properties"]["pivot"];
+        assert_eq!(pivot["default"], json!({ "x": 0.5, "y": 0.5 }));
+        assert!(
+            pivot["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("never destination pixel"))
+        );
+        assert!(
+            compose.description.as_deref().is_some_and(
+                |description| description.contains("Omit pivot for the default center")
+            )
+        );
+        let compose_output =
+            serde_json::to_string(compose.output_schema.as_ref().unwrap()).unwrap();
+        for artifact in [
+            "rawQuad",
+            "rawBounds",
+            "canvas",
+            "spec",
+            "matrix",
+            "diagnostics",
+        ] {
+            assert!(
+                compose_output.contains(artifact),
+                "compose output schema is missing {artifact}"
+            );
+        }
+
+        let render = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.render")
+            .unwrap();
+        let render_schema = serde_json::to_string(&render.input_schema).unwrap();
+        assert!(render_schema.contains(&format!(r#""maximum":{MCP_MAX_AXIS}"#)));
+        assert!(render_schema.contains(&format!(r#""maximum":{MCP_MAX_PIXELS}"#)));
+        for field in ["overwrite", "dryRun"] {
+            assert!(
+                render.input_schema["properties"][field]["description"]
+                    .as_str()
+                    .is_some_and(|description| !description.is_empty()),
+                "render.{field} must explain its side-effect contract"
+            );
+        }
+        assert!(
+            render.input_schema["$defs"]["RenderOptionsInput"]["properties"]["targetSize"]
+                ["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("normalized"))
+        );
+        let render_limits = &render.input_schema["$defs"]["RenderLimitsInput"];
+        assert!(render_limits.get("required").is_none());
+
+        let rectify_render = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.rectify_render")
+            .unwrap();
+        let rectify_render_schema = serde_json::to_string(&rectify_render.input_schema).unwrap();
+        assert!(rectify_render_schema.contains(&format!(r#""maximum":{MCP_MAX_PIXELS}"#)));
+        assert!(!rectify_render_schema.contains(r#""canvas""#));
+        assert!(!rectify_render_schema.contains(r#""targetSize""#));
+
+        let canvas_render = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.canvas_render")
+            .unwrap();
+        let canvas_render_schema = serde_json::to_string(&canvas_render.input_schema).unwrap();
+        assert!(canvas_render_schema.contains(r#""const":"worldbend.canvas-set""#));
+        assert!(canvas_render_schema.contains(r#""const":"worldbend.canvas-set-plan""#));
+        assert!(canvas_render_schema.contains(r#""outputDirectory""#));
+        assert!(canvas_render_schema.contains(r#""sampling""#));
+        assert!(canvas_render_schema.contains(r#""outsideFill""#));
+        assert!(!canvas_render_schema.contains(r#""overwrite""#));
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][0]["required"],
+            json!(["source", "outputDirectory", "spec"])
+        );
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][0]["not"]["anyOf"],
+            json!([
+                { "required": ["plan"] },
+                { "required": ["sampling"] },
+                { "required": ["outsideFill"] }
+            ])
+        );
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][1]["required"],
+            json!([
+                "source",
+                "outputDirectory",
+                "plan",
+                "sampling",
+                "outsideFill"
+            ])
+        );
+        assert_eq!(
+            canvas_render.input_schema["oneOf"][1]["not"]["anyOf"],
+            json!([
+                { "required": ["spec"] },
+                { "required": ["quality"] }
+            ])
+        );
+        assert_eq!(
+            canvas_render
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.read_only_hint),
+            Some(false)
+        );
+        assert_eq!(
+            canvas_render
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.destructive_hint),
+            Some(false)
+        );
+        assert_eq!(
+            canvas_render
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.idempotent_hint),
+            Some(false)
+        );
+        let canvas_output =
+            serde_json::to_string(canvas_render.output_schema.as_ref().unwrap()).unwrap();
+        for field in [
+            "outputDirectory",
+            "plan",
+            "items",
+            "sha256",
+            "width",
+            "height",
+        ] {
+            assert!(
+                canvas_output.contains(field),
+                "canvas output schema is missing {field}"
+            );
+        }
+
+        let render_output = render.output_schema.as_ref().unwrap();
+        let render_output_defs = &render_output["$defs"];
+        for field in [
+            &render_output_defs["CanvasPlacement"]["properties"]["width"],
+            &render_output_defs["CanvasPlacement"]["properties"]["height"],
+            &render_output_defs["RenderDiagnostics"]["properties"]["sourceWidth"],
+            &render_output_defs["RenderDiagnostics"]["properties"]["sourceHeight"],
+            &render_output_defs["RenderEvidence"]["properties"]["outputWidth"],
+            &render_output_defs["RenderEvidence"]["properties"]["outputHeight"],
+        ] {
+            assert_eq!(field["type"], json!("integer"));
+            assert_eq!(field["minimum"], json!(1));
+            assert_eq!(field["maximum"], json!(u32::MAX));
+            assert!(field.get("format").is_none());
+        }
+        let output_bytes = &render_output_defs["FileRenderResult"]["properties"]["bytes"];
+        assert_eq!(output_bytes["type"], json!("integer"));
+        assert_eq!(output_bytes["minimum"], json!(0));
+        assert_eq!(output_bytes["maximum"], json!(9_007_199_254_740_991_u64));
+        assert!(output_bytes.get("format").is_none());
+
+        let css = tools
+            .iter()
+            .find(|tool| tool.name == "worldbend.css")
+            .unwrap();
+        assert!(
+            css.description
+                .as_deref()
+                .is_some_and(|description| description.contains("destinationSize"))
+        );
+        assert!(
+            css.input_schema["properties"]["destinationSize"]["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("normalized"))
+        );
+
+        for tool in tools {
+            let output_schema =
+                serde_json::to_string(tool.output_schema.as_ref().unwrap()).unwrap();
+            assert!(output_schema.contains(r#""const":true"#));
+            assert!(output_schema.contains(r#""const":false"#));
+        }
+    }
+
+    #[test]
+    fn compose_input_accepts_explicit_flips_in_the_recipe() {
+        // The recipe surface carries orientation flips as explicit booleans;
+        // unknown orientation spellings stay rejected at the tool boundary.
+        let input: ComposeInput = serde_json::from_value(json!({
+            "spec": {
+                "schema": "worldbend.transform",
+                "version": "0.1",
+                "destination": {
+                    "space": "normalized",
+                    "quad": {
+                        "tl": { "x": 0.0, "y": 0.0 },
+                        "tr": { "x": 1.0, "y": 0.0 },
+                        "br": { "x": 1.0, "y": 1.0 },
+                        "bl": { "x": 0.0, "y": 1.0 }
+                    }
+                }
+            },
+            "targetSize": { "width": 100, "height": 50 },
+            "transform": {
+                "flip": { "x": true, "y": false },
+                "warp": { "preset": "arc", "amount": 0.75 }
+            }
+        }))
+        .unwrap();
+        assert!(input.transform.flip.x);
+        assert!(!input.transform.flip.y);
+        assert_eq!(input.transform.warp.map(|warp| warp.amount), Some(0.75));
+
+        let composed = compose_affine(&input.spec, input.target_size, input.transform).unwrap();
+        assert_eq!(
+            composed.spec.content.orientation,
+            SourceOrientation::FlipHorizontal
+        );
+        assert_eq!(
+            composed.spec.content.warp.map(|warp| warp.preset),
+            Some(worldbend_core::WarpPreset::Arc)
+        );
+
+        let bad: Result<ComposeInput, _> = serde_json::from_value(json!({
+            "spec": {
+                "schema": "worldbend.transform",
+                "version": "0.1",
+                "destination": {
+                    "space": "normalized",
+                    "quad": {
+                        "tl": { "x": 0.0, "y": 0.0 },
+                        "tr": { "x": 1.0, "y": 0.0 },
+                        "br": { "x": 1.0, "y": 1.0 },
+                        "bl": { "x": 0.0, "y": 1.0 }
+                    }
+                }
+            },
+            "transform": { "flip": { "x": true, "diagonal": true } }
+        }));
+        assert!(bad.is_err());
+    }
+
+    #[test]
+    fn compose_input_clears_warp_only_when_explicit() {
+        let base = json!({
+            "schema": "worldbend.transform",
+            "version": "0.1",
+            "destination": {
+                "space": "normalized",
+                "quad": {
+                    "tl": { "x": 0.0, "y": 0.0 },
+                    "tr": { "x": 1.0, "y": 0.0 },
+                    "br": { "x": 1.0, "y": 1.0 },
+                    "bl": { "x": 0.0, "y": 1.0 }
+                }
+            },
+            "content": {
+                "fit": "stretch",
+                "warp": { "preset": "wave", "amount": 0.5 }
+            }
+        });
+        let input: ComposeInput = serde_json::from_value(json!({
+            "spec": base.clone(),
+            "targetSize": { "width": 100, "height": 50 },
+            "transform": { "clearWarp": true }
+        }))
+        .unwrap();
+        let composed = compose_affine(&input.spec, input.target_size, input.transform).unwrap();
+        assert_eq!(composed.spec.content.warp, None);
+
+        let conflicting: ComposeInput = serde_json::from_value(json!({
+            "spec": base,
+            "targetSize": { "width": 100, "height": 50 },
+            "transform": {
+                "clearWarp": true,
+                "warp": { "preset": "arc", "amount": 0.5 }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            compose_affine(
+                &conflicting.spec,
+                conflicting.target_size,
+                conflicting.transform
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::Schema
+        );
+    }
+
+    #[test]
+    fn successful_text_summaries_name_the_usable_result() {
+        assert_eq!(
+            success_summary(&json!({
+                "status": "written",
+                "output": "out/result.png",
+                "bytes": 1234,
+                "evidence": { "outputWidth": 640, "outputHeight": 360 }
+            })),
+            "Render written: out/result.png (640x360, 1234 bytes)."
+        );
+        assert_eq!(
+            success_summary(&json!({
+                "status": "ready",
+                "outputDirectory": "out/social",
+                "items": [{}, {}]
+            })),
+            "Canvas Set ready: 2 ordered outputs in out/social."
+        );
+        assert_eq!(
+            success_summary(&json!({
+                "outcome": "noCandidate",
+                "provider": { "id": "worldbend.alpha-quad-v1" },
+                "candidates": []
+            })),
+            "Plane assessment noCandidate: 0 candidates from worldbend.alpha-quad-v1; no transform applied."
+        );
+    }
+
+    #[test]
+    fn variation_summaries_report_actual_outcomes_instead_of_plan_totals() {
+        let summary = |status: &str, items: Value| {
+            success_summary(&json!({
+                "status": status,
+                "outputDirectory": "out/job",
+                "plan": {
+                    "outputCount": 6,
+                    "items": [{}, {}, {}]
+                },
+                "items": items
+            }))
+        };
+        let rendered = |outputs: usize| {
+            json!({
+                "status": "rendered",
+                "outputs": vec![json!({}); outputs]
+            })
+        };
+        let failed = || json!({ "status": "failed", "error": { "code": "E_RENDER" } });
+
+        assert_eq!(
+            summary("written", json!([rendered(2), failed(), failed()])),
+            "Variation Job written: 3 planned items; 1 rendered, 2 failed; 2 actual outputs written in out/job."
+        );
+        assert_eq!(
+            summary("written", json!([failed(), failed(), failed()])),
+            "Variation Job written: 3 planned items; 0 rendered, 3 failed; 0 actual outputs written in out/job."
+        );
+        assert_eq!(
+            summary("ready", json!([rendered(2), rendered(2), rendered(2)])),
+            "Variation Job ready: 3 planned items; 3 rendered, 0 failed; 6 actual outputs validated in out/job."
+        );
+    }
+
+    #[tokio::test]
+    async fn filesystem_preflight_returns_stable_errors_before_capacity() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("source.png"),
+            b"not decoded during preflight",
+        )
+        .unwrap();
+        fs::write(root.path().join("existing.png"), b"existing").unwrap();
+        let server = WorldbendServer::new(Some(WorkspaceRoot::open(root.path()).unwrap()));
+        let _held = (0..MAX_IN_FLIGHT_RENDERS)
+            .map(|_| {
+                server
+                    .render_admissions
+                    .clone()
+                    .try_acquire_owned()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let spec = TransformSpec::pixel(
+            Size::new(2.0, 2.0),
+            Quad::new(
+                Point::new(0.0, 0.0),
+                Point::new(2.0, 0.0),
+                Point::new(2.0, 2.0),
+                Point::new(0.0, 2.0),
+            ),
+        );
+        let arguments = |source: &str, output: &str| {
+            json!({ "source": source, "spec": spec, "output": output })
+                .as_object()
+                .unwrap()
+                .clone()
+        };
+
+        let escaped = server
+            .render(
+                Parameters(arguments("../source.png", "out.png")),
+                CancellationToken::new(),
+            )
+            .await;
+        assert!(matches!(
+            escaped,
+            ToolEnvelope::Failure {
+                error: TransformError {
+                    code: ErrorCode::PathOutsideRoot,
+                    ..
+                },
+                ..
+            }
+        ));
+
+        let exists = server
+            .render(
+                Parameters(arguments("source.png", "existing.png")),
+                CancellationToken::new(),
+            )
+            .await;
+        match exists {
+            ToolEnvelope::Failure { error, .. } => {
+                assert_eq!(error.code, ErrorCode::DestinationExists);
+                assert!(error.message.contains("overwrite"));
+            }
+            ToolEnvelope::Success { .. } => panic!("existing destination must fail preflight"),
+        }
+
+        let capacity = server
+            .render(
+                Parameters(arguments("source.png", "new.png")),
+                CancellationToken::new(),
+            )
+            .await;
+        match capacity {
+            ToolEnvelope::Failure { error, .. } => {
+                assert_eq!(error.code, ErrorCode::Capacity);
+                assert_eq!(error.details.unwrap()["retryable"], json!(true));
+            }
+            ToolEnvelope::Success { .. } => panic!("full admission must fail"),
+        }
+    }
+
+    #[test]
+    fn malformed_arguments_are_bounded_stable_schema_errors() {
+        let unknown = "x".repeat(MAX_SCHEMA_ERROR_CHARS * 2);
+        let error = parse_tool_input::<SolveInput>(json!({ unknown: true })).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Schema);
+        assert_eq!(
+            error.message,
+            "tool arguments do not match the published schema"
+        );
+        let details = error.details.unwrap().to_string();
+        assert!(details.chars().count() <= MAX_SCHEMA_ERROR_CHARS + 32);
+    }
+
+    #[test]
+    fn complete_call_tool_result_is_bounded_and_not_json_duplicated() {
+        let envelope: ToolEnvelope<SolveOutput> = ToolEnvelope::Failure {
+            ok: false,
+            error: TransformError::new(ErrorCode::Schema, "x".repeat(MAX_TOOL_RESPONSE_BYTES)),
+        };
+        let response = envelope.into_call_tool_result().unwrap();
+        let CallToolResponse::Complete(result) = response else {
+            panic!("expected a complete tool response")
+        };
+        assert!(serde_json::to_vec(&result).unwrap().len() <= MAX_TOOL_RESPONSE_BYTES);
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(
+            result.structured_content.as_ref().unwrap()["error"]["code"],
+            "E_OUTPUT_LIMIT"
+        );
+        let ContentBlock::Text(text) = &result.content[0] else {
+            panic!("expected a concise text summary")
+        };
+        assert!(text.text.len() < 256);
+    }
+
+    #[test]
+    fn render_limit_runtime_errors_match_schema_and_resource_boundaries() {
+        let partial: RenderLimitsInput =
+            serde_json::from_value(json!({ "maxWidth": 2048 })).unwrap();
+        assert_eq!(partial.max_width, 2048);
+        assert_eq!(partial.max_height, MCP_MAX_AXIS);
+        assert_eq!(partial.max_pixels, MCP_MAX_PIXELS);
+        assert_eq!(partial.max_source_bytes, MCP_MAX_SOURCE_BYTES);
+
+        let zero = RenderLimitsInput {
+            max_width: 0,
+            ..RenderLimitsInput::default()
+        };
+        assert_eq!(
+            RenderLimits::try_from(zero).unwrap_err().code,
+            ErrorCode::Schema
+        );
+
+        let excessive = RenderLimitsInput {
+            max_width: MCP_MAX_AXIS + 1,
+            ..RenderLimitsInput::default()
+        };
+        assert_eq!(
+            RenderLimits::try_from(excessive).unwrap_err().code,
+            ErrorCode::OutputLimit
+        );
+    }
+
+    #[test]
+    fn canvas_render_input_is_a_closed_exactly_one_program_union() {
+        let spec_value = json!({
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [{
+                "id": "square",
+                "operation": {
+                    "kind": "stretch",
+                    "output": { "width": 2, "height": 2 }
+                }
+            }]
+        });
+        let spec: CanvasSetSpec = serde_json::from_value(spec_value.clone()).unwrap();
+        let plan = plan_canvas_set(&spec, PixelSize::new(3, 2)).unwrap();
+
+        let spec_input = parse_tool_input::<CanvasRenderInput>(json!({
+            "source": "input.png",
+            "spec": spec_value,
+            "outputDirectory": "outputs",
+            "quality": "high",
+            "dryRun": true
+        }))
+        .and_then(CanvasRenderRequest::try_from)
+        .unwrap();
+        assert!(matches!(
+            spec_input.program,
+            CanvasWorkerProgram::Spec {
+                quality: SamplingQuality::High,
+                ..
+            }
+        ));
+
+        let plan_input = parse_tool_input::<CanvasRenderInput>(json!({
+            "source": "control.png",
+            "plan": plan,
+            "outputDirectory": "control-outputs",
+            "sampling": "nearest",
+            "outsideFill": { "kind": "transparent" }
+        }))
+        .and_then(CanvasRenderRequest::try_from)
+        .unwrap();
+        assert!(matches!(
+            plan_input.program,
+            CanvasWorkerProgram::Plan {
+                sampling: CanvasReplaySampling::Nearest,
+                ..
+            }
+        ));
+
+        for invalid in [
+            json!({
+                "source": "input.png",
+                "spec": spec_value,
+                "plan": plan_canvas_set(&spec, PixelSize::new(3, 2)).unwrap(),
+                "outputDirectory": "outputs",
+                "sampling": "nearest",
+                "outsideFill": { "kind": "transparent" }
+            }),
+            json!({
+                "source": "input.png",
+                "plan": plan_canvas_set(&spec, PixelSize::new(3, 2)).unwrap(),
+                "outputDirectory": "outputs",
+                "sampling": "nearest"
+            }),
+            json!({
+                "source": "input.png",
+                "spec": spec,
+                "outputDirectory": "outputs",
+                "sampling": "nearest"
+            }),
+            json!({
+                "source": "input.png",
+                "spec": {
+                    "schema": "worldbend.canvas-set",
+                    "version": "0.1",
+                    "variants": [{
+                        "id": "square",
+                        "operation": {
+                            "kind": "stretch",
+                            "output": { "width": 2, "height": 2 }
+                        }
+                    }]
+                },
+                "quality": null,
+                "outputDirectory": "outputs"
+            }),
+            json!({
+                "source": "input.png",
+                "plan": null,
+                "outputDirectory": "outputs",
+                "sampling": "nearest",
+                "outsideFill": { "kind": "transparent" }
+            }),
+        ] {
+            assert_eq!(
+                parse_tool_input::<CanvasRenderInput>(invalid)
+                    .and_then(CanvasRenderRequest::try_from)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Schema
+            );
+        }
+    }
+
+    #[test]
+    fn canvas_encoded_set_ceiling_fails_before_publication() {
+        let private = tempfile::tempdir().unwrap();
+        let output = private.path().join("square.png");
+        fs::File::create(&output)
+            .unwrap()
+            .set_len(MCP_MAX_CANVAS_ENCODED_BYTES + 1)
+            .unwrap();
+        let spec: CanvasSetSpec = serde_json::from_value(json!({
+            "schema": "worldbend.canvas-set",
+            "version": "0.1",
+            "variants": [{
+                "id": "square",
+                "operation": {
+                    "kind": "stretch",
+                    "output": { "width": 2, "height": 2 }
+                }
+            }]
+        }))
+        .unwrap();
+        let plan = plan_canvas_set(&spec, PixelSize::new(2, 2)).unwrap();
+        let mut result = CanvasSetFileRenderResult {
+            status: CanvasSetRenderStatus::Ready,
+            dry_run: true,
+            output_directory: private.path().to_string_lossy().into_owned(),
+            plan,
+            items: vec![CanvasSetRenderedItem {
+                id: "square".to_owned(),
+                output: output.to_string_lossy().into_owned(),
+                bytes: MCP_MAX_CANVAS_ENCODED_BYTES + 1,
+                sha256: "0".repeat(64),
+                width: 2,
+                height: 2,
+            }],
+        };
+
+        let error = normalize_canvas_worker_result(
+            &mut result,
+            private.path(),
+            "sets/social",
+            false,
+            &|| false,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::OutputLimit);
+        assert_eq!(
+            error.details.unwrap()["maximum"],
+            json!(MCP_MAX_CANVAS_ENCODED_BYTES)
+        );
+        assert_eq!(result.items[0].output, "sets/social/square.png");
+    }
+
+    #[tokio::test]
+    async fn bounded_worker_stream_accepts_the_limit_and_rejects_the_next_byte() {
+        let mut exact = &b"1234"[..];
+        assert_eq!(
+            read_bounded_worker_stream(&mut exact, 4).await.unwrap(),
+            b"1234"
+        );
+
+        let mut oversized = &b"12345"[..];
+        let error = read_bounded_worker_stream(&mut oversized, 4)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::OutputLimit);
+    }
+
+    #[tokio::test]
+    async fn bounded_render_deadline_covers_queue_wait_and_releases_permits() {
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(0));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let started = Instant::now();
+        let error = execute_bounded_render::<(), _>(
+            "test render",
+            admission,
+            slots.clone(),
+            Duration::from_millis(80),
+            CancellationToken::new(),
+            std::future::pending(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Timeout);
+        assert!(error.message.contains("80 ms"));
+        assert!(error.message.contains("test render"));
+        assert_eq!(error.details.as_ref().unwrap()["deadlineMs"], json!(80));
+        assert!(started.elapsed() >= Duration::from_millis(70));
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), 0);
+    }
+
+    #[tokio::test]
+    async fn bounded_render_deadline_covers_executing_work() {
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let error = execute_bounded_render(
+            "test render",
+            admission,
+            slots.clone(),
+            Duration::from_millis(60),
+            CancellationToken::new(),
+            async {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                Ok::<(), TransformError>(())
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Timeout);
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn client_cancellation_releases_the_admission_without_waiting_for_the_deadline() {
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let cancel_switch = cancellation.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            cancel_switch.cancel();
+        });
+        let started = Instant::now();
+        let error = execute_bounded_render::<(), _>(
+            "test render",
+            admission,
+            slots.clone(),
+            Duration::from_secs(30),
+            cancellation,
+            std::future::pending(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(error.message.contains("test render"));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn admitted_work_completes_normally() {
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let value = execute_bounded_render(
+            "test render",
+            admission,
+            slots,
+            Duration::from_secs(5),
+            CancellationToken::new(),
+            async { Ok::<_, TransformError>(7_u32) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(value, 7);
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn canvas_commit_is_one_sync_step_after_cancellable_work() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("square.png"), b"png").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let commit = workspace
+            .prepare_output_directory("set")
+            .unwrap()
+            .stage_from(private.path(), worldbend_core::MAX_CANVAS_VARIANTS)
+            .unwrap();
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let work_cancellation = cancellation.child_token();
+
+        let value = execute_bounded_output(
+            "test directory output",
+            admission,
+            slots.clone(),
+            Duration::from_secs(5),
+            cancellation,
+            work_cancellation,
+            async move {
+                Ok::<_, TransformError>(PreparedDirectoryResult {
+                    result: 7_u32,
+                    commit: Some(commit),
+                })
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(value, 7);
+        assert_eq!(
+            fs::read(root.path().join("set/square.png")).unwrap(),
+            b"png"
+        );
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn canvas_cancellation_before_commit_publishes_nothing_and_cleans_staging() {
+        let root = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::write(private.path().join("square.png"), b"png").unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let commit = workspace
+            .prepare_output_directory("set")
+            .unwrap()
+            .stage_from(private.path(), worldbend_core::MAX_CANVAS_VARIANTS)
+            .unwrap();
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let work_cancellation = cancellation.child_token();
+        let cancel_before_return = cancellation.clone();
+
+        let error = execute_bounded_output(
+            "test directory output",
+            admission,
+            slots.clone(),
+            Duration::from_secs(5),
+            cancellation,
+            work_cancellation,
+            async move {
+                cancel_before_return.cancel();
+                Ok::<_, TransformError>(PreparedDirectoryResult {
+                    result: (),
+                    commit: Some(commit),
+                })
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(!root.path().join("set").exists());
+        let residues = fs::read_dir(root.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".worldbend-directory-"))
+            .collect::<Vec<_>>();
+        assert!(
+            residues.is_empty(),
+            "unexpected Canvas staging: {residues:?}"
+        );
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[tokio::test]
+    async fn canvas_cancellation_during_same_parent_copy_waits_for_cleanup() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("outputs")).unwrap();
+        let private = tempfile::tempdir().unwrap();
+        fs::File::create(private.path().join("large.png"))
+            .unwrap()
+            .set_len(64 * 1024 * 1024)
+            .unwrap();
+        let workspace = WorkspaceRoot::open(root.path()).unwrap();
+        let target = workspace.prepare_output_directory("outputs/final").unwrap();
+        let source = private.path().to_path_buf();
+        let output_parent = root.path().join("outputs");
+        let admissions = Arc::new(Semaphore::new(MAX_IN_FLIGHT_RENDERS));
+        let slots = Arc::new(Semaphore::new(MAX_CONCURRENT_RENDERS));
+        let admission = admissions.clone().try_acquire_owned().unwrap();
+        let cancellation = CancellationToken::new();
+        let work_cancellation = cancellation.child_token();
+        let staging_token = work_cancellation.clone();
+        let copy_observed_cancellation = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed_in_work = copy_observed_cancellation.clone();
+        let cancel_when_hidden = cancellation.clone();
+
+        let watcher = tokio::spawn(async move {
+            loop {
+                let hidden_exists = fs::read_dir(&output_parent)
+                    .unwrap()
+                    .flatten()
+                    .any(|entry| {
+                        entry
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with(".worldbend-")
+                    });
+                if hidden_exists {
+                    cancel_when_hidden.cancel();
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        });
+        let error = execute_bounded_output(
+            "test directory output",
+            admission,
+            slots.clone(),
+            Duration::from_secs(5),
+            cancellation,
+            work_cancellation,
+            async move {
+                let staged = tokio::task::spawn_blocking(move || {
+                    target.stage_from_with_cancel(
+                        &source,
+                        worldbend_core::MAX_CANVAS_VARIANTS,
+                        &|| staging_token.is_cancelled(),
+                    )
+                })
+                .await
+                .unwrap();
+                match staged {
+                    Err(error) if error.code == ErrorCode::Cancelled => {
+                        observed_in_work.store(true, std::sync::atomic::Ordering::SeqCst);
+                        Err(error)
+                    }
+                    Err(error) => Err(error),
+                    Ok(commit) => Ok(PreparedDirectoryResult {
+                        result: (),
+                        commit: Some(commit),
+                    }),
+                }
+            },
+        )
+        .await
+        .unwrap_err();
+        watcher.await.unwrap();
+
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(copy_observed_cancellation.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!root.path().join("outputs/final").exists());
+        assert!(
+            fs::read_dir(root.path().join("outputs"))
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".worldbend-"))
+        );
+        assert_eq!(admissions.available_permits(), MAX_IN_FLIGHT_RENDERS);
+        assert_eq!(slots.available_permits(), MAX_CONCURRENT_RENDERS);
+    }
+
+    #[test]
+    fn admission_exhaustion_is_a_fail_fast_capacity_error() {
+        let server = WorldbendServer::new(None);
+        let mut permits = Vec::new();
+        for _ in 0..MAX_IN_FLIGHT_RENDERS {
+            permits.push(
+                server
+                    .render_admissions
+                    .clone()
+                    .try_acquire_owned()
+                    .unwrap(),
+            );
+        }
+        assert!(
+            server
+                .render_admissions
+                .clone()
+                .try_acquire_owned()
+                .is_err()
+        );
+        drop(permits);
+        assert!(server.render_admissions.clone().try_acquire_owned().is_ok());
+    }
+
+    #[test]
+    fn structured_error_messages_are_bounded_before_serialization() {
+        let envelope: ToolEnvelope<SolveOutput> = ToolEnvelope::from_result(Err(
+            TransformError::new(ErrorCode::Schema, "x".repeat(MAX_TOOL_RESPONSE_BYTES)),
+        ));
+        let value = serde_json::to_value(&envelope).unwrap();
+        let message = value["error"]["message"].as_str().unwrap();
+        assert_eq!(message.chars().count(), MAX_SCHEMA_ERROR_CHARS);
+        // The stable code survives instead of flipping to the byte backstop.
+        let response = envelope.into_call_tool_result().unwrap();
+        let CallToolResponse::Complete(result) = response else {
+            panic!("expected a complete tool response");
+        };
+        let structured = serde_json::to_value(&result).unwrap();
+        assert_eq!(structured["structuredContent"]["error"]["code"], "E_SCHEMA");
+        assert!(serde_json::to_vec(&structured).unwrap().len() <= MAX_TOOL_RESPONSE_BYTES);
+    }
+
+    #[test]
+    fn worker_death_classification_separates_protocol_panic_and_memory_failures() {
+        assert_eq!(
+            classify_worker_failure(
+                false,
+                None,
+                "thread 'main' panicked at src/lib.rs:1:1:\nboom",
+            )
+            .0,
+            ErrorCode::Internal
+        );
+        assert_eq!(
+            classify_worker_failure(false, None, "memory allocation of 1024 bytes failed").0,
+            ErrorCode::Memory
+        );
+        assert_eq!(
+            classify_worker_failure(true, None, "").0,
+            ErrorCode::Internal,
+            "a successful exit with a missing envelope is a protocol defect, not memory exhaustion",
+        );
+        assert_eq!(
+            classify_worker_failure(false, None, "worker aborted").0,
+            ErrorCode::Internal
+        );
+        #[cfg(unix)]
+        {
+            assert_eq!(
+                classify_worker_failure(false, Some(libc::SIGXCPU), "").0,
+                ErrorCode::Timeout
+            );
+            assert_eq!(
+                classify_worker_failure(false, Some(libc::SIGKILL), "").0,
+                ErrorCode::Internal
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn panicking_tool_handler_returns_a_structured_internal_error() {
+        let response = guard_tool_call(async {
+            if true {
+                panic!("simulated handler panic");
+            }
+            unreachable!()
+        })
+        .await
+        .unwrap();
+        let CallToolResponse::Complete(result) = response else {
+            panic!("expected a complete tool response");
+        };
+        assert_eq!(result.is_error, Some(true));
+        let structured = serde_json::to_value(&result).unwrap();
+        assert_eq!(
+            structured["structuredContent"]["error"]["code"],
+            "E_INTERNAL"
+        );
+    }
+
+    #[test]
+    fn mcp_pixel_budget_stays_under_the_worker_memory_ceiling() {
+        // Ordinary u8 source + 4/3 mip pyramid + output + one decode working
+        // copy, all RGBA.
+        let worst_case_bytes = MCP_MAX_PIXELS * 4 * (1 + 4 + 3 + 3) / 3;
+        assert!(
+            worst_case_bytes < WORKER_MEMORY_BYTES,
+            "MCP_MAX_PIXELS={MCP_MAX_PIXELS} needs {worst_case_bytes} bytes worst case, above the {WORKER_MEMORY_BYTES}-byte worker ceiling"
+        );
+
+        // Production f32 source pyramid (4/3), one RGBA-f32 output, and one
+        // RGBA-f32 encoder working buffer. The tiled source and tile ceilings
+        // leave the same 128 MiB minimum headroom for process/runtime overhead.
+        let production_media_bytes = MAX_MEDIA_PIXELS * 16 * (4 + 3 + 3) / 3;
+        let tiled_media_bytes = MAX_MEDIA_PIXELS * 16 * 4 / 3 + MAX_TILED_TILE_PIXELS * 16 * 2;
+        let reserved_headroom = 128 * 1024 * 1024;
+        for required in [production_media_bytes, tiled_media_bytes] {
+            assert!(
+                required + reserved_headroom <= WORKER_MEMORY_BYTES,
+                "f32 media path needs {required} bytes plus {reserved_headroom} bytes headroom, above the {WORKER_MEMORY_BYTES}-byte worker ceiling"
+            );
+        }
+    }
+}

@@ -1,0 +1,343 @@
+{
+  "deliveries": [
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "poster"
+        }
+      ],
+      "id": "poster",
+      "kind": "material",
+      "material": {
+        "delivery": {
+          "fingerprint": "sha256:a708bb572b46038178277c2408a0c8103b4999884c411e2e610f855218ac00c7",
+          "kernel": {
+            "id": "worldbend.mesh-gradient.rgba@0.2",
+            "sha256": "sha256:9b7f61158bc9b4755c590acf0cbfa9f3e5c49d48bf25ee69450c528068a3fe5f",
+            "source": "\ndiagnostic(off,derivative_uniformity);\nstruct Uniforms {\n  frameData: vec4f,\n  outputDimsData: vec4f,\n  colorTl: vec4f,\n  colorTr: vec4f,\n  colorBl: vec4f,\n  colorBr: vec4f,\n  surface: vec4f,\n  flags: vec4f,\n};\n@group(0) @binding(0) var<uniform> u: Uniforms;\n\nstruct VsIn {\n  @location(0) pos: vec2f,\n  @location(1) uv: vec2f,\n};\nstruct VsOut {\n  @builtin(position) position: vec4f,\n  @location(0) uv: vec2f,\n};\n\nfn hash21(p: vec2f) -> f32 {\n  var q = fract(p * vec2f(127.1, 311.7));\n  q += dot(q, q + 74.13);\n  return fract(q.x * q.y);\n}\n\nfn valueNoise(p: vec2f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let t = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);\n  let a = hash21(i);\n  let b = hash21(i + vec2f(1.0, 0.0));\n  let c = hash21(i + vec2f(0.0, 1.0));\n  let d = hash21(i + vec2f(1.0, 1.0));\n  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);\n}\n\nfn fbm(p: vec2f) -> f32 {\n  var value = 0.0;\n  var amplitude = 0.5;\n  var point = p;\n  for (var i = 0; i < 4; i++) {\n    value += amplitude * valueNoise(point);\n    point = point * 2.07 + vec2f(17.3, 13.1);\n    amplitude *= 0.5;\n  }\n  return value;\n}\n\n@vertex fn vs_main(in: VsIn) -> VsOut {\n  var out: VsOut;\n  out.position = vec4f(in.pos, 0.0, 1.0);\n  out.uv = in.uv;\n  return out;\n}\n\n@fragment fn fs_main(@location(0) outputUv_in: vec2f) -> @location(0) vec4f {\n  if (u.flags.x < 0.5) {\n    return vec4f(0.0);\n  }\n  let dims = max(u.outputDimsData.xy, vec2f(1.0));\n  let aspect = dims.x / max(dims.y, 1.0);\n  // frameData: elapsed seconds, duration seconds, phase seconds, flowSpeed\n  let duration = max(u.frameData.y, 0.001);\n  let phase = u.frameData.z;\n  let flowSpeed = max(u.frameData.w, 0.0);\n  let loopT = fract((u.frameData.x + phase) / duration);\n  let angle = loopT * 6.28318530718;\n  // A closed orbit makes both the field and its velocity join at each wrap.\n  // Flow energy scales the orbit, not its angle, so non-integer values still\n  // complete the authored duration. Zero preserves the original static field.\n  let orbit = vec2f(sin(angle), 1.0 - cos(angle)) * 6.28318530718 * flowSpeed;\n\n  let warp = clamp(u.surface.x, 0.0, 1.0);\n  let softness = clamp(u.surface.y, 0.0, 1.0);\n\n  var uv = vec2f(outputUv_in.x * aspect, outputUv_in.y);\n  // Soft fluid drift of the mesh sampling domain; warp zero keeps a static mesh.\n  let drift = vec2f(\n    fbm(uv * 2.4 + orbit * vec2f(0.17, 0.11)) - 0.5,\n    fbm(uv * 2.4 + vec2f(19.0 + orbit.y * 0.13, 7.0 - orbit.x * 0.19)) - 0.5\n  );\n  uv = uv + drift * warp * 0.35;\n\n  // Map back to unit square for corner bilinear mesh.\n  var sx = clamp(uv.x / max(aspect, 0.0001), 0.0, 1.0);\n  var sy = clamp(uv.y, 0.0, 1.0);\n  // Softness widens the corner falloff so regions blend more like fluid light.\n  let power = mix(1.35, 0.55, softness);\n  sx = pow(sx, power);\n  sy = pow(sy, power);\n\n  // Mix premultiplied encoded-sRGB tints, then return the host's alpha\n  // convention. Transparent corners change coverage without color bleed.\n  let top = mix(\n    vec4f(u.colorTl.rgb * u.colorTl.a, u.colorTl.a),\n    vec4f(u.colorTr.rgb * u.colorTr.a, u.colorTr.a),\n    sx,\n  );\n  let bottom = mix(\n    vec4f(u.colorBl.rgb * u.colorBl.a, u.colorBl.a),\n    vec4f(u.colorBr.rgb * u.colorBr.a, u.colorBr.a),\n    sx,\n  );\n  let premultiplied = mix(top, bottom, sy);\n  let alpha = premultiplied.a;\n  if (u.flags.y > 0.5) { return premultiplied; }\n  if (alpha <= 0.0) { return vec4f(0.0); }\n  return vec4f(premultiplied.rgb / alpha, alpha);\n}\n",
+            "uniformBytes": 128
+          },
+          "material": {
+            "colorBl": {
+              "a": 1,
+              "b": 0.36,
+              "g": 0.62,
+              "r": 0.94
+            },
+            "colorBr": {
+              "a": 1,
+              "b": 0.49,
+              "g": 0.57,
+              "r": 0.4
+            },
+            "colorTl": {
+              "a": 1,
+              "b": 0.15,
+              "g": 0.3,
+              "r": 0.96
+            },
+            "colorTr": {
+              "a": 1,
+              "b": 0.15,
+              "g": 0.17,
+              "r": 0.05
+            },
+            "durationMs": 12000,
+            "flowSpeed": 0.32,
+            "phaseMs": 900,
+            "softness": 0.48,
+            "visible": true,
+            "warp": 0.57
+          },
+          "recipeFingerprint": "sha256:7ededbed87bd41f69712b1f0b0d9f29e272c416a82d27994c4e0cb2ea5f9cd7f",
+          "recipeId": "field-notes-mesh-gradient",
+          "recipeVersion": 1,
+          "schema": "worldbend.mesh-gradient-delivery@0.1",
+          "target": "web",
+          "version": "0.1"
+        },
+        "family": "mesh-gradient"
+      }
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "paper-note"
+        }
+      ],
+      "id": "paper-note",
+      "kind": "material",
+      "material": {
+        "delivery": {
+          "fingerprint": "sha256:b8cce7189c86c36c97a408dd70ebfffba14d41056a0cbfe7b89505770763f132",
+          "material": {
+            "clipToShape": true,
+            "etch": 0.4,
+            "etchSize": 3,
+            "grain": 0.18,
+            "grainColor": "#7b5a39",
+            "grainSize": 1.2,
+            "visible": true
+          },
+          "recipeFingerprint": "sha256:e96c6ea37ae87f8527a0d43fae120396789756af606bdd5462f9ea786ecc8496",
+          "recipeId": "field-notes-texture",
+          "recipeVersion": 1,
+          "schema": "worldbend.texture-delivery@0.1",
+          "target": "web",
+          "version": "0.1",
+          "web": {
+            "css": "position: absolute; inset: 0; background-image: url(\"data:image/svg+xml,%3C%73%76%67%20%78%6D%6C%6E%73%3D%27%68%74%74%70%3A%2F%2F%77%77%77%2E%77%33%2E%6F%72%67%2F%32%30%30%30%2F%73%76%67%27%20%77%69%64%74%68%3D%27%36%34%27%20%68%65%69%67%68%74%3D%27%36%34%27%3E%3C%66%69%6C%74%65%72%20%69%64%3D%27%67%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%20%63%6F%6C%6F%72%2D%69%6E%74%65%72%70%6F%6C%61%74%69%6F%6E%2D%66%69%6C%74%65%72%73%3D%27%73%52%47%42%27%3E%3C%66%65%54%75%72%62%75%6C%65%6E%63%65%20%74%79%70%65%3D%27%66%72%61%63%74%61%6C%4E%6F%69%73%65%27%20%62%61%73%65%46%72%65%71%75%65%6E%63%79%3D%27%30%2E%31%36%27%20%6E%75%6D%4F%63%74%61%76%65%73%3D%27%32%27%20%73%65%65%64%3D%27%31%31%27%20%72%65%73%75%6C%74%3D%27%6E%6F%69%73%65%27%2F%3E%3C%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%20%69%6E%3D%27%6E%6F%69%73%65%27%20%72%65%73%75%6C%74%3D%27%73%68%61%70%65%64%27%3E%3C%66%65%46%75%6E%63%52%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%30%2E%35%30%38%27%2F%3E%3C%66%65%46%75%6E%63%47%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%30%2E%35%30%38%27%2F%3E%3C%66%65%46%75%6E%63%42%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%30%2E%35%30%38%27%2F%3E%3C%66%65%46%75%6E%63%41%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%31%27%2F%3E%3C%2F%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%3E%3C%66%65%43%6F%6C%6F%72%4D%61%74%72%69%78%20%69%6E%3D%27%73%68%61%70%65%64%27%20%74%79%70%65%3D%27%6D%61%74%72%69%78%27%20%76%61%6C%75%65%73%3D%27%30%20%30%20%30%20%30%20%30%2E%34%38%32%34%20%30%20%30%20%30%20%30%20%30%2E%33%35%32%39%20%30%20%30%20%30%20%30%20%30%2E%32%32%33%35%20%30%2E%39%20%30%2E%39%20%30%2E%39%20%30%20%30%27%2F%3E%3C%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%3E%3C%66%65%46%75%6E%63%41%20%74%79%70%65%3D%27%6C%69%6E%65%61%72%27%20%73%6C%6F%70%65%3D%27%30%2E%31%38%30%27%20%69%6E%74%65%72%63%65%70%74%3D%27%30%27%2F%3E%3C%2F%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%3E%3C%2F%66%69%6C%74%65%72%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%36%34%27%20%68%65%69%67%68%74%3D%27%36%34%27%20%66%69%6C%74%65%72%3D%27%75%72%6C%28%23%67%29%27%2F%3E%3C%2F%73%76%67%3E\"); background-size: 12.288px 12.288px; mix-blend-mode: normal; pointer-events: none;",
+            "etch": {
+              "baseFrequency": 0.3333333333333333,
+              "markup": "<filter id=\"worldbend-etch\" x=\"-10%\" y=\"-10%\" width=\"120%\" height=\"120%\" color-interpolation-filters=\"sRGB\">\n<feTurbulence type=\"fractalNoise\" baseFrequency=\"0.333\" numOctaves=\"2\" seed=\"7\" result=\"bump\"/>\n<feDiffuseLighting in=\"bump\" lighting-color=\"white\" surfaceScale=\"0.1\" diffuseConstant=\"1\" result=\"light\">\n<feDistantLight azimuth=\"235\" elevation=\"55\"/>\n</feDiffuseLighting>\n<feComposite in=\"light\" in2=\"bump\" operator=\"arithmetic\" k1=\"1\" k2=\"0\" k3=\"0\" k4=\"0\" result=\"etched\"/>\n<feColorMatrix in=\"etched\" type=\"saturate\" values=\"0\"/>\n</filter>",
+              "surfaceScale": 0.10000000000000002
+            },
+            "fidelity": [
+              {
+                "field": "visible",
+                "mapping": "native",
+                "note": "visible=false omits the texture declarations entirely"
+              },
+              {
+                "field": "grain",
+                "mapping": "approximated",
+                "note": "grain density scales turbulence alpha coverage; it does not select sparse cells with Figma's native noise algorithm"
+              },
+              {
+                "field": "grain-size",
+                "mapping": "approximated",
+                "note": "grain size scales the 64px tile by its 0.16 noise frequency for nominal cell pitch; the cell shapes differ from native noise"
+              },
+              {
+                "field": "grain-color",
+                "mapping": "native",
+                "note": "grain color tints the tile pixels"
+              },
+              {
+                "field": "etch",
+                "mapping": "approximated",
+                "note": "SVG bump lighting approximates native TEXTURE etch; surfaceScale linear to 12 then soft tail to 100 (effective 0.4, clamped=false)"
+              },
+              {
+                "field": "etch-size",
+                "mapping": "approximated",
+                "note": "etch size becomes feTurbulence frequency, not the native cell pitch"
+              },
+              {
+                "field": "clip-to-shape",
+                "mapping": "approximated",
+                "note": "clip-to-shape controls etch's rounded CSS outline; grain always follows the outline. Other Figma vector silhouettes require a host clip or mask"
+              }
+            ],
+            "grainBlend": "normal",
+            "grainTile": "data:image/svg+xml,%3C%73%76%67%20%78%6D%6C%6E%73%3D%27%68%74%74%70%3A%2F%2F%77%77%77%2E%77%33%2E%6F%72%67%2F%32%30%30%30%2F%73%76%67%27%20%77%69%64%74%68%3D%27%36%34%27%20%68%65%69%67%68%74%3D%27%36%34%27%3E%3C%66%69%6C%74%65%72%20%69%64%3D%27%67%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%20%63%6F%6C%6F%72%2D%69%6E%74%65%72%70%6F%6C%61%74%69%6F%6E%2D%66%69%6C%74%65%72%73%3D%27%73%52%47%42%27%3E%3C%66%65%54%75%72%62%75%6C%65%6E%63%65%20%74%79%70%65%3D%27%66%72%61%63%74%61%6C%4E%6F%69%73%65%27%20%62%61%73%65%46%72%65%71%75%65%6E%63%79%3D%27%30%2E%31%36%27%20%6E%75%6D%4F%63%74%61%76%65%73%3D%27%32%27%20%73%65%65%64%3D%27%31%31%27%20%72%65%73%75%6C%74%3D%27%6E%6F%69%73%65%27%2F%3E%3C%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%20%69%6E%3D%27%6E%6F%69%73%65%27%20%72%65%73%75%6C%74%3D%27%73%68%61%70%65%64%27%3E%3C%66%65%46%75%6E%63%52%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%30%2E%35%30%38%27%2F%3E%3C%66%65%46%75%6E%63%47%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%30%2E%35%30%38%27%2F%3E%3C%66%65%46%75%6E%63%42%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%30%2E%35%30%38%27%2F%3E%3C%66%65%46%75%6E%63%41%20%74%79%70%65%3D%27%74%61%62%6C%65%27%20%74%61%62%6C%65%56%61%6C%75%65%73%3D%27%30%20%31%27%2F%3E%3C%2F%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%3E%3C%66%65%43%6F%6C%6F%72%4D%61%74%72%69%78%20%69%6E%3D%27%73%68%61%70%65%64%27%20%74%79%70%65%3D%27%6D%61%74%72%69%78%27%20%76%61%6C%75%65%73%3D%27%30%20%30%20%30%20%30%20%30%2E%34%38%32%34%20%30%20%30%20%30%20%30%20%30%2E%33%35%32%39%20%30%20%30%20%30%20%30%20%30%2E%32%32%33%35%20%30%2E%39%20%30%2E%39%20%30%2E%39%20%30%20%30%27%2F%3E%3C%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%3E%3C%66%65%46%75%6E%63%41%20%74%79%70%65%3D%27%6C%69%6E%65%61%72%27%20%73%6C%6F%70%65%3D%27%30%2E%31%38%30%27%20%69%6E%74%65%72%63%65%70%74%3D%27%30%27%2F%3E%3C%2F%66%65%43%6F%6D%70%6F%6E%65%6E%74%54%72%61%6E%73%66%65%72%3E%3C%2F%66%69%6C%74%65%72%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%36%34%27%20%68%65%69%67%68%74%3D%27%36%34%27%20%66%69%6C%74%65%72%3D%27%75%72%6C%28%23%67%29%27%2F%3E%3C%2F%73%76%67%3E",
+            "grainTileSize": 12.288,
+            "parameterRanges": [
+              {
+                "authored": 0.4,
+                "authoredMax": 1000,
+                "authoredMin": 0,
+                "clamped": false,
+                "effective": 0.4,
+                "effectiveMax": 100,
+                "effectiveMin": 0,
+                "field": "etch",
+                "note": "Web etch surfaceScale is linear on [0,12] then a soft tail through 100; values above 100 clamp",
+                "unit": "logical-px"
+              }
+            ]
+          }
+        },
+        "family": "texture"
+      }
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "foil-seal"
+        }
+      ],
+      "id": "foil-seal",
+      "kind": "material",
+      "material": {
+        "delivery": {
+          "fingerprint": "sha256:e34d99d69a9ab0e96abeb115aa095d986d4594506f8b4380015c9903f058e8ed",
+          "kernel": {
+            "id": "worldbend.foil.rgba@0.1",
+            "sha256": "sha256:ec9d71237d96c4d708f18e90e3449188ae73f4de620e8c58506de1c443fe8676",
+            "source": "\ndiagnostic(off,derivative_uniformity);\nstruct Uniforms {\n  frameData: vec4f,\n  outputDimsData: vec4f,\n  baseColor: vec4f,\n  highlightColor: vec4f,\n  surface: vec4f,\n  flags: vec4f,\n};\n@group(0) @binding(0) var<uniform> u: Uniforms;\n\nstruct VsIn {\n  @location(0) pos: vec2f,\n  @location(1) uv: vec2f,\n};\nstruct VsOut {\n  @builtin(position) position: vec4f,\n  @location(0) uv: vec2f,\n};\n\nfn hash21(p: vec2f) -> f32 {\n  var q = fract(p * vec2f(123.34, 456.21));\n  q += dot(q, q + 45.32);\n  return fract(q.x * q.y);\n}\n\nfn valueNoise(p: vec2f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  // Quintic smoothstep keeps the field C2-continuous for calm gradients.\n  let t = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);\n  let a = hash21(i);\n  let b = hash21(i + vec2f(1.0, 0.0));\n  let c = hash21(i + vec2f(0.0, 1.0));\n  let d = hash21(i + vec2f(1.0, 1.0));\n  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);\n}\n\nfn fbm(p: vec2f) -> f32 {\n  var value = 0.0;\n  var amplitude = 0.5;\n  var point = p;\n  for (var i = 0; i < 4; i++) {\n    value += amplitude * valueNoise(point);\n    point = point * 2.03 + vec2f(11.7, 9.2);\n    amplitude *= 0.5;\n  }\n  return value;\n}\n\n@vertex fn vs_main(in: VsIn) -> VsOut {\n  var out: VsOut;\n  out.position = vec4f(in.pos, 0.0, 1.0);\n  out.uv = in.uv;\n  return out;\n}\n\n@fragment fn fs_main(@location(0) outputUv_in: vec2f) -> @location(0) vec4f {\n  if (u.flags.x < 0.5) {\n    return vec4f(0.0);\n  }\n  let dims = max(u.outputDimsData.xy, vec2f(1.0));\n  let aspect = dims.x / max(dims.y, 1.0);\n  let p = vec2f(outputUv_in.x * aspect, outputUv_in.y);\n\n  let lightAngle = u.surface.x;\n  let intensity = clamp(u.surface.y, 0.0, 1.0);\n  let roughness = clamp(u.surface.z, 0.0, 1.0);\n  let flowSpeed = max(u.surface.w, 0.0);\n\n  let flow = u.frameData.x * flowSpeed;\n  let dir = vec2f(cos(lightAngle), sin(lightAngle));\n  let along = dot(p, dir);\n\n  // Roughness bends the bands through a flowing noise field; at zero the\n  // bands stay straight and deterministic.\n  let warp = (fbm(p * 3.0 + vec2f(flow * 0.35, flow * 0.21)) - 0.5) * roughness;\n  // Broad reflective faces meet narrow fold glints. The phase closes in a\n  // dark region so the periodic boundary introduces no lit seam. Roughness\n  // bends the folds and broadens their highlights, rather than blurring the\n  // whole surface into a mottled gradient.\n  let phase = fract((along + warp * 0.85) * 2.4 - flow * 0.28);\n  let opening = smoothstep(0.08, 0.10, phase);\n  let face = opening * (1.0 - smoothstep(0.16, 0.86, phase)) * 0.75;\n  let glint = smoothstep(0.10, 0.14, phase) * (1.0 - smoothstep(0.14, 0.152 + roughness * 0.025, phase));\n  let weight = intensity * clamp(face + glint * 0.7, 0.0, 1.0);\n\n  // Mix premultiplied encoded-sRGB tints, then return the host's alpha\n  // convention. Transparent highlights change coverage without color bleed.\n  let alpha = mix(u.baseColor.a, u.highlightColor.a, weight);\n  let premultiplied = mix(u.baseColor.rgb * u.baseColor.a,\n    u.highlightColor.rgb * u.highlightColor.a, weight);\n  if (u.flags.y > 0.5) { return vec4f(premultiplied, alpha); }\n  if (alpha <= 0.0) { return vec4f(0.0); }\n  return vec4f(premultiplied / alpha, alpha);\n}\n",
+            "uniformBytes": 96
+          },
+          "material": {
+            "baseColor": {
+              "a": 1,
+              "b": 0.19,
+              "g": 0.22,
+              "r": 0.17
+            },
+            "flowSpeed": 0.25,
+            "highlightColor": {
+              "a": 1,
+              "b": 0.56,
+              "g": 0.94,
+              "r": 0.87
+            },
+            "intensity": 0.8,
+            "lightAngle": 130,
+            "roughness": 0.45,
+            "visible": true
+          },
+          "recipeFingerprint": "sha256:b5a842058f3d3ef3727a47bb126a75d1f8865b2b6cd673ffffce81ffbdd03a68",
+          "recipeId": "field-notes-foil",
+          "recipeVersion": 1,
+          "schema": "worldbend.foil-delivery@0.1",
+          "target": "web",
+          "version": "0.1"
+        },
+        "family": "foil"
+      }
+    },
+    {
+      "bindings": [
+        {
+          "assetId": "field-notes",
+          "role": "content",
+          "slotId": "edition-control"
+        }
+      ],
+      "id": "edition-control",
+      "kind": "material",
+      "material": {
+        "delivery": {
+          "fingerprint": "sha256:585aba0a6fa778c600f93fef9945057987a2ac1db22549422c7e5e66fa261eaa",
+          "material": {
+            "depth": 8,
+            "dispersion": 0,
+            "lightAngle": 115,
+            "lightIntensity": 0.45,
+            "radius": 3,
+            "refraction": 0.25,
+            "visible": true
+          },
+          "recipeFingerprint": "sha256:41992db984c34d35459b3dfe0bd6ba1a5f39a3324a817682989b157c5bb7208e",
+          "recipeId": "field-notes-glass",
+          "recipeVersion": 1,
+          "schema": "worldbend.appearance-delivery@0.1",
+          "swiftui": null,
+          "target": "web",
+          "version": "0.1",
+          "web": {
+            "backdropFilter": "blur(3px) saturate(1.063) brightness(1.002)",
+            "boxShadow": "inset -4.26px -1.99px 8.5px rgba(255,255,255,0.40), inset 0 0 12.75px rgba(255,255,255,0.24)",
+            "couplings": [
+              {
+                "formula": "1 + 0.35*dispersion + 0.25*refraction",
+                "fromField": "refraction",
+                "intentional": true,
+                "note": "This Web profile also changes artwork saturation; use web-color-preserving when refraction must retain the sampled color treatment",
+                "toChannel": "backdrop-filter.saturate"
+              },
+              {
+                "formula": "1 + 0.35*dispersion + 0.25*refraction",
+                "fromField": "dispersion",
+                "intentional": true,
+                "note": "Dispersion shares the same saturate compensation channel as refraction",
+                "toChannel": "backdrop-filter.saturate"
+              }
+            ],
+            "css": "backdrop-filter: blur(3px) saturate(1.063) brightness(1.002) url(\"#worldbend-glass\");\nbox-shadow: inset -4.26px -1.99px 8.5px rgba(255,255,255,0.40), inset 0 0 12.75px rgba(255,255,255,0.24);\nborder: 1px solid rgba(255,255,255,0.19);",
+            "displacement": {
+              "chromaticOffset": 0,
+              "markup": "<filter id=\"worldbend-glass\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\" color-interpolation-filters=\"sRGB\">\n<feImage href=\"data:image/svg+xml,%3C%73%76%67%20%78%6D%6C%6E%73%3D%27%68%74%74%70%3A%2F%2F%77%77%77%2E%77%33%2E%6F%72%67%2F%32%30%30%30%2F%73%76%67%27%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%3E%3C%64%65%66%73%3E%3C%6C%69%6E%65%61%72%47%72%61%64%69%65%6E%74%20%69%64%3D%27%78%27%3E%3C%73%74%6F%70%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%23%66%66%38%30%38%30%27%2F%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%31%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%23%30%30%38%30%38%30%27%2F%3E%3C%2F%6C%69%6E%65%61%72%47%72%61%64%69%65%6E%74%3E%3C%72%61%64%69%61%6C%47%72%61%64%69%65%6E%74%20%69%64%3D%27%72%69%6D%27%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%2E%36%35%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%62%6C%61%63%6B%27%2F%3E%3C%73%74%6F%70%20%6F%66%66%73%65%74%3D%27%31%27%20%73%74%6F%70%2D%63%6F%6C%6F%72%3D%27%77%68%69%74%65%27%2F%3E%3C%2F%72%61%64%69%61%6C%47%72%61%64%69%65%6E%74%3E%3C%6D%61%73%6B%20%69%64%3D%27%6D%27%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%75%72%6C%28%23%72%69%6D%29%27%2F%3E%3C%2F%6D%61%73%6B%3E%3C%66%69%6C%74%65%72%20%69%64%3D%27%6E%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%20%63%6F%6C%6F%72%2D%69%6E%74%65%72%70%6F%6C%61%74%69%6F%6E%2D%66%69%6C%74%65%72%73%3D%27%73%52%47%42%27%3E%3C%66%65%49%6D%61%67%65%20%68%72%65%66%3D%27%64%61%74%61%3A%69%6D%61%67%65%2F%73%76%67%2B%78%6D%6C%2C%25%33%43%25%37%33%25%37%36%25%36%37%25%32%30%25%37%38%25%36%44%25%36%43%25%36%45%25%37%33%25%33%44%25%32%37%25%36%38%25%37%34%25%37%34%25%37%30%25%33%41%25%32%46%25%32%46%25%37%37%25%37%37%25%37%37%25%32%45%25%37%37%25%33%33%25%32%45%25%36%46%25%37%32%25%36%37%25%32%46%25%33%32%25%33%30%25%33%30%25%33%30%25%32%46%25%37%33%25%37%36%25%36%37%25%32%37%25%32%30%25%37%37%25%36%39%25%36%34%25%37%34%25%36%38%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%38%25%36%35%25%36%39%25%36%37%25%36%38%25%37%34%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%33%45%25%33%43%25%36%34%25%36%35%25%36%36%25%37%33%25%33%45%25%33%43%25%36%43%25%36%39%25%36%45%25%36%35%25%36%31%25%37%32%25%34%37%25%37%32%25%36%31%25%36%34%25%36%39%25%36%35%25%36%45%25%37%34%25%32%30%25%36%39%25%36%34%25%33%44%25%32%37%25%37%39%25%32%37%25%32%30%25%37%38%25%33%31%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%39%25%33%31%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%38%25%33%32%25%33%44%25%32%37%25%33%30%25%32%37%25%32%30%25%37%39%25%33%32%25%33%44%25%32%37%25%33%31%25%32%37%25%33%45%25%33%43%25%37%33%25%37%34%25%36%46%25%37%30%25%32%30%25%37%33%25%37%34%25%36%46%25%37%30%25%32%44%25%36%33%25%36%46%25%36%43%25%36%46%25%37%32%25%33%44%25%32%37%25%32%33%25%33%38%25%33%30%25%36%36%25%36%36%25%33%38%25%33%30%25%32%37%25%32%46%25%33%45%25%33%43%25%37%33%25%37%34%25%36%46%25%37%30%25%32%30%25%36%46%25%36%36%25%36%36%25%37%33%25%36%35%25%37%34%25%33%44%25%32%37%25%33%31%25%32%37%25%32%30%25%37%33%25%37%34%25%36%46%25%37%30%25%32%44%25%36%33%25%36%46%25%36%43%25%36%46%25%37%32%25%33%44%25%32%37%25%32%33%25%33%38%25%33%30%25%33%30%25%33%30%25%33%38%25%33%30%25%32%37%25%32%46%25%33%45%25%33%43%25%32%46%25%36%43%25%36%39%25%36%45%25%36%35%25%36%31%25%37%32%25%34%37%25%37%32%25%36%31%25%36%34%25%36%39%25%36%35%25%36%45%25%37%34%25%33%45%25%33%43%25%32%46%25%36%34%25%36%35%25%36%36%25%37%33%25%33%45%25%33%43%25%37%32%25%36%35%25%36%33%25%37%34%25%32%30%25%37%37%25%36%39%25%36%34%25%37%34%25%36%38%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%38%25%36%35%25%36%39%25%36%37%25%36%38%25%37%34%25%33%44%25%32%37%25%33%32%25%33%35%25%33%36%25%32%37%25%32%30%25%36%36%25%36%39%25%36%43%25%36%43%25%33%44%25%32%37%25%37%35%25%37%32%25%36%43%25%32%38%25%32%33%25%37%39%25%32%39%25%32%37%25%32%46%25%33%45%25%33%43%25%32%46%25%37%33%25%37%36%25%36%37%25%33%45%27%20%72%65%73%75%6C%74%3D%27%79%27%20%78%3D%27%30%27%20%79%3D%27%30%27%20%77%69%64%74%68%3D%27%31%30%30%25%27%20%68%65%69%67%68%74%3D%27%31%30%30%25%27%2F%3E%3C%66%65%43%6F%6D%70%6F%73%69%74%65%20%69%6E%3D%27%53%6F%75%72%63%65%47%72%61%70%68%69%63%27%20%69%6E%32%3D%27%79%27%20%6F%70%65%72%61%74%6F%72%3D%27%61%72%69%74%68%6D%65%74%69%63%27%20%6B%32%3D%27%31%27%20%6B%33%3D%27%31%27%20%6B%34%3D%27%2D%2E%35%30%32%27%2F%3E%3C%2F%66%69%6C%74%65%72%3E%3C%2F%64%65%66%73%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%23%38%30%38%30%38%30%27%2F%3E%3C%72%65%63%74%20%77%69%64%74%68%3D%27%32%35%36%27%20%68%65%69%67%68%74%3D%27%32%35%36%27%20%66%69%6C%6C%3D%27%75%72%6C%28%23%78%29%27%20%66%69%6C%74%65%72%3D%27%75%72%6C%28%23%6E%29%27%20%6D%61%73%6B%3D%27%75%72%6C%28%23%6D%29%27%2F%3E%3C%2F%73%76%67%3E\" result=\"edge-map\" preserveAspectRatio=\"none\"/>\n<feDisplacementMap in=\"SourceGraphic\" in2=\"edge-map\" scale=\"12.8\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"refracted\"/>\n<feDisplacementMap in=\"refracted\" in2=\"edge-map\" scale=\"0\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"red-shift\"/>\n<feColorMatrix in=\"red-shift\" values=\"1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0\" result=\"red\"/>\n<feColorMatrix in=\"refracted\" values=\"0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0\" result=\"green\"/>\n<feDisplacementMap in=\"refracted\" in2=\"edge-map\" scale=\"0\" xChannelSelector=\"R\" yChannelSelector=\"G\" result=\"blue-shift\"/>\n<feColorMatrix in=\"blue-shift\" values=\"0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0\" result=\"blue\"/>\n<feBlend in=\"red\" in2=\"green\" mode=\"screen\" result=\"rg\"/><feBlend in=\"rg\" in2=\"blue\" mode=\"screen\"/>\n</filter>",
+              "scale": 12.8
+            },
+            "fidelity": [
+              {
+                "field": "visible",
+                "mapping": "native",
+                "note": "visible=false omits the glass declarations entirely"
+              },
+              {
+                "field": "radius",
+                "mapping": "native",
+                "note": "frost radius maps to the backdrop-filter blur length"
+              },
+              {
+                "field": "light-intensity",
+                "mapping": "approximated",
+                "note": "drives the inset edge highlight strength; Figma's full specular response is richer"
+              },
+              {
+                "field": "light-angle",
+                "mapping": "approximated",
+                "note": "positions the inset highlight on the lit edge; cardinals match native/Metal (oblique at 115°)"
+              },
+              {
+                "field": "refraction",
+                "mapping": "approximated",
+                "note": "edge-only displacement; also intentionally raises backdrop-filter saturate (see couplings)"
+              },
+              {
+                "field": "depth",
+                "mapping": "approximated",
+                "note": "scales edge displacement (linear to depth 10, soft tail to 100; effective 8, clamped=false) and rim width (linear to 20, soft tail to 100)"
+              },
+              {
+                "field": "dispersion",
+                "mapping": "approximated",
+                "note": "RGB channel separation in the Web runtime; an approximation rather than a spectral solver"
+              }
+            ],
+            "lightAxis": {
+              "angleDegrees": 115,
+              "cardinal": "oblique",
+              "convention": "native-cardinal@1",
+              "direction": [
+                -0.90630778703665,
+                -0.42261826174069933
+              ],
+              "note": "Shared Figma/Web/Metal screen-space mapping: 0 down, 90 left, 180 up, 270 right; Web inset highlight uses this vector on the lit edge"
+            },
+            "parameterRanges": [
+              {
+                "authored": 8,
+                "authoredMax": 1000,
+                "authoredMin": 1,
+                "clamped": false,
+                "effective": 8,
+                "effectiveMax": 100,
+                "effectiveMin": 1,
+                "field": "depth",
+                "note": "Web displacement depthFactor is linear on [1,10] then a soft tail through 100; values above 100 clamp",
+                "unit": "logical-px"
+              },
+              {
+                "authored": 8,
+                "authoredMax": 1000,
+                "authoredMin": 1,
+                "clamped": false,
+                "effective": 8,
+                "effectiveMax": 100,
+                "effectiveMin": 1,
+                "field": "depth.rim",
+                "note": "Web receiver rim uses clamped authored depth on [1,100] (historical linear [1,20] then soft tail); mapped rim contribution is delivery.rimDepth (max 40)",
+                "unit": "logical-px"
+              }
+            ],
+            "rimDepth": 8
+          }
+        },
+        "family": "glass"
+      }
+    }
+  ],
+  "documentFingerprint": "sha256:b9c8832aa5010430ddb1c1cc3326ffdd40bd53d85d1fb6d9c5bb1efa0609e8d8",
+  "schema": "worldbend.spatial-document-delivery-plan",
+  "version": "0.1"
+}
