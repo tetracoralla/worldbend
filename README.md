@@ -8,10 +8,9 @@ rendering for CLI, MCP, Web/WASM and Figma adapters.
 ## Figma
 
 Install [Worldbend from Figma Community](https://www.figma.com/community/plugin/1675767923532475446/worldbend).
-The current Community release is package **0.5.0**, published as version **7**.
-This source tree contains the **0.6.0** package candidate; it is not a claim of
-Community publication. Worldbend processes artwork locally, requires no account
-and declares no network access.
+The current Community release is package **0.6.0**, published as version **8**
+on 2026-10-20. Worldbend processes artwork locally, requires no account and
+declares no network access.
 
 Select a source, use Transform, Distort, Warp or Correct, then choose an output:
 

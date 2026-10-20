@@ -1,11 +1,11 @@
 # Figma Community distribution
 
 [Worldbend](https://www.figma.com/community/plugin/1675767923532475446/worldbend)
-is free. The current Community release is package 0.5.0, published as version 7.
-The 0.6.0 source package is unreleased. There is no Worldbend account,
-subscription, analytics, backend service or network permission.
+is free. The current Community release is package 0.6.0, published as version 8
+on 2026-10-20. There is no Worldbend account, subscription, analytics, backend
+service or network permission.
 
-The 0.6 candidate keeps linked-result actions aligned in compact plugin windows.
+The 0.6 release keeps linked-result actions aligned in compact plugin windows.
 Updating editable native output also preserves Figma custom Motion styles instead
 of dropping or misapplying them.
 
@@ -22,6 +22,6 @@ export fidelity and the recovery contract for external Agent publication.
 Third-party notices and a locked SPDX inventory accompany the archive.
 
 Media in `assets/figma-community/` depicts original Worldbend artwork and real
-outputs. The 0.6 candidate cover shows Native Vector output after a source update;
+outputs. The 0.6 cover shows Native Vector output after a source update;
 the 0.5 cover is retained for release traceability. The separate effect cover shows
 sampled editable content.
