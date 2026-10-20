@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@figma/plugin-typings':
-        specifier: 1.138.0
-        version: 1.138.0
+        specifier: 1.142.0
+        version: 1.142.0
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
@@ -46,8 +46,8 @@ importers:
         version: 0.8.3
     devDependencies:
       '@figma/plugin-typings':
-        specifier: 1.138.0
-        version: 1.138.0
+        specifier: 1.142.0
+        version: 1.142.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -263,8 +263,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@figma/plugin-typings@1.138.0':
-    resolution: {integrity: sha512-bLP9wRf8c0e4z5GbXpDUXd7YNPXEDpgyeMmTe8Lm4EWMU8JEO1DFRfj1NaucIeRSurbde8y7xS1jas60LTTDaw==}
+  '@figma/plugin-typings@1.142.0':
+    resolution: {integrity: sha512-Loa9P4bUZi/pQejic8OYQSU4Zz9izJdIiDUkkKddq5Bfc5JPRV6pCeg3C8owovbX9lKshaFym86PlMhKZgLeBw==}
 
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
@@ -1123,7 +1123,7 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@figma/plugin-typings@1.138.0': {}
+  '@figma/plugin-typings@1.142.0': {}
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
