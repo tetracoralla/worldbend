@@ -414,8 +414,10 @@
         .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) > [data-role="reset"] { grid-column:1;grid-row:1;justify-self:start; }
         .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) .designer-publication { display:contents; }
         .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) .designer-publication select { grid-column:2;grid-row:1;width:100%;max-width:none; }
-        .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) .designer-publication [data-role="apply-new"] { grid-column:1;grid-row:2;width:100%;min-width:0;padding-inline:8px;font-size:11px; }
-        .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) .designer-publication [data-role="apply"] { grid-column:2;grid-row:2;width:100%;min-width:0;padding-inline:8px;font-size:11px; }
+        /* Expanded or translated action copy may wrap on only one button. Keep
+           both controls on the shared grid row so their hit targets stay level. */
+        .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) .designer-publication [data-role="apply-new"] { grid-column:1;grid-row:2;width:100%;min-width:0;align-self:stretch;padding-inline:8px;font-size:11px; }
+        .designer-footer:has(.designer-publication [data-role="apply-new"]:not([hidden])) .designer-publication [data-role="apply"] { grid-column:2;grid-row:2;width:100%;min-width:0;align-self:stretch;padding-inline:8px;font-size:11px; }
         #action-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px 10px; padding: 10px 12px; }
         #controls #editor { padding: 44px 32px 50px; }
         #session-actions { grid-column: 1; grid-row: 1; }

@@ -3961,11 +3961,16 @@ async function runFixture() {
       const meshFooter = get('#mesh-workspace .designer-footer').getBoundingClientRect();
       const meshNew = get('#mesh-workspace [data-role="apply-new"]');
       const meshUpdate = get('#mesh-workspace [data-role="apply"]');
+      const realUpdateCopy = meshUpdate.textContent;
+      if (window.innerWidth <= 300) meshUpdate.textContent = "Update Existing Linked Image";
       const meshNewBox = meshNew.getBoundingClientRect(), meshUpdateBox = meshUpdate.getBoundingClientRect();
       check([meshNewBox, meshUpdateBox].every(box => box.left >= meshFooter.left && box.right <= meshFooter.right) &&
         Math.abs(meshNewBox.top - meshUpdateBox.top) <= 1 &&
-        meshNew.scrollWidth <= meshNew.clientWidth + 1 && meshUpdate.scrollWidth <= meshUpdate.clientWidth + 1,
-      `Reopened Mesh actions are clipped: ${JSON.stringify({footer:meshFooter.toJSON(),new:meshNewBox.toJSON(),update:meshUpdateBox.toJSON(),newScroll:meshNew.scrollWidth,newClient:meshNew.clientWidth,updateScroll:meshUpdate.scrollWidth,updateClient:meshUpdate.clientWidth})}`);
+        Math.abs(meshNewBox.height - meshUpdateBox.height) <= 1 &&
+        meshNew.scrollWidth <= meshNew.clientWidth + 1 && meshUpdate.scrollWidth <= meshUpdate.clientWidth + 1 &&
+        meshNew.scrollHeight <= meshNew.clientHeight + 1 && meshUpdate.scrollHeight <= meshUpdate.clientHeight + 1,
+      `Reopened Mesh actions are misaligned or clipped: ${JSON.stringify({footer:meshFooter.toJSON(),new:meshNewBox.toJSON(),update:meshUpdateBox.toJSON(),newScroll:[meshNew.scrollWidth,meshNew.scrollHeight],newClient:[meshNew.clientWidth,meshNew.clientHeight],updateScroll:[meshUpdate.scrollWidth,meshUpdate.scrollHeight],updateClient:[meshUpdate.clientWidth,meshUpdate.clientHeight]})}`);
+      meshUpdate.textContent = realUpdateCopy;
       get("#workspace-tab-remap").click();
       await wait(() => !get('#remap-workspace [data-role="apply"]').disabled, "Lens on saved Mesh source");
       check(get('#remap-workspace [data-role="apply"]').textContent === "Apply as New Image" &&
