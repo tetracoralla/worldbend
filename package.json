@@ -75,7 +75,7 @@
     "material:metal:generate": "cargo run --locked -p worldbend-core --example generate-material-metal",
     "material:metal:check": "cargo run --locked -p worldbend-core --example generate-material-metal -- --check",
     "material:native:receipts": "cargo run --locked -p worldbend-core --example generate-native-material-receipts",
-    "material:native:check": "cargo run --locked -p worldbend-core --example generate-native-material-receipts -- --check && swift test --package-path packages/swiftui --scratch-path .worldbend-work/ios-material-receiving/swift-build --filter ProceduralMaterialTests",
+    "material:native:check": "cargo run --locked -p worldbend-core --example generate-native-material-receipts -- --check && swift test --package-path packages/swiftui --scratch-path .task-notes/ios-material-receiving/swift-build --filter ProceduralMaterialTests",
     "test:mesh-gradient": "cargo build --locked -p worldbend-mcp --bin worldbend-mcp && pnpm build:web:package && pnpm test:mesh-gradient:from-build",
     "test:mesh-gradient:from-build": "node scripts/generate-mesh-gradient-kernel.mjs --check && node scripts/mesh-gradient-receiving-check.mjs",
     "test:foil": "cargo build --locked -p worldbend-mcp --bin worldbend-mcp && pnpm build:web:package && pnpm test:foil:from-build",
@@ -84,7 +84,7 @@
     "test:mockup-motion:from-build": "node scripts/mockup-motion-receiving-check.mjs",
     "test:material-preference": "cargo build --locked -p worldbend-mcp --bin worldbend-mcp && node scripts/build-wasm.mjs && pnpm build:web:package && pnpm test:material-preference:from-build",
     "test:material-preference:from-build": "node scripts/material-preference-receiving-check.mjs",
-    "material:preference:native:check": "cargo run --locked -p worldbend-core --example generate-native-preference-rules -- --check && cargo run --locked -p worldbend-core --example generate-native-preference-fixtures -- --check && swift test --package-path packages/swiftui --scratch-path .worldbend-work/ios-material-receiving/swift-build --filter MaterialPreferenceTests && WORLDBEND_QA_STORAGE_ROOT=.worldbend-work/ios-material-receiving swift test --package-path examples/ios-procedural-materials --scratch-path .worldbend-work/ios-material-receiving/example-build",
+    "material:preference:native:check": "cargo run --locked -p worldbend-core --example generate-native-preference-rules -- --check && cargo run --locked -p worldbend-core --example generate-native-preference-fixtures -- --check && swift test --package-path packages/swiftui --scratch-path .task-notes/ios-material-receiving/swift-build --filter MaterialPreferenceTests && WORLDBEND_QA_STORAGE_ROOT=.task-notes/ios-material-receiving swift test --package-path examples/ios-procedural-materials --scratch-path .task-notes/ios-material-receiving/example-build",
     "test:material-document": "cargo build --locked -p worldbend-mcp --bin worldbend-mcp && pnpm build:web:package && pnpm test:material-document:from-build",
     "test:material-document:from-build": "node scripts/generate-material-document.mjs --check && node scripts/material-document-receiving-check.mjs",
     "test:document-motion": "node scripts/document-motion-receiving-check.mjs",
@@ -96,15 +96,15 @@
     "test:source-sampling:from-build": "node scripts/source-sampling-runtime-check.mjs"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.138.0",
-    "@types/node": "26.4.1",
+    "@figma/plugin-typings": "1.142.0",
+    "@types/node": "26.6.5",
     "fflate": "0.8.3",
     "json-schema-to-typescript": "16.0.0",
-    "tsx": "4.23.12",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vite": "8.3.0",
+    "vite": "8.3.4",
     "vite-plugin-singlefile": "2.3.3",
-    "vitest": "5.0.0"
+    "vitest": "5.0.5"
   },
   "engines": {
     "node": ">=22"

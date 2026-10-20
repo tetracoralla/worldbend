@@ -3,7 +3,7 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "worldbend-codex-plugin-macos-arm64",
-  "documentNamespace": "https://spdx.org/spdxdocs/worldbend-codex-plugin-macos-arm64-0.1.0-1951e7b7ed633117134b1f640ab9672e873a7a2c9d22c50518c52592235a8e9d",
+  "documentNamespace": "https://spdx.org/spdxdocs/worldbend-codex-plugin-macos-arm64-0.1.0-fe4634a4545bfa58ee33a96d6a2969807f9ba3f3c0843420273c587cc4efacab",
   "creationInfo": {
     "created": "1970-01-01T00:00:00Z",
     "creators": [
@@ -375,10 +375,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-clap-4.6.6",
+      "SPDXID": "SPDXRef-Crate-clap-4.6.7",
       "name": "clap",
-      "versionInfo": "4.6.6",
-      "downloadLocation": "https://crates.io/crates/clap/4.6.6",
+      "versionInfo": "4.6.7",
+      "downloadLocation": "https://crates.io/crates/clap/4.6.7",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -386,15 +386,15 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/clap@4.6.6"
+          "referenceLocator": "pkg:cargo/clap@4.6.7"
         }
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-clap-builder-4.6.6",
+      "SPDXID": "SPDXRef-Crate-clap-builder-4.6.7",
       "name": "clap_builder",
-      "versionInfo": "4.6.6",
-      "downloadLocation": "https://crates.io/crates/clap_builder/4.6.6",
+      "versionInfo": "4.6.7",
+      "downloadLocation": "https://crates.io/crates/clap_builder/4.6.7",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -402,15 +402,15 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/clap_builder@4.6.6"
+          "referenceLocator": "pkg:cargo/clap_builder@4.6.7"
         }
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-clap-derive-4.6.4",
+      "SPDXID": "SPDXRef-Crate-clap-derive-4.6.7",
       "name": "clap_derive",
-      "versionInfo": "4.6.4",
-      "downloadLocation": "https://crates.io/crates/clap_derive/4.6.4",
+      "versionInfo": "4.6.7",
+      "downloadLocation": "https://crates.io/crates/clap_derive/4.6.7",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -418,7 +418,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/clap_derive@4.6.4"
+          "referenceLocator": "pkg:cargo/clap_derive@4.6.7"
         }
       ]
     },
@@ -807,10 +807,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-flate2-1.1.9",
+      "SPDXID": "SPDXRef-Crate-flate2-1.1.10",
       "name": "flate2",
-      "versionInfo": "1.1.9",
-      "downloadLocation": "https://crates.io/crates/flate2/1.1.9",
+      "versionInfo": "1.1.10",
+      "downloadLocation": "https://crates.io/crates/flate2/1.1.10",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -818,7 +818,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/flate2@1.1.9"
+          "referenceLocator": "pkg:cargo/flate2@1.1.10"
         }
       ]
     },
@@ -1399,10 +1399,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-libc-0.2.189",
+      "SPDXID": "SPDXRef-Crate-libc-0.2.191",
       "name": "libc",
-      "versionInfo": "0.2.189",
-      "downloadLocation": "https://crates.io/crates/libc/0.2.189",
+      "versionInfo": "0.2.191",
+      "downloadLocation": "https://crates.io/crates/libc/0.2.191",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT OR Apache-2.0",
@@ -1410,7 +1410,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/libc@0.2.189"
+          "referenceLocator": "pkg:cargo/libc@0.2.191"
         }
       ]
     },
@@ -1507,6 +1507,22 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:cargo/miniz_oxide@0.8.9"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Crate-miniz-oxide-0.9.1",
+      "name": "miniz_oxide",
+      "versionInfo": "0.9.1",
+      "downloadLocation": "https://crates.io/crates/miniz_oxide/0.9.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT OR Zlib OR Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/miniz_oxide@0.9.1"
         }
       ]
     },
@@ -1991,10 +2007,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-schemars-1.2.2",
+      "SPDXID": "SPDXRef-Crate-schemars-1.2.3",
       "name": "schemars",
-      "versionInfo": "1.2.2",
-      "downloadLocation": "https://crates.io/crates/schemars/1.2.2",
+      "versionInfo": "1.2.3",
+      "downloadLocation": "https://crates.io/crates/schemars/1.2.3",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
@@ -2002,15 +2018,15 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/schemars@1.2.2"
+          "referenceLocator": "pkg:cargo/schemars@1.2.3"
         }
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-schemars-derive-1.2.2",
+      "SPDXID": "SPDXRef-Crate-schemars-derive-1.2.3",
       "name": "schemars_derive",
-      "versionInfo": "1.2.2",
-      "downloadLocation": "https://crates.io/crates/schemars_derive/1.2.2",
+      "versionInfo": "1.2.3",
+      "downloadLocation": "https://crates.io/crates/schemars_derive/1.2.3",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
@@ -2018,7 +2034,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/schemars_derive@1.2.2"
+          "referenceLocator": "pkg:cargo/schemars_derive@1.2.3"
         }
       ]
     },
@@ -2407,10 +2423,10 @@
       ]
     },
     {
-      "SPDXID": "SPDXRef-Crate-tokio-1.53.1",
+      "SPDXID": "SPDXRef-Crate-tokio-1.54.0",
       "name": "tokio",
-      "versionInfo": "1.53.1",
-      "downloadLocation": "https://crates.io/crates/tokio/1.53.1",
+      "versionInfo": "1.54.0",
+      "downloadLocation": "https://crates.io/crates/tokio/1.54.0",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "MIT",
@@ -2418,7 +2434,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:cargo/tokio@1.53.1"
+          "referenceLocator": "pkg:cargo/tokio@1.54.0"
         }
       ]
     },
@@ -2647,6 +2663,22 @@
       ]
     },
     {
+      "SPDXID": "SPDXRef-Crate-zlib-rs-0.6.8",
+      "name": "zlib-rs",
+      "versionInfo": "0.6.8",
+      "downloadLocation": "https://crates.io/crates/zlib-rs/0.6.8",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Zlib",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:cargo/zlib-rs@0.6.8"
+        }
+      ]
+    },
+    {
       "SPDXID": "SPDXRef-Crate-zmij-1.0.23",
       "name": "zmij",
       "versionInfo": "1.0.23",
@@ -2827,17 +2859,17 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-clap-4.6.6"
+      "relatedSpdxElement": "SPDXRef-Crate-clap-4.6.7"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-clap-builder-4.6.6"
+      "relatedSpdxElement": "SPDXRef-Crate-clap-builder-4.6.7"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-clap-derive-4.6.4"
+      "relatedSpdxElement": "SPDXRef-Crate-clap-derive-4.6.7"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -2962,7 +2994,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-flate2-1.1.9"
+      "relatedSpdxElement": "SPDXRef-Crate-flate2-1.1.10"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -3147,7 +3179,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-libc-0.2.189"
+      "relatedSpdxElement": "SPDXRef-Crate-libc-0.2.191"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -3178,6 +3210,11 @@
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-miniz-oxide-0.8.9"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-miniz-oxide-0.9.1"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -3332,12 +3369,12 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-schemars-1.2.2"
+      "relatedSpdxElement": "SPDXRef-Crate-schemars-1.2.3"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-schemars-derive-1.2.2"
+      "relatedSpdxElement": "SPDXRef-Crate-schemars-derive-1.2.3"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -3462,7 +3499,7 @@
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Crate-tokio-1.53.1"
+      "relatedSpdxElement": "SPDXRef-Crate-tokio-1.54.0"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",
@@ -3533,6 +3570,11 @@
       "spdxElementId": "SPDXRef-Package-Worldbend",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Crate-zerocopy-derive-0.8.56"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-Worldbend",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Crate-zlib-rs-0.6.8"
     },
     {
       "spdxElementId": "SPDXRef-Package-Worldbend",

@@ -190,11 +190,20 @@ export function restoreNativeMotion(
   const oldIds = oldRenderer ? rendererIds(oldRenderer) : [];
   const nextIds = newRenderer ? rendererIds(newRenderer) : [];
   const remap = new Map(oldIds.map((id, index) => [id, nextIds[index]]));
-  for (const style of snapshot.styles) node.applyAnimationStyle(style.styleId, {
-    ...(style.duration !== undefined ? { duration: style.duration } : {}),
-    ...(style.timelineOffset !== undefined ? { timelineOffset: style.timelineOffset } : {}),
-    ...(style.props !== undefined ? { props: copy(style.props) } : {}),
-  });
+  for (const style of snapshot.styles) {
+    if (style.type === "CUSTOM") {
+      node.applyAnimationStyle(style.styleId, {
+        type: "CUSTOM",
+        ...(style.timelineOffset !== undefined ? { timelineOffset: style.timelineOffset } : {}),
+      });
+      continue;
+    }
+    node.applyAnimationStyle(style.styleId, {
+      ...(style.duration !== undefined ? { duration: style.duration } : {}),
+      ...(style.timelineOffset !== undefined ? { timelineOffset: style.timelineOffset } : {}),
+      ...(style.props !== undefined ? { props: copy(style.props) } : {}),
+    });
+  }
   for (const entry of snapshot.tracks) {
     let field = entry.field;
     let baseValue = entry.track.baseValue;

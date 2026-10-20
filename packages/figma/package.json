@@ -16,9 +16,9 @@
     "fflate": "0.8.3"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.138.0",
+    "@figma/plugin-typings": "1.142.0",
     "typescript": "7.0.2",
-    "vite": "8.3.0",
+    "vite": "8.3.4",
     "vite-plugin-singlefile": "2.3.3"
   },
   "license": "Apache-2.0"

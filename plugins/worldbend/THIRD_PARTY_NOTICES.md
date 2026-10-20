@@ -30,9 +30,9 @@ The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B
 - [cap-primitives 4.0.3](https://crates.io/crates/cap-primitives/4.0.3) — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; licenses/cap-primitives-4.0.3/COPYRIGHT, licenses/cap-primitives-4.0.3/LICENSE-APACHE, licenses/cap-primitives-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception, licenses/cap-primitives-4.0.3/LICENSE-MIT
 - [cfg-if 1.0.4](https://crates.io/crates/cfg-if/1.0.4) — MIT OR Apache-2.0; licenses/cfg-if-1.0.4/LICENSE-APACHE, licenses/cfg-if-1.0.4/LICENSE-MIT
 - [chrono 0.4.45](https://crates.io/crates/chrono/0.4.45) — MIT OR Apache-2.0; licenses/chrono-0.4.45/LICENSE.txt
-- [clap 4.6.6](https://crates.io/crates/clap/4.6.6) — MIT OR Apache-2.0; licenses/clap-4.6.6/LICENSE-APACHE, licenses/clap-4.6.6/LICENSE-MIT
-- [clap_builder 4.6.6](https://crates.io/crates/clap_builder/4.6.6) — MIT OR Apache-2.0; licenses/clap-builder-4.6.6/LICENSE-APACHE, licenses/clap-builder-4.6.6/LICENSE-MIT
-- [clap_derive 4.6.4](https://crates.io/crates/clap_derive/4.6.4) — MIT OR Apache-2.0; licenses/clap-derive-4.6.4/LICENSE-APACHE, licenses/clap-derive-4.6.4/LICENSE-MIT
+- [clap 4.6.7](https://crates.io/crates/clap/4.6.7) — MIT OR Apache-2.0; licenses/clap-4.6.7/LICENSE-APACHE, licenses/clap-4.6.7/LICENSE-MIT
+- [clap_builder 4.6.7](https://crates.io/crates/clap_builder/4.6.7) — MIT OR Apache-2.0; licenses/clap-builder-4.6.7/LICENSE-APACHE, licenses/clap-builder-4.6.7/LICENSE-MIT
+- [clap_derive 4.6.7](https://crates.io/crates/clap_derive/4.6.7) — MIT OR Apache-2.0; licenses/clap-derive-4.6.7/LICENSE-APACHE, licenses/clap-derive-4.6.7/LICENSE-MIT
 - [clap_lex 1.1.0](https://crates.io/crates/clap_lex/1.1.0) — MIT OR Apache-2.0; licenses/clap-lex-1.1.0/LICENSE-APACHE, licenses/clap-lex-1.1.0/LICENSE-MIT
 - [color_quant 1.1.0](https://crates.io/crates/color_quant/1.1.0) — MIT; licenses/color-quant-1.1.0/LICENSE
 - [colorchoice 1.0.5](https://crates.io/crates/colorchoice/1.0.5) — MIT OR Apache-2.0; licenses/colorchoice-1.0.5/LICENSE-APACHE, licenses/colorchoice-1.0.5/LICENSE-MIT
@@ -57,7 +57,7 @@ The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B
 - [fastrand 2.5.0](https://crates.io/crates/fastrand/2.5.0) — Apache-2.0 OR MIT; licenses/fastrand-2.5.0/LICENSE-APACHE, licenses/fastrand-2.5.0/LICENSE-MIT
 - [fax 0.2.7](https://crates.io/crates/fax/0.2.7) — MIT; licenses/fax-0.2.7/LICENSE
 - [fdeflate 0.3.7](https://crates.io/crates/fdeflate/0.3.7) — MIT OR Apache-2.0; licenses/fdeflate-0.3.7/LICENSE-APACHE, licenses/fdeflate-0.3.7/LICENSE-MIT
-- [flate2 1.1.9](https://crates.io/crates/flate2/1.1.9) — MIT OR Apache-2.0; licenses/flate2-1.1.9/LICENSE-APACHE, licenses/flate2-1.1.9/LICENSE-MIT
+- [flate2 1.1.10](https://crates.io/crates/flate2/1.1.10) — MIT OR Apache-2.0; licenses/flate2-1.1.10/LICENSE-APACHE, licenses/flate2-1.1.10/LICENSE-MIT
 - [float-cmp 0.9.0](https://crates.io/crates/float-cmp/0.9.0) — MIT; licenses/float-cmp-0.9.0/LICENSE
 - [foldhash 0.2.0](https://crates.io/crates/foldhash/0.2.0) — Zlib; licenses/foldhash-0.2.0/LICENSE
 - [fs-set-times 0.20.3](https://crates.io/crates/fs-set-times/0.20.3) — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; licenses/fs-set-times-0.20.3/COPYRIGHT, licenses/fs-set-times-0.20.3/LICENSE-APACHE, licenses/fs-set-times-0.20.3/LICENSE-Apache-2.0_WITH_LLVM-exception, licenses/fs-set-times-0.20.3/LICENSE-MIT
@@ -94,13 +94,14 @@ The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B
 - [is_terminal_polyfill 1.70.2](https://crates.io/crates/is_terminal_polyfill/1.70.2) — MIT OR Apache-2.0; licenses/is-terminal-polyfill-1.70.2/LICENSE-APACHE, licenses/is-terminal-polyfill-1.70.2/LICENSE-MIT
 - [itoa 1.0.18](https://crates.io/crates/itoa/1.0.18) — MIT OR Apache-2.0; licenses/itoa-1.0.18/LICENSE-APACHE, licenses/itoa-1.0.18/LICENSE-MIT
 - [kurbo 0.13.1](https://crates.io/crates/kurbo/0.13.1) — Apache-2.0 OR MIT; licenses/kurbo-0.13.1/LICENSE-APACHE, licenses/kurbo-0.13.1/LICENSE-MIT
-- [libc 0.2.189](https://crates.io/crates/libc/0.2.189) — MIT OR Apache-2.0; licenses/libc-0.2.189/LICENSE-APACHE, licenses/libc-0.2.189/LICENSE-MIT
+- [libc 0.2.191](https://crates.io/crates/libc/0.2.191) — MIT OR Apache-2.0; licenses/libc-0.2.191/LICENSE-APACHE, licenses/libc-0.2.191/LICENSE-MIT
 - [libm 0.2.16](https://crates.io/crates/libm/0.2.16) — MIT; licenses/libm-0.2.16/LICENSE.txt
 - [log 0.4.33](https://crates.io/crates/log/0.4.33) — MIT OR Apache-2.0; licenses/log-0.4.33/LICENSE-APACHE, licenses/log-0.4.33/LICENSE-MIT
 - [matrixmultiply 0.3.11](https://crates.io/crates/matrixmultiply/0.3.11) — MIT OR Apache-2.0; licenses/matrixmultiply-0.3.11/LICENSE-APACHE, licenses/matrixmultiply-0.3.11/LICENSE-MIT
 - [maybe-owned 0.3.4](https://crates.io/crates/maybe-owned/0.3.4) — MIT OR Apache-2.0; licenses/maybe-owned-0.3.4/LICENSE-APACHE, licenses/maybe-owned-0.3.4/LICENSE-MIT
 - [memchr 2.8.3](https://crates.io/crates/memchr/2.8.3) — Unlicense OR MIT; licenses/memchr-2.8.3/COPYING, licenses/memchr-2.8.3/LICENSE-MIT, licenses/memchr-2.8.3/UNLICENSE
 - [miniz_oxide 0.8.9](https://crates.io/crates/miniz_oxide/0.8.9) — MIT OR Zlib OR Apache-2.0; licenses/miniz-oxide-0.8.9/LICENSE, licenses/miniz-oxide-0.8.9/LICENSE-APACHE.md, licenses/miniz-oxide-0.8.9/LICENSE-MIT.md, licenses/miniz-oxide-0.8.9/LICENSE-ZLIB.md
+- [miniz_oxide 0.9.1](https://crates.io/crates/miniz_oxide/0.9.1) — MIT OR Zlib OR Apache-2.0; licenses/miniz-oxide-0.9.1/LICENSE, licenses/miniz-oxide-0.9.1/LICENSE-APACHE.md, licenses/miniz-oxide-0.9.1/LICENSE-MIT.md, licenses/miniz-oxide-0.9.1/LICENSE-ZLIB.md
 - [mio 1.2.2](https://crates.io/crates/mio/1.2.2) — MIT; licenses/mio-1.2.2/LICENSE
 - [moxcms 0.8.1](https://crates.io/crates/moxcms/0.8.1) — BSD-3-Clause OR Apache-2.0; licenses/moxcms-0.8.1/LICENSE-APACHE.md, licenses/moxcms-0.8.1/LICENSE.md
 - [nalgebra 0.35.0](https://crates.io/crates/nalgebra/0.35.0) — Apache-2.0; licenses/nalgebra-0.35.0/LICENSE
@@ -131,8 +132,8 @@ The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B
 - [rmcp-macros 3.2.0](https://crates.io/crates/rmcp-macros/3.2.0) — Apache-2.0; upstream registry archive carries no license file; canonical Apache-2.0 terms are in licenses/_common/Apache-2.0.txt
 - [roxmltree 0.21.1](https://crates.io/crates/roxmltree/0.21.1) — MIT OR Apache-2.0; licenses/roxmltree-0.21.1/LICENSE-APACHE, licenses/roxmltree-0.21.1/LICENSE-MIT
 - [rustix 1.1.4](https://crates.io/crates/rustix/1.1.4) — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT; licenses/rustix-1.1.4/COPYRIGHT, licenses/rustix-1.1.4/LICENSE-APACHE, licenses/rustix-1.1.4/LICENSE-Apache-2.0_WITH_LLVM-exception, licenses/rustix-1.1.4/LICENSE-MIT
-- [schemars 1.2.2](https://crates.io/crates/schemars/1.2.2) — MIT; licenses/schemars-1.2.2/LICENSE
-- [schemars_derive 1.2.2](https://crates.io/crates/schemars_derive/1.2.2) — MIT; licenses/schemars-derive-1.2.2/LICENSE
+- [schemars 1.2.3](https://crates.io/crates/schemars/1.2.3) — MIT; licenses/schemars-1.2.3/LICENSE
+- [schemars_derive 1.2.3](https://crates.io/crates/schemars_derive/1.2.3) — MIT; licenses/schemars-derive-1.2.3/LICENSE
 - [serde 1.0.229](https://crates.io/crates/serde/1.0.229) — MIT OR Apache-2.0; licenses/serde-1.0.229/LICENSE-APACHE, licenses/serde-1.0.229/LICENSE-MIT
 - [serde_core 1.0.229](https://crates.io/crates/serde_core/1.0.229) — MIT OR Apache-2.0; licenses/serde-core-1.0.229/LICENSE-APACHE, licenses/serde-core-1.0.229/LICENSE-MIT
 - [serde_derive 1.0.229](https://crates.io/crates/serde_derive/1.0.229) — MIT OR Apache-2.0; licenses/serde-derive-1.0.229/LICENSE-APACHE, licenses/serde-derive-1.0.229/LICENSE-MIT
@@ -157,7 +158,7 @@ The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B
 - [tiff 0.11.3](https://crates.io/crates/tiff/0.11.3) — MIT; licenses/tiff-0.11.3/LICENSE
 - [tiny-skia 0.12.0](https://crates.io/crates/tiny-skia/0.12.0) — BSD-3-Clause; licenses/tiny-skia-0.12.0/LICENSE
 - [tiny-skia-path 0.12.0](https://crates.io/crates/tiny-skia-path/0.12.0) — BSD-3-Clause; licenses/tiny-skia-path-0.12.0/LICENSE
-- [tokio 1.53.1](https://crates.io/crates/tokio/1.53.1) — MIT; licenses/tokio-1.53.1/LICENSE
+- [tokio 1.54.0](https://crates.io/crates/tokio/1.54.0) — MIT; licenses/tokio-1.54.0/LICENSE
 - [tokio-macros 2.7.2](https://crates.io/crates/tokio-macros/2.7.2) — MIT; licenses/tokio-macros-2.7.2/LICENSE
 - [tokio-util 0.7.19](https://crates.io/crates/tokio-util/0.7.19) — MIT; licenses/tokio-util-0.7.19/LICENSE
 - [tracing 0.1.44](https://crates.io/crates/tracing/0.1.44) — MIT; licenses/tracing-0.1.44/LICENSE
@@ -172,6 +173,7 @@ The macOS binaries dynamically link only to Apple-provided `/usr/lib/libSystem.B
 - [wide 1.6.1](https://crates.io/crates/wide/1.6.1) — Zlib OR Apache-2.0 OR MIT; licenses/wide-1.6.1/LICENSE-APACHE.txt, licenses/wide-1.6.1/LICENSE-MIT.txt, licenses/wide-1.6.1/LICENSE-ZLIB.txt
 - [zerocopy 0.8.56](https://crates.io/crates/zerocopy/0.8.56) — BSD-2-Clause OR Apache-2.0 OR MIT; licenses/zerocopy-0.8.56/LICENSE-APACHE, licenses/zerocopy-0.8.56/LICENSE-BSD, licenses/zerocopy-0.8.56/LICENSE-MIT
 - [zerocopy-derive 0.8.56](https://crates.io/crates/zerocopy-derive/0.8.56) — BSD-2-Clause OR Apache-2.0 OR MIT; licenses/zerocopy-derive-0.8.56/LICENSE-APACHE, licenses/zerocopy-derive-0.8.56/LICENSE-BSD, licenses/zerocopy-derive-0.8.56/LICENSE-MIT
+- [zlib-rs 0.6.8](https://crates.io/crates/zlib-rs/0.6.8) — Zlib; licenses/zlib-rs-0.6.8/LICENSE
 - [zmij 1.0.23](https://crates.io/crates/zmij/1.0.23) — MIT; licenses/zmij-1.0.23/LICENSE-MIT
 - [zune-core 0.5.3](https://crates.io/crates/zune-core/0.5.3) — MIT OR Apache-2.0 OR Zlib; licenses/zune-core-0.5.3/LICENSE-APACHE, licenses/zune-core-0.5.3/LICENSE-MIT, licenses/zune-core-0.5.3/LICENSE-ZLIB
 - [zune-jpeg 0.5.15](https://crates.io/crates/zune-jpeg/0.5.15) — MIT OR Apache-2.0 OR Zlib; licenses/zune-jpeg-0.5.15/LICENSE-APACHE, licenses/zune-jpeg-0.5.15/LICENSE-MIT, licenses/zune-jpeg-0.5.15/LICENSE-ZLIB

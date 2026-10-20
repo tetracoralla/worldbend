@@ -21,8 +21,11 @@ function animatedSurface() {
     effects: [{ type: "SHADER", visible: true, id: "old-shader",
       properties: Object.fromEntries(ids.slice(9).map(id => [id, properties[id]])) }],
     manualKeyframeTracks: { OPACITY: binding(.8), effects: { 0: { properties: propertyTracks } } },
-    animationStyles: [{ id: "applied-style", styleId: "style", name: "Fade", duration: .4, timelineOffset: .1,
-      props: { timing: "in" } }],
+    animationStyles: [
+      { type: "FIGMA", id: "applied-style", styleId: "style", name: "Fade", duration: .4, timelineOffset: .1,
+        props: { timing: "in" } },
+      { type: "CUSTOM", id: "applied-custom", styleId: "custom-style", name: "Custom", timelineOffset: .2 },
+    ],
     timelines: [{ id: "timeline", duration: 2 }],
     applyManualKeyframeTrack: vi.fn(), applyAnimationStyle: vi.fn(), setTimelineDuration: vi.fn(),
   };
@@ -57,6 +60,7 @@ it("remaps shader tracks, rebases only their resting values, and preserves nativ
     applyManualKeyframeTrack: vi.fn(), applyAnimationStyle: vi.fn(), setTimelineDuration: vi.fn() };
   restoreNativeMotion(target as unknown as FrameNode, capture.snapshot, oldRenderer, newRenderer, newProperties);
   expect(target.applyAnimationStyle).toHaveBeenCalledWith("style", { duration: .4, timelineOffset: .1, props: { timing: "in" } });
+  expect(target.applyAnimationStyle).toHaveBeenCalledWith("custom-style", { type: "CUSTOM", timelineOffset: .2 });
   expect(target.applyManualKeyframeTrack).toHaveBeenCalledWith(
     { type: "INDEXED_ITEM", collection: "effects", index: 0, propertyId: "new-0" },
     expect.objectContaining({ baseValue: { type: "FLOAT", value: 100 }, keyframes: [
